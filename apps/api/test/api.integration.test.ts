@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
+import { openDatabase, seedDatabase } from '../src/database.js';
 
 const tempRoot = 'D:/Temp/guild-api-';
 
@@ -16,6 +17,38 @@ async function login(app: FastifyInstance, username: string, password: string): 
   expect(response.statusCode).toBe(200);
   return cookieFrom(response.headers);
 }
+
+async function withDevelopmentSeed(assertion: (sqlite: Awaited<ReturnType<typeof openDatabase>>['sqlite']) => Promise<void>): Promise<void> {
+  const root = await mkdtemp('D:/Temp/guild-production-guard-');
+  const { sqlite } = await openDatabase(`${root}/guild.sqlite`);
+  try {
+    await seedDatabase(sqlite);
+    await assertion(sqlite);
+  } finally {
+    sqlite.close();
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+describe('production seed safety', () => {
+  it('validates the production admin password before an existing-database early return', async () => {
+    await withDevelopmentSeed(async (sqlite) => {
+      await expect(seedDatabase(sqlite, { production: true })).rejects.toThrow(/ADMIN_PASSWORD/);
+    });
+  });
+
+  it('rejects obvious production admin password placeholders', async () => {
+    await withDevelopmentSeed(async (sqlite) => {
+      await expect(seedDatabase(sqlite, { production: true, adminPassword: 'required-in-production' })).rejects.toThrow(/non-placeholder/i);
+    });
+  });
+
+  it('refuses to reuse a development-seeded database in production', async () => {
+    await withDevelopmentSeed(async (sqlite) => {
+      await expect(seedDatabase(sqlite, { production: true, adminPassword: 'ProductionAdmin!2026' })).rejects.toThrow(/development demo/i);
+    });
+  });
+});
 
 describe.sequential('Adventurer Guild API', () => {
   let app: FastifyInstance;
@@ -70,6 +103,12 @@ describe.sequential('Adventurer Guild API', () => {
     expect(logout.statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } })).statusCode).toBe(401);
     memberCookie = await login(app, 'cos.member', 'DemoMember!2026');
+  });
+
+  it('returns a standard 400 response for malformed JSON', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/auth/login', headers: { 'content-type': 'application/json' }, payload: '{"username":' });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ ok: false, error: { code: 'BAD_REQUEST' } });
   });
 
   it('does not provision known lead/member passwords in production seeds', async () => {
@@ -148,6 +187,45 @@ describe.sequential('Adventurer Guild API', () => {
   it('routes department-leader changes through the invariant-preserving endpoint', async () => {
     expect((await app.inject({ method: 'PATCH', url: '/api/admin/members/user-member', headers: { cookie: adminCookie }, payload: { role: 'DEPARTMENT_LEAD' } })).statusCode).toBe(409);
     expect((await app.inject({ method: 'PATCH', url: '/api/admin/members/user-lead', headers: { cookie: adminCookie }, payload: { departmentId: 'dept-tech' } })).statusCode).toBe(409);
+  });
+
+  it('provides a paged and department-scoped work review queue', async () => {
+    const adminAll = await app.inject({ method: 'GET', url: '/api/admin/works?page=1&pageSize=1', headers: { cookie: adminCookie } });
+    expect(adminAll.statusCode).toBe(200);
+    expect(adminAll.json().data).toMatchObject({ page: 1, pageSize: 1, total: 2 });
+    expect(adminAll.json().data.items).toHaveLength(1);
+
+    const adminPending = await app.inject({ method: 'GET', url: '/api/admin/works?status=PENDING', headers: { cookie: adminCookie } });
+    expect(adminPending.json().data.items.map((work: { id: string }) => work.id)).toEqual(['work-tech-pending']);
+    const leadAll = await app.inject({ method: 'GET', url: '/api/admin/works', headers: { cookie: leadCookie } });
+    expect(leadAll.json().data).toMatchObject({ page: 1, pageSize: 20, total: 1 });
+    expect(leadAll.json().data.items.every((work: { departmentId: string }) => work.departmentId === 'dept-cos')).toBe(true);
+    const leadPending = await app.inject({ method: 'GET', url: '/api/admin/works?status=PENDING', headers: { cookie: leadCookie } });
+    expect(leadPending.json().data.total).toBe(0);
+    expect((await app.inject({ method: 'GET', url: '/api/admin/works', headers: { cookie: memberCookie } })).statusCode).toBe(403);
+  });
+
+  it('paginates member and manager work, task, and file lists', async () => {
+    const memberWorks = await app.inject({ method: 'GET', url: '/api/member/works?page=1&pageSize=1', headers: { cookie: memberCookie } });
+    expect(memberWorks.json().data).toMatchObject({ page: 1, pageSize: 1, total: 1 });
+    expect(memberWorks.json().data.items).toHaveLength(1);
+    const memberTasks = await app.inject({ method: 'GET', url: '/api/member/tasks?page=1&pageSize=1', headers: { cookie: memberCookie } });
+    expect(memberTasks.json().data).toMatchObject({ page: 1, pageSize: 1, total: 1 });
+    expect(memberTasks.json().data.items).toHaveLength(1);
+    const memberFiles = await app.inject({ method: 'GET', url: '/api/member/files?page=2&pageSize=2', headers: { cookie: memberCookie } });
+    expect(memberFiles.json().data).toMatchObject({ page: 2, pageSize: 2, total: 3 });
+    expect(memberFiles.json().data.items).toHaveLength(1);
+
+    const adminFiles = await app.inject({ method: 'GET', url: '/api/admin/files?page=2&pageSize=2', headers: { cookie: adminCookie } });
+    expect(adminFiles.json().data).toMatchObject({ page: 2, pageSize: 2, total: 5 });
+    expect(adminFiles.json().data.items).toHaveLength(2);
+    const leadFiles = await app.inject({ method: 'GET', url: '/api/admin/files', headers: { cookie: leadCookie } });
+    expect(leadFiles.json().data).toMatchObject({ page: 1, pageSize: 20, total: 1 });
+    const adminTasks = await app.inject({ method: 'GET', url: '/api/admin/tasks?page=1&pageSize=1', headers: { cookie: adminCookie } });
+    expect(adminTasks.json().data).toMatchObject({ page: 1, pageSize: 1, total: 1 });
+    expect(adminTasks.json().data.items).toHaveLength(1);
+    const leadTasks = await app.inject({ method: 'GET', url: '/api/admin/tasks', headers: { cookie: leadCookie } });
+    expect(leadTasks.json().data).toMatchObject({ page: 1, pageSize: 20, total: 1 });
   });
 
   it('supports scoped activity creation and safe deletion while preparing', async () => {

@@ -96,6 +96,11 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     if (error instanceof ZodError) {
       return reply.status(400).send({ ok: false, error: { code: 'VALIDATION_ERROR', message: '请求参数校验失败', details: error.issues } });
     }
+    const clientError = error as { statusCode?: number; code?: string; message?: string };
+    if (clientError.statusCode && clientError.statusCode >= 400 && clientError.statusCode < 500) {
+      const code = clientError.statusCode === 400 ? 'BAD_REQUEST' : (clientError.code ?? 'REQUEST_ERROR');
+      return reply.status(clientError.statusCode).send({ ok: false, error: { code, message: clientError.statusCode === 400 ? '请求格式错误' : (clientError.message ?? '请求处理失败') } });
+    }
     if ((error as { code?: string }).code?.startsWith('SQLITE_CONSTRAINT')) {
       return reply.status(409).send({ ok: false, error: { code: 'CONFLICT', message: '资源状态冲突' } });
     }
@@ -298,7 +303,10 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.get('/api/member/works', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
-    return successResponse({ items: sqlite.prepare('SELECT * FROM works WHERE user_id=? ORDER BY created_at DESC').all(principal.id) });
+    const paging = getPaging(request.query);
+    const items = sqlite.prepare('SELECT * FROM works WHERE user_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(principal.id, paging.pageSize, paging.offset);
+    const total = (sqlite.prepare('SELECT COUNT(*) count FROM works WHERE user_id=?').get(principal.id) as { count: number }).count;
+    return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
   app.post('/api/member/works', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
@@ -310,7 +318,10 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.get('/api/member/tasks', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
-    return successResponse({ items: sqlite.prepare('SELECT * FROM department_tasks WHERE assignee_id=? ORDER BY created_at DESC').all(principal.id) });
+    const paging = getPaging(request.query);
+    const items = sqlite.prepare('SELECT * FROM department_tasks WHERE assignee_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(principal.id, paging.pageSize, paging.offset);
+    const total = (sqlite.prepare('SELECT COUNT(*) count FROM department_tasks WHERE assignee_id=?').get(principal.id) as { count: number }).count;
+    return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
   app.post('/api/member/tasks/:id/complete', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
@@ -324,8 +335,11 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.get('/api/member/files', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
+    const paging = getPaging(request.query);
     const rows = sqlite.prepare('SELECT * FROM files WHERE deleted_at IS NULL').all() as Array<{ visibility: 'PUBLIC' | 'MEMBERS' | 'DEPARTMENT' | 'ADMINS'; department_id: string | null; deleted_at: string | null }>;
-    return successResponse({ items: rows.filter((file) => canAccessFile(principal, { visibility: file.visibility, departmentId: file.department_id, deletedAt: file.deleted_at })) });
+    const authorized = rows.filter((file) => canAccessFile(principal, { visibility: file.visibility, departmentId: file.department_id, deletedAt: file.deleted_at }));
+    const items = authorized.slice(paging.offset, paging.offset + paging.pageSize);
+    return successResponse(pageData(items, authorized.length, paging.page, paging.pageSize));
   });
 
   type StoredFile = {
@@ -548,6 +562,28 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ activationCode: rawToken });
   });
 
+  app.get('/api/admin/works', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const paging = getPaging(request.query);
+    const rawStatus = (request.query as { status?: unknown }).status;
+    const status = rawStatus === undefined ? undefined : parse(WorkStatusSchema, rawStatus);
+    const conditions: string[] = [];
+    const parameters: Array<string | number> = [];
+    if (principal.role !== 'ADMIN') {
+      conditions.push('department_id=?');
+      parameters.push(principal.departmentId ?? '');
+    }
+    if (status) {
+      conditions.push('status=?');
+      parameters.push(status);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rows = sqlite.prepare(`SELECT * FROM works ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...parameters, paging.pageSize, paging.offset) as Array<Record<string, unknown>>;
+    const items = rows.map((row) => ({ ...row, departmentId: row.department_id }));
+    const total = (sqlite.prepare(`SELECT COUNT(*) count FROM works ${where}`).get(...parameters) as { count: number }).count;
+    return successResponse(pageData(items, total, paging.page, paging.pageSize));
+  });
+
   app.post('/api/admin/works/:id/review', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id;
     const body = parse(z.object({ status: WorkStatusSchema.refine((value) => value !== 'PENDING'), note: z.string().max(500).optional() }), request.body);
@@ -556,12 +592,28 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ status: body.status });
   });
 
-  app.get('/api/admin/files', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const rows = principal.role === 'ADMIN' ? sqlite.prepare('SELECT * FROM files ORDER BY created_at DESC').all() : sqlite.prepare('SELECT * FROM files WHERE department_id=? ORDER BY created_at DESC').all(principal.departmentId); return successResponse({ items: rows }); });
+  app.get('/api/admin/files', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const paging = getPaging(request.query);
+    const where = principal.role === 'ADMIN' ? '' : 'WHERE department_id=?';
+    const parameters = principal.role === 'ADMIN' ? [] : [principal.departmentId];
+    const items = sqlite.prepare(`SELECT * FROM files ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...parameters, paging.pageSize, paging.offset);
+    const total = (sqlite.prepare(`SELECT COUNT(*) count FROM files ${where}`).get(...parameters) as { count: number }).count;
+    return successResponse(pageData(items, total, paging.page, paging.pageSize));
+  });
   app.post('/api/admin/files', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const body = parse(z.object({ name: z.string().min(1), storageKey: z.string().min(1), mimeType: z.string().min(1), size: z.number().int().nonnegative(), visibility: FileVisibilitySchema, departmentId: z.string().nullable().default(null) }), request.body); if (principal.role !== 'ADMIN') scopeDepartment(principal, body.departmentId ?? ''); const id = newId('file'); sqlite.prepare('INSERT INTO files(id,owner_id,department_id,name,storage_key,mime_type,size,visibility,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, principal.id, body.departmentId, body.name, body.storageKey, body.mimeType, body.size, body.visibility, now(), now()); return reply.status(201).send(successResponse({ id })); });
   app.post('/api/admin/files/:id/recycle', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id; const file = sqlite.prepare('SELECT department_id,deleted_at FROM files WHERE id=?').get(id) as { department_id: string | null; deleted_at: string | null } | undefined; if (!file) throw new HttpError(404, 'NOT_FOUND', '文件不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, file.department_id ?? ''); if (file.deleted_at) throw new HttpError(409, 'ALREADY_DELETED', '文件已在回收站'); sqlite.prepare('UPDATE files SET deleted_at=?,updated_at=? WHERE id=?').run(now(), now(), id); return successResponse({ recycled: true }); });
   app.post('/api/admin/files/:id/restore', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id; const file = sqlite.prepare('SELECT department_id,deleted_at FROM files WHERE id=?').get(id) as { department_id: string | null; deleted_at: string | null } | undefined; if (!file) throw new HttpError(404, 'NOT_FOUND', '文件不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, file.department_id ?? ''); if (!file.deleted_at) throw new HttpError(409, 'NOT_DELETED', '文件不在回收站'); sqlite.prepare('UPDATE files SET deleted_at=NULL,updated_at=? WHERE id=?').run(now(), id); return successResponse({ restored: true }); });
 
-  app.get('/api/admin/tasks', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const items = principal.role === 'ADMIN' ? sqlite.prepare('SELECT * FROM department_tasks ORDER BY created_at DESC').all() : sqlite.prepare('SELECT * FROM department_tasks WHERE department_id=? ORDER BY created_at DESC').all(principal.departmentId); return successResponse({ items }); });
+  app.get('/api/admin/tasks', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const paging = getPaging(request.query);
+    const where = principal.role === 'ADMIN' ? '' : 'WHERE department_id=?';
+    const parameters = principal.role === 'ADMIN' ? [] : [principal.departmentId];
+    const items = sqlite.prepare(`SELECT * FROM department_tasks ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...parameters, paging.pageSize, paging.offset);
+    const total = (sqlite.prepare(`SELECT COUNT(*) count FROM department_tasks ${where}`).get(...parameters) as { count: number }).count;
+    return successResponse(pageData(items, total, paging.page, paging.pageSize));
+  });
   app.post('/api/admin/tasks', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const body = parse(z.object({ departmentId: z.string(), assigneeId: z.string(), title: z.string().min(2), description: z.string().default(''), dueAt: z.iso.datetime().optional() }), request.body); if (principal.role !== 'ADMIN') scopeDepartment(principal, body.departmentId); const assignee = sqlite.prepare('SELECT department_id FROM users WHERE id=?').get(body.assigneeId) as { department_id: string | null } | undefined; if (!assignee || assignee.department_id !== body.departmentId) throw new HttpError(400, 'VALIDATION_ERROR', '任务成员必须属于目标部门'); const id = newId('task'); sqlite.prepare('INSERT INTO department_tasks(id,department_id,assignee_id,title,description,due_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(id, body.departmentId, body.assigneeId, body.title, body.description, body.dueAt ?? null, now(), now()); return reply.status(201).send(successResponse({ id })); });
   app.post('/api/admin/tasks/:id/confirm', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id; const task = sqlite.prepare('SELECT department_id,assignee_id,completed_at,confirmed_at FROM department_tasks WHERE id=?').get(id) as { department_id: string; assignee_id: string; completed_at: string | null; confirmed_at: string | null } | undefined; if (!task) throw new HttpError(404, 'NOT_FOUND', '任务不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, task.department_id); if (!task.completed_at) throw new HttpError(409, 'NOT_COMPLETED', '成员尚未完成任务'); if (task.confirmed_at) throw new HttpError(409, 'ALREADY_CONFIRMED', '任务贡献已确认'); sqlite.transaction(() => { sqlite.prepare('UPDATE department_tasks SET confirmed_at=?,updated_at=? WHERE id=? AND confirmed_at IS NULL').run(now(), now(), id); audit(sqlite, principal.id, 'TASK_CONFIRMED', 'task', id, task.assignee_id); })(); return successResponse({ confirmed: true, contributionPoints: 5 }); });
 

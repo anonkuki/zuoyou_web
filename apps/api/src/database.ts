@@ -38,9 +38,23 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
 }
 
 export async function seedDatabase(sqlite: Database.Database, options: { adminPassword?: string; production?: boolean } = {}): Promise<void> {
+  if (options.production) {
+    const password = options.adminPassword?.trim();
+    if (!password) throw new Error('ADMIN_PASSWORD is required in production');
+    const normalized = password.toLowerCase();
+    if (password.length < 12 || ['required', 'replace', 'change-me', 'placeholder', 'demoadmin!2026'].some((marker) => normalized.includes(marker))) {
+      throw new Error('Production ADMIN_PASSWORD must be a non-placeholder secret of at least 12 characters');
+    }
+  }
   const existing = sqlite.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number };
-  if (existing.count > 0) return;
-  if (options.production && !options.adminPassword) throw new Error('ADMIN_PASSWORD is required in production');
+  if (existing.count > 0) {
+    if (options.production) {
+      const demoAccount = sqlite.prepare("SELECT 1 FROM users WHERE username IN ('admin','cos.lead','cos.member') AND (username!='admin' OR email='admin@guild.example') LIMIT 1").get();
+      const seedProfile = sqlite.prepare("SELECT value FROM site_settings WHERE key='seedProfile'").get() as { value: string } | undefined;
+      if (demoAccount || seedProfile?.value === 'development') throw new Error('Refusing production startup: development demo credentials detected in existing database');
+    }
+    return;
+  }
   const now = new Date().toISOString();
   const adminPassword = options.adminPassword ?? 'DemoAdmin!2026';
   const adminHash = await hashPassword(adminPassword);
@@ -98,4 +112,5 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   const insertSetting = sqlite.prepare('INSERT INTO site_settings(key,value,updated_at) VALUES (?,?,?)');
   insertSetting.run('siteName', '星辉冒险者协会', now);
   insertSetting.run('recruitmentOpen', 'true', now);
+  insertSetting.run('seedProfile', options.production ? 'production' : 'development', now);
 }

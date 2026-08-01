@@ -1,0 +1,30 @@
+{
+  "name": "@guild/api",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint src test",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm --filter @guild/contracts build && vitest run",
+    "build": "tsc",
+    "db:seed": "tsx src/seed-cli.ts",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/rate-limit": "^10.3.0",
+    "@guild/contracts": "workspace:*",
+    "better-sqlite3": "^12.2.0",
+    "drizzle-orm": "^0.44.4",
+    "fastify": "^5.4.0",
+    "zod": "^4.0.14"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.2.1",
+    "drizzle-kit": "^0.31.4",
+    "tsx": "^4.20.3",
+    "vitest": "^3.2.4"
+  }
+}

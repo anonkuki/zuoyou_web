@@ -26,12 +26,13 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get('0000_initial');
-  if (!applied) {
-    const migration = readFileSync(new URL('../drizzle/0000_initial.sql', import.meta.url), 'utf8');
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category']) {
+    const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
+    if (applied) continue;
+    const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');
     sqlite.transaction(() => {
       sqlite.exec(migration);
-      sqlite.prepare('INSERT INTO __migrations(name, applied_at) VALUES (?, ?)').run('0000_initial', new Date().toISOString());
+      sqlite.prepare('INSERT INTO __migrations(name, applied_at) VALUES (?, ?)').run(name, new Date().toISOString());
     })();
   }
   return { sqlite, orm: drizzle(sqlite, { schema }) };
@@ -66,7 +67,7 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   for (const [id, slug, name, title] of departments) insertDepartment.run(id, slug, name, title, `${name}的公会驻地与专业协作小组`, now, now);
 
   const insertUser = sqlite.prepare('INSERT INTO users(id,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
-  insertUser.run('user-admin', 'admin', adminHash, '星门总管', 'admin@guild.example', 'ADMIN', null, '负责公会运营与秩序', 1, now, now);
+  insertUser.run('user-admin', 'admin', adminHash, '星门总管', options.production ? 'initial-admin@local.invalid' : 'admin@guild.example', 'ADMIN', null, '负责公会运营与秩序', 1, now, now);
   insertUser.run('user-lead', options.production ? null : 'cos.lead', leadHash, '绯月幻装师', 'cos.lead@guild.example', 'DEPARTMENT_LEAD', 'dept-cos', '负责幻装与舞台呈现', 1, now, now);
   insertUser.run('user-member', options.production ? null : 'cos.member', memberHash, '白羽见习者', 'cos.member@guild.example', 'MEMBER', 'dept-cos', '热爱角色塑造与活动协作', 1, now, now);
 
@@ -104,6 +105,9 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   insertFile.run('file-cos', 'user-lead', 'dept-cos', '幻装素材包.zip', 'departments/cos/assets.zip', 'application/zip', 4096, 'DEPARTMENT', now, now);
   insertFile.run('file-tech', 'user-tech-01', 'dept-tech', '机关图纸.pdf', 'departments/tech/blueprint.pdf', 'application/pdf', 3072, 'DEPARTMENT', now, now);
   insertFile.run('file-admin', 'user-admin', null, '管理备忘录.txt', 'admins/memo.txt', 'text/plain', 128, 'ADMINS', now, now);
+  insertFile.run('file-photo-anniversary', 'user-admin', null, '佐佑动漫社周年社庆合影.jpg', 'members/photos/club-anniversary.jpg', 'image/jpeg', 406931, 'MEMBERS', now, now);
+  insertFile.run('file-photo-memory-01', 'user-admin', null, '佐佑动漫社活动留影一.jpg', 'members/photos/club-memory-01.jpg', 'image/jpeg', 238129, 'MEMBERS', now, now);
+  insertFile.run('file-photo-memory-02', 'user-admin', null, '佐佑动漫社活动留影二.jpg', 'members/photos/club-memory-02.jpg', 'image/jpeg', 228589, 'MEMBERS', now, now);
 
   sqlite.prepare('INSERT INTO department_tasks(id,department_id,assignee_id,title,description,due_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
     .run('task-cos-1', 'dept-cos', 'user-member', '整理幻装道具清单', '完成分类与状态标记', '2026-08-20T00:00:00.000Z', now, now);

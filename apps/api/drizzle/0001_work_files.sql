@@ -1,0 +1,1 @@
+ALTER TABLE works ADD COLUMN file_id TEXT REFERENCES files(id);

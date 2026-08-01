@@ -1,9 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { createReadStream } from 'node:fs';
-import { mkdir, stat } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { copyFile, mkdir, stat, unlink } from 'node:fs/promises';
+import { extname, resolve, sep } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
 import type Database from 'better-sqlite3';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
@@ -24,6 +27,7 @@ export interface AppOptions {
   seed?: boolean;
   adminPassword?: string;
   production?: boolean;
+  webRoot?: string;
 }
 
 interface UserRow {
@@ -83,11 +87,23 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   if (options.sessionSecret.length < 24) throw new Error('sessionSecret must contain at least 24 characters');
   await mkdir(options.uploadRoot, { recursive: true });
   const { sqlite } = await openDatabase(options.databasePath);
-  if (options.seed) await seedDatabase(sqlite, { adminPassword: options.adminPassword, production: options.production });
+  if (options.seed) {
+    await seedDatabase(sqlite, { adminPassword: options.adminPassword, production: options.production });
+    const photoRoot = resolve(options.uploadRoot, 'members/photos');
+    await mkdir(photoRoot, { recursive: true });
+    for (const name of ['club-anniversary.jpg', 'club-memory-01.jpg', 'club-memory-02.jpg']) {
+      const source = new URL(`../seed-assets/private/${name}`, import.meta.url);
+      await copyFile(source, resolve(photoRoot, name)).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+    }
+  }
 
   const app = Fastify({ logger: false });
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
+  await app.register(multipart, { limits: { files: 1, fields: 8, fileSize: 200 * 1024 * 1024 } });
+  if (options.webRoot) await app.register(fastifyStatic, { root: resolve(options.webRoot), wildcard: false });
   app.addHook('onClose', async () => { sqlite.close(); });
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof HttpError) {
@@ -174,12 +190,12 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.get('/api/public/activities', async (request) => {
     const paging = getPaging(request.query);
-    const items = sqlite.prepare('SELECT id,department_id,title,description,status,capacity,result_summary,starts_at,created_at,updated_at FROM activities ORDER BY starts_at DESC LIMIT ? OFFSET ?').all(paging.pageSize, paging.offset);
+    const items = sqlite.prepare('SELECT id,department_id,title,description,location,status,capacity,result_summary,starts_at,created_at,updated_at FROM activities ORDER BY starts_at DESC LIMIT ? OFFSET ?').all(paging.pageSize, paging.offset);
     const total = (sqlite.prepare('SELECT COUNT(*) count FROM activities').get() as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
   app.get('/api/public/activities/:id', async (request) => {
-    const activity = sqlite.prepare('SELECT id,department_id,title,description,status,capacity,result_summary,starts_at FROM activities WHERE id=?').get((request.params as { id: string }).id);
+    const activity = sqlite.prepare('SELECT id,department_id,title,description,location,status,capacity,result_summary,starts_at FROM activities WHERE id=?').get((request.params as { id: string }).id);
     if (!activity) throw new HttpError(404, 'NOT_FOUND', '活动不存在');
     return successResponse({ activity });
   });
@@ -209,7 +225,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
 
   const loginSchema = z.object({ username: z.string().trim().min(1), password: z.string().min(8).max(200) });
-  app.post('/api/auth/login', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (request, reply) => {
+  app.post('/api/auth/login', { config: { rateLimit: { max: options.production ? 10 : 100, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = parse(loginSchema, request.body);
     const user = sqlite.prepare('SELECT * FROM users WHERE username=?').get(body.username) as UserRow | undefined;
     if (!user?.password_hash || !user.is_active || !await verifyPassword(body.password, user.password_hash)) throw new HttpError(401, 'INVALID_CREDENTIALS', '用户名或密码错误');
@@ -231,6 +247,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     if (!principal) return;
     return successResponse({ user: principal });
   });
+  app.get('/api/auth/session', async (request) => successResponse({ user: principalFor(request) }));
   const activateSchema = z.object({ token: z.string().min(20), username: z.string().regex(/^[a-zA-Z0-9._-]{3,40}$/), password: z.string().min(10).max(200) });
   app.post('/api/auth/activate', { config: { rateLimit: { max: 8, timeWindow: '1 hour' } } }, async (request) => {
     const body = parse(activateSchema, request.body);
@@ -316,12 +333,60 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     sqlite.prepare('INSERT INTO works(id,user_id,department_id,title,description,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(work.id, work.userId, work.departmentId, work.title, work.description, work.status, now(), now());
     return reply.status(201).send(successResponse({ work }));
   });
+  app.post('/api/member/works/upload', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    if (!principal.departmentId) throw new HttpError(409, 'NO_DEPARTMENT', '成员尚未归属部门');
+    const fields: Record<string, string> = {};
+    let uploaded: { name: string; mimeType: string; storageKey: string; path: string; size: number } | null = null;
+    for await (const part of request.parts()) {
+      if (part.type === 'field') { fields[part.fieldname] = String(part.value ?? ''); continue; }
+      if (uploaded) throw new HttpError(400, 'TOO_MANY_FILES', '每个作品只能提交一个文件');
+      const extension = extname(part.filename).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
+      const storageKey = `works/${randomUUID()}${extension}`;
+      const path = resolve(options.uploadRoot, storageKey);
+      await mkdir(resolve(options.uploadRoot, 'works'), { recursive: true });
+      await pipeline(part.file, createWriteStream(path, { flags: 'wx' }));
+      const info = await stat(path);
+      uploaded = { name: part.filename, mimeType: part.mimetype, storageKey, path, size: info.size };
+    }
+    if (!uploaded) throw new HttpError(400, 'FILE_REQUIRED', '作品文件不能为空');
+    const file = uploaded as { name: string; mimeType: string; storageKey: string; path: string; size: number };
+    const sizeLimit = file.mimeType.startsWith('image/') ? 10 * 1024 * 1024
+      : file.mimeType.startsWith('video/') ? 200 * 1024 * 1024 : 30 * 1024 * 1024;
+    if (file.size > sizeLimit) {
+      await unlink(file.path).catch(() => undefined);
+      throw new HttpError(413, 'FILE_TOO_LARGE', `该类型作品最大允许 ${sizeLimit / 1024 / 1024}MB`);
+    }
+    let body: { title: string; description: string };
+    try {
+      body = parse(z.object({ title: z.string().trim().min(2).max(100), description: z.string().max(2000).default('') }), fields);
+    } catch (error) {
+      await unlink(file.path).catch(() => undefined);
+      throw error;
+    }
+    const fileId = newId('file'); const workId = newId('work'); const createdAt = now();
+    sqlite.transaction(() => {
+      sqlite.prepare('INSERT INTO files(id,owner_id,department_id,name,storage_key,mime_type,size,visibility,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+        .run(fileId, principal.id, principal.departmentId, file.name, file.storageKey, file.mimeType, file.size, 'MEMBERS', createdAt, createdAt);
+      sqlite.prepare('INSERT INTO works(id,user_id,department_id,file_id,title,description,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+        .run(workId, principal.id, principal.departmentId, fileId, body.title, body.description, 'PENDING', createdAt, createdAt);
+      audit(sqlite, principal.id, 'WORK_SUBMITTED', 'work', workId, principal.id, { fileId });
+    })();
+    return reply.status(201).send(successResponse({ work: { id: workId, title: body.title, description: body.description, status: 'PENDING', fileId } }));
+  });
   app.get('/api/member/tasks', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
     const paging = getPaging(request.query);
     const items = sqlite.prepare('SELECT * FROM department_tasks WHERE assignee_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(principal.id, paging.pageSize, paging.offset);
     const total = (sqlite.prepare('SELECT COUNT(*) count FROM department_tasks WHERE assignee_id=?').get(principal.id) as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
+  });
+  app.get('/api/member/contributions', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const pointExpression = "CASE action WHEN 'TASK_CONFIRMED' THEN 5 WHEN 'ACTIVITY_CHECK_IN' THEN 3 WHEN 'WORK_PUBLISHED' THEN 10 ELSE 0 END";
+    const events = sqlite.prepare(`SELECT action,entity_type entityType,entity_id entityId,created_at createdAt,${pointExpression} points
+      FROM audit_logs WHERE target_user_id=? AND action IN ('TASK_CONFIRMED','ACTIVITY_CHECK_IN','WORK_PUBLISHED') ORDER BY created_at DESC`).all(principal.id) as Array<{ points: number }>;
+    return successResponse({ points: events.reduce((sum, event) => sum + event.points, 0), events });
   });
   app.post('/api/member/tasks/:id/complete', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
@@ -386,13 +451,22 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       members: (sqlite.prepare('SELECT COUNT(*) count FROM users').get() as { count: number }).count,
       pendingApplications: (sqlite.prepare("SELECT COUNT(*) count FROM applications WHERE status='PENDING'").get() as { count: number }).count,
       activeActivities: (sqlite.prepare("SELECT COUNT(*) count FROM activities WHERE status IN ('REGISTRATION','IN_PROGRESS')").get() as { count: number }).count,
+      publishedWorks: (sqlite.prepare("SELECT COUNT(*) count FROM works WHERE status='PUBLISHED'").get() as { count: number }).count,
     };
-    return successResponse({ counts, contributions });
+    return successResponse({ ...counts, contributions });
   });
   app.get('/api/admin/analytics', async (request, reply) => {
     const principal = requireAdmin(request, reply); if (!principal) return;
-    const departments = sqlite.prepare(`SELECT d.id,d.name,COUNT(DISTINCT u.id) members,COUNT(DISTINCT a.id) activities FROM departments d LEFT JOIN users u ON u.department_id=d.id LEFT JOIN activities a ON a.department_id=d.id GROUP BY d.id`).all();
-    return successResponse({ departments });
+    const departmentActivity = sqlite.prepare(`SELECT d.id,d.name departmentName,
+      COUNT(DISTINCT u.id) members,COUNT(DISTINCT a.id) activities,COUNT(DISTINCT w.id) publishedWorks,
+      COUNT(DISTINCT u.id) + COUNT(DISTINCT a.id) * 5 + COUNT(DISTINCT w.id) * 10 score
+      FROM departments d
+      LEFT JOIN users u ON u.department_id=d.id AND u.is_active=1
+      LEFT JOIN activities a ON a.department_id=d.id
+      LEFT JOIN works w ON w.department_id=d.id AND w.status='PUBLISHED'
+      GROUP BY d.id ORDER BY score DESC,d.name`).all();
+    const memberGrowth = sqlite.prepare(`SELECT substr(created_at,1,7) month,COUNT(*) count FROM users GROUP BY substr(created_at,1,7) ORDER BY month`).all();
+    return successResponse({ departmentActivity, memberGrowth });
   });
 
   app.get('/api/admin/members', async (request, reply) => {
@@ -422,9 +496,12 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
   for (const [path, active, action] of [['deactivate', 0, 'MEMBER_DEACTIVATED'], ['restore', 1, 'MEMBER_RESTORED']] as const) {
     app.post(`/api/admin/members/:id/${path}`, async (request, reply) => {
-      const principal = requireAdmin(request, reply); if (!principal) return;
+      const principal = requireManager(request, reply); if (!principal) return;
       const id = (request.params as { id: string }).id;
-      if (!sqlite.prepare('SELECT 1 FROM users WHERE id=?').get(id)) throw new HttpError(404, 'NOT_FOUND', '成员不存在');
+      if (!active && id === principal.id) throw new HttpError(409, 'CANNOT_DEACTIVATE_SELF', '不能停用当前登录账号');
+      const target = sqlite.prepare('SELECT department_id FROM users WHERE id=?').get(id) as { department_id: string | null } | undefined;
+      if (!target) throw new HttpError(404, 'NOT_FOUND', '成员不存在');
+      if (principal.role !== 'ADMIN') scopeDepartment(principal, target.department_id ?? '');
       sqlite.prepare('UPDATE users SET is_active=?,updated_at=? WHERE id=?').run(active, now(), id);
       if (!active) sqlite.prepare('DELETE FROM sessions WHERE user_id=?').run(id);
       audit(sqlite, principal.id, action, 'user', id, id);
@@ -481,7 +558,8 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.delete('/api/admin/chronicles/:id', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; sqlite.prepare('DELETE FROM chronicles WHERE id=?').run((request.params as { id: string }).id); return successResponse({ deleted: true }); });
 
-  const activityBody = z.object({ departmentId: z.string().nullable().default(null), title: z.string().min(2), description: z.string().default(''), capacity: z.number().int().positive(), startsAt: z.iso.datetime(), resultSummary: z.string().nullable().optional() });
+  const activityBody = z.object({ departmentId: z.string().nullable().default(null), title: z.string().min(2), description: z.string().default(''), location: z.string().trim().min(2).max(120).default('待定'), capacity: z.number().int().positive(), startsAt: z.iso.datetime(), resultSummary: z.string().nullable().optional() });
+  const activityUpdateBody = activityBody.partial().extend({ departmentId: z.string().nullable().optional() });
   app.get('/api/admin/activities', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const paging = getPaging(request.query);
@@ -496,7 +574,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.post('/api/admin/activities', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const body = parse(activityBody, request.body); if (principal.role !== 'ADMIN') scopeDepartment(principal, body.departmentId ?? '');
-    const id = newId('activity'); sqlite.prepare('INSERT INTO activities(id,department_id,title,description,status,capacity,starts_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(id, body.departmentId, body.title, body.description, 'PREPARING', body.capacity, body.startsAt, now(), now());
+    const id = newId('activity'); sqlite.prepare('INSERT INTO activities(id,department_id,title,description,location,status,capacity,starts_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, body.departmentId, body.title, body.description, body.location, 'PREPARING', body.capacity, body.startsAt, now(), now());
     return reply.status(201).send(successResponse({ id, status: 'PREPARING' }));
   });
   app.get('/api/admin/activities/:id', async (request, reply) => {
@@ -509,10 +587,10 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const principal = requireManager(request, reply); if (!principal) return;
     const id = (request.params as { id: string }).id; const activity = sqlite.prepare('SELECT * FROM activities WHERE id=?').get(id) as { department_id: string | null } | undefined;
     if (!activity) throw new HttpError(404, 'NOT_FOUND', '活动不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, activity.department_id ?? '');
-    const body = parse(activityBody.partial(), request.body);
+    const body = parse(activityUpdateBody, request.body);
     if (principal.role !== 'ADMIN' && body.departmentId !== undefined && body.departmentId !== principal.departmentId) throw new HttpError(403, 'FORBIDDEN', '不可将活动迁移到其他部门');
-    sqlite.prepare('UPDATE activities SET department_id=COALESCE(?,department_id),title=COALESCE(?,title),description=COALESCE(?,description),capacity=COALESCE(?,capacity),starts_at=COALESCE(?,starts_at),result_summary=COALESCE(?,result_summary),updated_at=? WHERE id=?')
-      .run(body.departmentId ?? null, body.title ?? null, body.description ?? null, body.capacity ?? null, body.startsAt ?? null, body.resultSummary ?? null, now(), id);
+    sqlite.prepare('UPDATE activities SET department_id=COALESCE(?,department_id),title=COALESCE(?,title),description=COALESCE(?,description),location=COALESCE(?,location),capacity=COALESCE(?,capacity),starts_at=COALESCE(?,starts_at),result_summary=COALESCE(?,result_summary),updated_at=? WHERE id=?')
+      .run(body.departmentId ?? null, body.title ?? null, body.description ?? null, body.location ?? null, body.capacity ?? null, body.startsAt ?? null, body.resultSummary ?? null, now(), id);
     return successResponse({ updated: true });
   });
   app.delete('/api/admin/activities/:id', async (request, reply) => {
@@ -601,7 +679,67 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const total = (sqlite.prepare(`SELECT COUNT(*) count FROM files ${where}`).get(...parameters) as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
-  app.post('/api/admin/files', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const body = parse(z.object({ name: z.string().min(1), storageKey: z.string().min(1), mimeType: z.string().min(1), size: z.number().int().nonnegative(), visibility: FileVisibilitySchema, departmentId: z.string().nullable().default(null) }), request.body); if (principal.role !== 'ADMIN') scopeDepartment(principal, body.departmentId ?? ''); const id = newId('file'); sqlite.prepare('INSERT INTO files(id,owner_id,department_id,name,storage_key,mime_type,size,visibility,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, principal.id, body.departmentId, body.name, body.storageKey, body.mimeType, body.size, body.visibility, now(), now()); return reply.status(201).send(successResponse({ id })); });
+  const fileCategorySchema = z.enum(['POSTER', 'PHOTO', 'VIDEO', 'PLAN', 'HISTORY', 'OTHER']);
+  app.post('/api/admin/files/upload', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const fields: Record<string, string> = {};
+    let uploaded: { name: string; mimeType: string; storageKey: string; path: string; size: number } | null = null;
+    for await (const part of request.parts()) {
+      if (part.type === 'field') {
+        fields[part.fieldname] = String(part.value ?? '');
+        continue;
+      }
+      if (uploaded) throw new HttpError(400, 'TOO_MANY_FILES', '每次只能上传一个文件');
+      const extension = extname(part.filename).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
+      const storageKey = `managed/${randomUUID()}${extension}`;
+      const path = resolve(options.uploadRoot, storageKey);
+      await mkdir(resolve(options.uploadRoot, 'managed'), { recursive: true });
+      await pipeline(part.file, createWriteStream(path, { flags: 'wx' }));
+      const info = await stat(path);
+      uploaded = { name: part.filename, mimeType: part.mimetype, storageKey, path, size: info.size };
+    }
+    if (!uploaded) throw new HttpError(400, 'FILE_REQUIRED', '请选择要上传的文件');
+    const file = uploaded as { name: string; mimeType: string; storageKey: string; path: string; size: number };
+    let visibility: z.infer<typeof FileVisibilitySchema>;
+    let category: z.infer<typeof fileCategorySchema>;
+    const departmentId = fields.departmentId || null;
+    try {
+      visibility = parse(FileVisibilitySchema, fields.visibility ?? 'MEMBERS');
+      category = parse(fileCategorySchema, fields.category ?? 'OTHER');
+      if (principal.role !== 'ADMIN') scopeDepartment(principal, departmentId ?? '');
+    } catch (error) {
+      await unlink(file.path).catch(() => undefined);
+      throw error;
+    }
+    const sizeLimit = file.mimeType.startsWith('image/') ? 10 * 1024 * 1024
+      : file.mimeType.startsWith('video/') ? 200 * 1024 * 1024 : 30 * 1024 * 1024;
+    if (file.size > sizeLimit) {
+      await unlink(file.path).catch(() => undefined);
+      throw new HttpError(413, 'FILE_TOO_LARGE', `该类型文件最大允许 ${sizeLimit / 1024 / 1024}MB`);
+    }
+    const id = newId('file');
+    sqlite.prepare('INSERT INTO files(id,owner_id,department_id,name,storage_key,mime_type,size,visibility,category,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .run(id, principal.id, departmentId, file.name, file.storageKey, file.mimeType, file.size, visibility, category, now(), now());
+    audit(sqlite, principal.id, 'FILE_UPLOADED', 'file', id, null, { visibility, category, departmentId });
+    return reply.status(201).send(successResponse({ id, name: file.name, mimeType: file.mimeType, size: file.size, visibility, category, departmentId, storageKey: file.storageKey }));
+  });
+  app.post('/api/admin/files', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const body = parse(z.object({ name: z.string().min(1), storageKey: z.string().min(1), mimeType: z.string().min(1), size: z.number().int().nonnegative(), visibility: FileVisibilitySchema, category: fileCategorySchema.default('OTHER'), departmentId: z.string().nullable().default(null) }), request.body); if (principal.role !== 'ADMIN') scopeDepartment(principal, body.departmentId ?? ''); const id = newId('file'); sqlite.prepare('INSERT INTO files(id,owner_id,department_id,name,storage_key,mime_type,size,visibility,category,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(id, principal.id, body.departmentId, body.name, body.storageKey, body.mimeType, body.size, body.visibility, body.category, now(), now()); return reply.status(201).send(successResponse({ id })); });
+  app.patch('/api/admin/files/:id', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const file = sqlite.prepare('SELECT department_id FROM files WHERE id=?').get(id) as { department_id: string | null } | undefined;
+    if (!file) throw new HttpError(404, 'NOT_FOUND', '文件不存在');
+    if (principal.role !== 'ADMIN') scopeDepartment(principal, file.department_id ?? '');
+    const body = parse(z.object({ name: z.string().trim().min(1).max(180).optional(), visibility: FileVisibilitySchema.optional(), category: fileCategorySchema.optional(), departmentId: z.string().nullable().optional() }).refine((value) => Object.keys(value).length > 0, '至少提供一个修改字段'), request.body);
+    if (principal.role !== 'ADMIN') {
+      if (body.departmentId !== undefined && body.departmentId !== principal.departmentId) throw new HttpError(403, 'FORBIDDEN', '不可移动到其他部门');
+      if (body.visibility === 'PUBLIC' || body.visibility === 'ADMINS') throw new HttpError(403, 'FORBIDDEN', '负责人不可设置该可见范围');
+    }
+    sqlite.prepare('UPDATE files SET name=COALESCE(?,name),visibility=COALESCE(?,visibility),category=COALESCE(?,category),department_id=COALESCE(?,department_id),updated_at=? WHERE id=?')
+      .run(body.name ?? null, body.visibility ?? null, body.category ?? null, body.departmentId ?? null, now(), id);
+    audit(sqlite, principal.id, 'FILE_UPDATED', 'file', id, null, body);
+    return successResponse({ updated: true });
+  });
   app.post('/api/admin/files/:id/recycle', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id; const file = sqlite.prepare('SELECT department_id,deleted_at FROM files WHERE id=?').get(id) as { department_id: string | null; deleted_at: string | null } | undefined; if (!file) throw new HttpError(404, 'NOT_FOUND', '文件不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, file.department_id ?? ''); if (file.deleted_at) throw new HttpError(409, 'ALREADY_DELETED', '文件已在回收站'); sqlite.prepare('UPDATE files SET deleted_at=?,updated_at=? WHERE id=?').run(now(), now(), id); return successResponse({ recycled: true }); });
   app.post('/api/admin/files/:id/restore', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id; const file = sqlite.prepare('SELECT department_id,deleted_at FROM files WHERE id=?').get(id) as { department_id: string | null; deleted_at: string | null } | undefined; if (!file) throw new HttpError(404, 'NOT_FOUND', '文件不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, file.department_id ?? ''); if (!file.deleted_at) throw new HttpError(409, 'NOT_DELETED', '文件不在回收站'); sqlite.prepare('UPDATE files SET deleted_at=NULL,updated_at=? WHERE id=?').run(now(), id); return successResponse({ restored: true }); });
 
@@ -620,6 +758,12 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.get('/api/admin/site-settings', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; return successResponse({ settings: Object.fromEntries((sqlite.prepare('SELECT key,value FROM site_settings').all() as Array<{ key: string; value: string }>).map((entry) => [entry.key, entry.value])) }); });
   app.put('/api/admin/site-settings', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; const body = parse(z.record(z.string(), z.string().max(2000)), request.body); const statement = sqlite.prepare('INSERT INTO site_settings(key,value,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at'); sqlite.transaction(() => { for (const [key, value] of Object.entries(body)) statement.run(key, value, now()); })(); audit(sqlite, principal.id, 'SITE_SETTINGS_UPDATED', 'settings', 'site'); return successResponse({ updated: Object.keys(body) }); });
   app.get('/api/admin/audit-log', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; const paging = getPaging(request.query); const items = sqlite.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ? OFFSET ?').all(paging.pageSize, paging.offset); const total = (sqlite.prepare('SELECT COUNT(*) count FROM audit_logs').get() as { count: number }).count; return successResponse(pageData(items, total, paging.page, paging.pageSize)); });
+
+  app.setNotFoundHandler((request, reply) => {
+    if (request.url.startsWith('/api/')) return reply.status(404).send({ ok: false, error: { code: 'NOT_FOUND', message: '接口不存在' } });
+    if (options.webRoot && request.method === 'GET') return reply.type('text/html').sendFile('index.html');
+    return reply.status(404).send({ ok: false, error: { code: 'NOT_FOUND', message: '资源不存在' } });
+  });
 
   await app.ready();
   return app;

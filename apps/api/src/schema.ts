@@ -19,7 +19,7 @@ export const chronicles = sqliteTable('chronicles', {
 
 export const activities = sqliteTable('activities', {
   id: text('id').primaryKey(), departmentId: text('department_id').references(() => departments.id), title: text('title').notNull(), description: text('description').notNull().default(''),
-  status: text('status').notNull(), capacity: integer('capacity').notNull(), checkInCode: text('check_in_code'), resultSummary: text('result_summary'), startsAt: utcText('starts_at'), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
+  location: text('location').notNull().default('待定'), status: text('status').notNull(), capacity: integer('capacity').notNull(), checkInCode: text('check_in_code'), resultSummary: text('result_summary'), startsAt: utcText('starts_at'), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
 
 export const activityRegistrations = sqliteTable('activity_registrations', {
@@ -42,11 +42,11 @@ export const activationTokens = sqliteTable('activation_tokens', {
 
 export const works = sqliteTable('works', {
   id: text('id').primaryKey(), userId: text('user_id').notNull().references(() => users.id), departmentId: text('department_id').notNull().references(() => departments.id),
-  title: text('title').notNull(), description: text('description').notNull().default(''), status: text('status').notNull(), reviewNote: text('review_note'), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
+  fileId: text('file_id'), title: text('title').notNull(), description: text('description').notNull().default(''), status: text('status').notNull(), reviewNote: text('review_note'), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
 
 export const files = sqliteTable('files', {
-  id: text('id').primaryKey(), ownerId: text('owner_id').references(() => users.id), departmentId: text('department_id').references(() => departments.id), name: text('name').notNull(), storageKey: text('storage_key').notNull().unique(), mimeType: text('mime_type').notNull(), size: integer('size').notNull(), visibility: text('visibility').notNull(), deletedAt: text('deleted_at'), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
+  id: text('id').primaryKey(), ownerId: text('owner_id').references(() => users.id), departmentId: text('department_id').references(() => departments.id), name: text('name').notNull(), storageKey: text('storage_key').notNull().unique(), mimeType: text('mime_type').notNull(), size: integer('size').notNull(), visibility: text('visibility').notNull(), category: text('category').notNull().default('OTHER'), deletedAt: text('deleted_at'), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
 
 export const departmentTasks = sqliteTable('department_tasks', {
@@ -66,4 +66,3 @@ export const auditLogs = sqliteTable('audit_logs', {
 }, (table) => [uniqueIndex('contribution_event_unique').on(table.action, table.entityType, table.entityId, table.targetUserId)]);
 
 export const schema = { departments, users, chronicles, activities, activityRegistrations, activityResults, applications, activationTokens, works, files, departmentTasks, sessions, siteSettings, auditLogs };
-

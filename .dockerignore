@@ -1,0 +1,10 @@
+.git
+node_modules
+**/node_modules
+**/dist
+data
+artifacts
+test-results
+playwright-report
+.env
+prd.txt

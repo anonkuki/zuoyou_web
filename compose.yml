@@ -1,0 +1,16 @@
+services:
+  adventurer-guild:
+    build: .
+    ports:
+      - "3100:3100"
+    environment:
+      NODE_ENV: production
+      SESSION_SECRET: ${SESSION_SECRET:?请在.env中设置至少24位SESSION_SECRET}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?请在.env中设置高强度ADMIN_PASSWORD}
+      SEED_DATABASE: "true"
+    volumes:
+      - guild-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  guild-data:

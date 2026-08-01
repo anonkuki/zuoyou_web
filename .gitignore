@@ -5,5 +5,9 @@ coverage/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.tsbuildinfo
 .env
-
+data/
+artifacts/qa/*.webm
+/playwright-report/
+test-results/

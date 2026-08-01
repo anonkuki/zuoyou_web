@@ -48,6 +48,20 @@ describe('production seed safety', () => {
       await expect(seedDatabase(sqlite, { production: true, adminPassword: 'ProductionAdmin!2026' })).rejects.toThrow(/development demo/i);
     });
   });
+
+  it('allows a production-seeded persistent database to restart safely', async () => {
+    const root = await mkdtemp('D:/Temp/guild-production-restart-');
+    const { sqlite } = await openDatabase(`${root}/guild.sqlite`);
+    try {
+      const options = { production: true, adminPassword: 'ProductionAdmin!2026' };
+      await seedDatabase(sqlite, options);
+      await expect(seedDatabase(sqlite, options)).resolves.toBeUndefined();
+      expect((sqlite.prepare("SELECT email FROM users WHERE username='admin'").get() as { email: string }).email).not.toBe('admin@guild.example');
+    } finally {
+      sqlite.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe.sequential('Adventurer Guild API', () => {
@@ -59,9 +73,12 @@ describe.sequential('Adventurer Guild API', () => {
 
   beforeAll(async () => {
     root = await mkdtemp(tempRoot);
+    await mkdir(`${root}/web`, { recursive: true });
+    await writeFile(`${root}/web/index.html`, '<!doctype html><title>Adventurer Guild</title><div id="root"></div>');
     app = await createApp({
       databasePath: `${root}/guild.sqlite`,
       uploadRoot: `${root}/uploads`,
+      webRoot: `${root}/web`,
       seed: true,
       sessionSecret: 'integration-test-secret-that-is-long',
     });
@@ -94,11 +111,37 @@ describe.sequential('Adventurer Guild API', () => {
     expect(activities.json().data.items.every((activity: Record<string, unknown>) => !('check_in_code' in activity) && !('checkInCode' in activity))).toBe(true);
   });
 
+  it('serves the production web app without masking unknown API routes', async () => {
+    expect((await app.inject({ method: 'GET', url: '/' })).body).toContain('Adventurer Guild');
+    expect((await app.inject({ method: 'GET', url: '/member/profile' })).body).toContain('Adventurer Guild');
+    const missingApi = await app.inject({ method: 'GET', url: '/api/does-not-exist' });
+    expect(missingApi.statusCode).toBe(404);
+    expect(missingApi.json()).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+  });
+
+  it('returns database-derived dashboard and chart series', async () => {
+    const dashboard = await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: adminCookie } });
+    expect(dashboard.json().data).toMatchObject({
+      members: 82,
+      pendingApplications: expect.any(Number),
+      activeActivities: expect.any(Number),
+      publishedWorks: expect.any(Number),
+    });
+    const analytics = await app.inject({ method: 'GET', url: '/api/admin/analytics', headers: { cookie: adminCookie } });
+    expect(analytics.json().data.departmentActivity).toHaveLength(6);
+    expect(analytics.json().data.departmentActivity[0]).toEqual(expect.objectContaining({ departmentName: expect.any(String), score: expect.any(Number) }));
+    expect(analytics.json().data.memberGrowth.length).toBeGreaterThan(0);
+  });
+
   it('supports login, me, logout and rejects missing/insufficient authority', async () => {
+    const anonymousSession = await app.inject({ method: 'GET', url: '/api/auth/session' });
+    expect(anonymousSession.statusCode).toBe(200);
+    expect(anonymousSession.json().data).toEqual({ user: null });
     const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } });
     expect(me.json().data.user).toMatchObject({ username: 'cos.member', role: 'MEMBER' });
     expect((await app.inject({ method: 'GET', url: '/api/member/profile' })).statusCode).toBe(401);
     expect((await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: memberCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/members/user-admin/deactivate', headers: { cookie: adminCookie } })).statusCode).toBe(409);
     const logout = await app.inject({ method: 'POST', url: '/api/auth/logout', headers: { cookie: memberCookie } });
     expect(logout.statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } })).statusCode).toBe(401);
@@ -172,6 +215,15 @@ describe.sequential('Adventurer Guild API', () => {
     expect((await app.inject({ method: 'POST', url: '/api/admin/activities/activity-ended/state', headers: { cookie: adminCookie }, payload: { status: 'ARCHIVED' } })).statusCode).toBe(200);
   });
 
+  it('lets the owning lead save an activity result summary before archive', async () => {
+    expect((await app.inject({ method: 'POST', url: '/api/admin/activities/activity-live/state', headers: { cookie: leadCookie }, payload: { status: 'ENDED' } })).statusCode).toBe(200);
+    const update = await app.inject({ method: 'PUT', url: '/api/admin/activities/activity-live', headers: { cookie: leadCookie }, payload: { resultSummary: '活动成果资料与复盘已整理' } });
+    expect(update.statusCode).toBe(200);
+    const archived = await app.inject({ method: 'POST', url: '/api/admin/activities/activity-live/state', headers: { cookie: leadCookie }, payload: { status: 'ARCHIVED' } });
+    expect(archived.statusCode).toBe(200);
+    expect(archived.json().data.status).toBe('ARCHIVED');
+  });
+
   it('limits department leads to their own department', async () => {
     const list = await app.inject({ method: 'GET', url: '/api/admin/members', headers: { cookie: leadCookie } });
     expect(list.statusCode).toBe(200);
@@ -213,11 +265,11 @@ describe.sequential('Adventurer Guild API', () => {
     expect(memberTasks.json().data).toMatchObject({ page: 1, pageSize: 1, total: 1 });
     expect(memberTasks.json().data.items).toHaveLength(1);
     const memberFiles = await app.inject({ method: 'GET', url: '/api/member/files?page=2&pageSize=2', headers: { cookie: memberCookie } });
-    expect(memberFiles.json().data).toMatchObject({ page: 2, pageSize: 2, total: 3 });
-    expect(memberFiles.json().data.items).toHaveLength(1);
+    expect(memberFiles.json().data).toMatchObject({ page: 2, pageSize: 2, total: 6 });
+    expect(memberFiles.json().data.items).toHaveLength(2);
 
     const adminFiles = await app.inject({ method: 'GET', url: '/api/admin/files?page=2&pageSize=2', headers: { cookie: adminCookie } });
-    expect(adminFiles.json().data).toMatchObject({ page: 2, pageSize: 2, total: 5 });
+    expect(adminFiles.json().data).toMatchObject({ page: 2, pageSize: 2, total: 8 });
     expect(adminFiles.json().data.items).toHaveLength(2);
     const leadFiles = await app.inject({ method: 'GET', url: '/api/admin/files', headers: { cookie: leadCookie } });
     expect(leadFiles.json().data).toMatchObject({ page: 1, pageSize: 20, total: 1 });
@@ -230,10 +282,12 @@ describe.sequential('Adventurer Guild API', () => {
 
   it('supports scoped activity creation and safe deletion while preparing', async () => {
     const created = await app.inject({ method: 'POST', url: '/api/admin/activities', headers: { cookie: leadCookie }, payload: {
-      departmentId: 'dept-cos', title: '幻装小队筹备会', capacity: 12, startsAt: '2026-09-10T10:00:00.000Z',
+      departmentId: 'dept-cos', title: '幻装小队筹备会', location: '星门大厅东侧', capacity: 12, startsAt: '2026-09-10T10:00:00.000Z',
     } });
     expect(created.statusCode).toBe(201);
     const id = created.json().data.id;
+    const detail = await app.inject({ method: 'GET', url: `/api/admin/activities/${id}`, headers: { cookie: leadCookie } });
+    expect(detail.json().data.activity.location).toBe('星门大厅东侧');
     expect((await app.inject({ method: 'DELETE', url: `/api/admin/activities/${id}`, headers: { cookie: leadCookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'DELETE', url: '/api/admin/activities/activity-live', headers: { cookie: adminCookie } })).statusCode).toBe(409);
   });
@@ -247,6 +301,22 @@ describe.sequential('Adventurer Guild API', () => {
     expect((await app.inject({ method: 'POST', url: '/api/admin/works/work-tech-pending/review', headers: { cookie: leadCookie }, payload: { status: 'PUBLISHED' } })).statusCode).toBe(403);
   });
 
+  it('accepts a real member work file and keeps its media member-only', async () => {
+    const boundary = '----guild-work-boundary';
+    const body = Buffer.from([
+      `--${boundary}\r\nContent-Disposition: form-data; name="title"\r\n\r\n星灯舞台摄影\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="description"\r\n\r\n现场作品记录\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="stage.jpg"\r\nContent-Type: image/jpeg\r\n\r\nimage-bytes\r\n`,
+      `--${boundary}--\r\n`,
+    ].join(''));
+    const created = await app.inject({ method: 'POST', url: '/api/member/works/upload', headers: { cookie: memberCookie, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().data.work).toMatchObject({ title: '星灯舞台摄影', status: 'PENDING', fileId: expect.any(String) });
+    const fileId = created.json().data.work.fileId;
+    expect((await app.inject({ method: 'GET', url: `/api/files/${fileId}/content` })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: `/api/files/${fileId}/content`, headers: { cookie: memberCookie } })).body).toBe('image-bytes');
+  });
+
   it('protects file metadata and supports trash/restore', async () => {
     expect((await app.inject({ method: 'GET', url: '/api/files/file-public' })).statusCode).toBe(200);
     const publicContent = await app.inject({ method: 'GET', url: '/api/files/file-public/content' });
@@ -256,9 +326,36 @@ describe.sequential('Adventurer Guild API', () => {
     expect((await app.inject({ method: 'GET', url: '/api/files/file-members/content' })).statusCode).toBe(401);
     expect((await app.inject({ method: 'GET', url: '/api/files/file-cos', headers: { cookie: memberCookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/files/file-tech', headers: { cookie: memberCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/files/file-photo-anniversary/content' })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/api/files/file-photo-anniversary/content', headers: { cookie: memberCookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: '/api/admin/files/file-public/recycle', headers: { cookie: adminCookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/files/file-public' })).statusCode).toBe(404);
     expect((await app.inject({ method: 'POST', url: '/api/admin/files/file-public/restore', headers: { cookie: adminCookie } })).statusCode).toBe(200);
+  });
+
+  it('stores multipart uploads under generated keys and serves them through authorization', async () => {
+    const boundary = '----guild-integration-boundary';
+    const body = Buffer.from([
+      `--${boundary}\r\nContent-Disposition: form-data; name="visibility"\r\n\r\nMEMBERS\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="departmentId"\r\n\r\ndept-cos\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="category"\r\n\r\nPLAN\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="作战手册.txt"\r\nContent-Type: text/plain\r\n\r\n真实文件内容\r\n`,
+      `--${boundary}--\r\n`,
+    ].join(''));
+    const uploaded = await app.inject({
+      method: 'POST', url: '/api/admin/files/upload', headers: { cookie: leadCookie, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body,
+    });
+    expect(uploaded.statusCode).toBe(201);
+    expect(uploaded.json().data).toMatchObject({ name: '作战手册.txt', visibility: 'MEMBERS', category: 'PLAN' });
+    const fileId = uploaded.json().data.id;
+    const renamed = await app.inject({ method: 'PATCH', url: `/api/admin/files/${fileId}`, headers: { cookie: leadCookie }, payload: { name: '新版作战手册.txt', category: 'HISTORY' } });
+    expect(renamed.statusCode).toBe(200);
+    const metadata = await app.inject({ method: 'GET', url: `/api/files/${fileId}`, headers: { cookie: memberCookie } });
+    expect(metadata.json().data.file).toMatchObject({ name: '新版作战手册.txt', category: 'HISTORY' });
+    const content = await app.inject({ method: 'GET', url: `/api/files/${fileId}/content`, headers: { cookie: memberCookie } });
+    expect(content.statusCode).toBe(200);
+    expect(content.body).toBe('真实文件内容');
+    expect(uploaded.json().data.storageKey).not.toContain('作战手册');
   });
 
   it('confirms a completed task once and derives contribution from the event', async () => {
@@ -268,5 +365,9 @@ describe.sequential('Adventurer Guild API', () => {
     const dashboard = await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: adminCookie } });
     const member = dashboard.json().data.contributions.find((entry: { userId: string }) => entry.userId === 'user-member');
     expect(member.points).toBeGreaterThanOrEqual(18);
+    const contributions = await app.inject({ method: 'GET', url: '/api/member/contributions', headers: { cookie: memberCookie } });
+    expect(contributions.statusCode).toBe(200);
+    expect(contributions.json().data.points).toBe(member.points);
+    expect(contributions.json().data.events).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'TASK_CONFIRMED', points: 5 })]));
   });
 });

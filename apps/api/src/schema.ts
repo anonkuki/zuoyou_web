@@ -28,12 +28,12 @@ export const activityRegistrations = sqliteTable('activity_registrations', {
 }, (table) => [uniqueIndex('activity_registration_unique').on(table.activityId, table.userId)]);
 
 export const activityResults = sqliteTable('activity_results', {
-  id: text('id').primaryKey(), activityId: text('activity_id').notNull().references(() => activities.id), summary: text('summary').notNull(), createdAt: utcText('created_at'),
+  id: text('id').primaryKey(), activityId: text('activity_id').notNull().references(() => activities.id), fileId: text('file_id'), summary: text('summary').notNull(), createdAt: utcText('created_at'),
 });
 
 export const applications = sqliteTable('applications', {
   id: text('id').primaryKey(), statusTokenHash: text('status_token_hash').notNull().unique(), displayName: text('display_name').notNull(), email: text('email').notNull(), departmentId: text('department_id').notNull().references(() => departments.id),
-  reason: text('reason').notNull(), status: text('status').notNull(), userId: text('user_id').references(() => users.id), activationCodeEncrypted: text('activation_code_encrypted'), rejectionReason: text('rejection_reason'), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
+  college: text('college').notNull().default('未填写'), reason: text('reason').notNull(), status: text('status').notNull(), userId: text('user_id').references(() => users.id), activationCodeEncrypted: text('activation_code_encrypted'), rejectionReason: text('rejection_reason'), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
 
 export const activationTokens = sqliteTable('activation_tokens', {

@@ -171,7 +171,7 @@ describe.sequential('Adventurer Guild API', () => {
 
   it('completes recruitment approval, status lookup, one-time activation and login', async () => {
     const submitted = await app.inject({ method: 'POST', url: '/api/public/applications', payload: {
-      displayName: '星砂旅人', email: 'starsand@example.test', departmentId: 'dept-tech', reason: '希望参与魔导装置维护',
+      displayName: '星砂旅人', email: 'starsand@example.test', college: '计算机学院 2026级', departmentId: 'dept-tech', reason: '希望参与魔导装置维护',
     } });
     expect(submitted.statusCode).toBe(201);
     const { id, statusToken } = submitted.json().data;
@@ -188,6 +188,8 @@ describe.sequential('Adventurer Guild API', () => {
       method: 'POST', url: '/api/auth/activate', payload: { token: activationCode, username, password: 'StrongPass!2026' },
     })));
     expect(activationAttempts.map((response) => response.statusCode).sort()).toEqual([200, 409]);
+    const consumedStatus = await app.inject({ method: 'GET', url: `/api/public/applications/status/${statusToken}` });
+    expect(consumedStatus.json().data.activationCode).toBeUndefined();
     const winner = activationAttempts[0].statusCode === 200 ? 'starsand' : 'starsand2';
     expect(await login(app, winner, 'StrongPass!2026')).toContain('guild_session=');
     expect((await app.inject({ method: 'POST', url: `/api/admin/applications/${id}/regenerate-activation`, headers: { cookie: adminCookie } })).statusCode).toBe(409);
@@ -356,6 +358,26 @@ describe.sequential('Adventurer Guild API', () => {
     expect(content.statusCode).toBe(200);
     expect(content.body).toBe('真实文件内容');
     expect(uploaded.json().data.storageKey).not.toContain('作战手册');
+  });
+
+  it('links a real result file to an ended activity before archive', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/admin/activities', headers: { cookie: leadCookie }, payload: {
+      departmentId: 'dept-cos', title: '成果文件验收会', location: '星门大厅', capacity: 10, startsAt: '2026-10-01T10:00:00.000Z',
+    } });
+    const id = created.json().data.id;
+    for (const status of ['REGISTRATION', 'IN_PROGRESS', 'ENDED']) {
+      expect((await app.inject({ method: 'POST', url: `/api/admin/activities/${id}/state`, headers: { cookie: leadCookie }, payload: { status } })).statusCode).toBe(200);
+    }
+    const boundary = '----guild-result-boundary';
+    const body = Buffer.from([
+      `--${boundary}\r\nContent-Disposition: form-data; name="summary"\r\n\r\n舞台成果记录\r\n`,
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="result.txt"\r\nContent-Type: text/plain\r\n\r\nactivity result bytes\r\n`,
+      `--${boundary}--\r\n`,
+    ].join(''));
+    const uploaded = await app.inject({ method: 'POST', url: `/api/admin/activities/${id}/results/upload`, headers: { cookie: leadCookie, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body });
+    expect(uploaded.statusCode).toBe(201);
+    expect(uploaded.json().data).toMatchObject({ activityId: id, fileId: expect.any(String), summary: '舞台成果记录' });
+    expect((await app.inject({ method: 'POST', url: `/api/admin/activities/${id}/state`, headers: { cookie: leadCookie }, payload: { status: 'ARCHIVED' } })).statusCode).toBe(200);
   });
 
   it('confirms a completed task once and derives contribution from the event', async () => {

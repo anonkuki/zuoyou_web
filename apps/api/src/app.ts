@@ -206,15 +206,15 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
 
-  const applicationSchema = z.object({ displayName: z.string().trim().min(2).max(60), email: z.email(), departmentId: z.string().min(1), reason: z.string().trim().min(5).max(1000) });
+  const applicationSchema = z.object({ displayName: z.string().trim().min(2).max(60), email: z.email(), college: z.string().trim().min(2).max(100).default('未填写'), departmentId: z.string().min(1), reason: z.string().trim().min(5).max(1000) });
   app.post('/api/public/applications', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
     const body = parse(applicationSchema, request.body);
     if (!sqlite.prepare('SELECT 1 FROM departments WHERE id=?').get(body.departmentId)) throw new HttpError(400, 'VALIDATION_ERROR', '目标部门不存在');
     if (sqlite.prepare("SELECT 1 FROM applications WHERE email=? AND status='PENDING'").get(body.email)) throw new HttpError(409, 'CONFLICT', '该邮箱已有待审申请');
     const id = newId('application');
     const statusToken = randomBytes(32).toString('base64url');
-    sqlite.prepare('INSERT INTO applications(id,status_token_hash,display_name,email,department_id,reason,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
-      .run(id, sha256(statusToken), body.displayName, body.email, body.departmentId, body.reason, 'PENDING', now(), now());
+    sqlite.prepare('INSERT INTO applications(id,status_token_hash,display_name,email,college,department_id,reason,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+      .run(id, sha256(statusToken), body.displayName, body.email, body.college, body.departmentId, body.reason, 'PENDING', now(), now());
     audit(sqlite, null, 'APPLICATION_SUBMITTED', 'application', id);
     return reply.status(201).send(successResponse({ id, statusToken, status: 'PENDING' }));
   });
@@ -263,6 +263,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       if (consumed.changes !== 1) throw new HttpError(409, 'ACTIVATION_USED', '激活码已使用或已过期');
       if (sqlite.prepare('SELECT 1 FROM users WHERE username=?').get(body.username)) throw new HttpError(409, 'CONFLICT', '用户名已存在');
       sqlite.prepare('UPDATE users SET username=?,password_hash=?,is_active=1,updated_at=? WHERE id=?').run(body.username, passwordHash, now(), token.user_id);
+      sqlite.prepare('UPDATE applications SET activation_code_encrypted=NULL,updated_at=? WHERE user_id=?').run(now(), token.user_id);
       audit(sqlite, token.user_id, 'ACCOUNT_ACTIVATED', 'user', token.user_id, token.user_id);
     })();
     return successResponse({ activated: true });
@@ -604,6 +605,55 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     audit(sqlite, principal.id, 'ACTIVITY_DELETED', 'activity', id);
     return successResponse({ deleted: true });
   });
+  app.post('/api/admin/activities/:id/results/upload', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const activityId = (request.params as { id: string }).id;
+    const activity = sqlite.prepare('SELECT department_id,status FROM activities WHERE id=?').get(activityId) as { department_id: string | null; status: ActivityStatus } | undefined;
+    if (!activity) throw new HttpError(404, 'NOT_FOUND', '活动不存在');
+    if (principal.role !== 'ADMIN') scopeDepartment(principal, activity.department_id ?? '');
+    if (activity.status !== 'ENDED') throw new HttpError(409, 'INVALID_STATE', '仅已结束活动可上传成果');
+    const fields: Record<string, string> = {};
+    let uploaded: { name: string; mimeType: string; storageKey: string; path: string; size: number } | null = null;
+    for await (const part of request.parts()) {
+      if (part.type === 'field') { fields[part.fieldname] = String(part.value ?? ''); continue; }
+      if (uploaded) throw new HttpError(400, 'TOO_MANY_FILES', '每次只能上传一个成果文件');
+      const extension = extname(part.filename).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
+      const storageKey = `activity-results/${randomUUID()}${extension}`;
+      const path = resolve(options.uploadRoot, storageKey);
+      await mkdir(resolve(options.uploadRoot, 'activity-results'), { recursive: true });
+      await pipeline(part.file, createWriteStream(path, { flags: 'wx' }));
+      const info = await stat(path);
+      uploaded = { name: part.filename, mimeType: part.mimetype, storageKey, path, size: info.size };
+    }
+    if (!uploaded) throw new HttpError(400, 'FILE_REQUIRED', '请选择成果文件');
+    const file = uploaded as { name: string; mimeType: string; storageKey: string; path: string; size: number };
+    const sizeLimit = file.mimeType.startsWith('image/') ? 10 * 1024 * 1024 : file.mimeType.startsWith('video/') ? 200 * 1024 * 1024 : 30 * 1024 * 1024;
+    if (file.size > sizeLimit) {
+      await unlink(file.path).catch(() => undefined);
+      throw new HttpError(413, 'FILE_TOO_LARGE', `该类型成果最大允许 ${sizeLimit / 1024 / 1024}MB`);
+    }
+    let summary: string;
+    try {
+      summary = parse(z.string().trim().min(2).max(1000), fields.summary?.trim() || file.name);
+    } catch (error) {
+      await unlink(file.path).catch(() => undefined);
+      throw error;
+    }
+    const fileId = newId('file'); const resultId = newId('result'); const createdAt = now();
+    const category = file.mimeType.startsWith('image/') ? 'PHOTO' : file.mimeType.startsWith('video/') ? 'VIDEO' : 'OTHER';
+    try {
+      sqlite.transaction(() => {
+        sqlite.prepare('INSERT INTO files(id,owner_id,department_id,name,storage_key,mime_type,size,visibility,category,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+          .run(fileId, principal.id, activity.department_id, file.name, file.storageKey, file.mimeType, file.size, 'MEMBERS', category, createdAt, createdAt);
+        sqlite.prepare('INSERT INTO activity_results(id,activity_id,file_id,summary,created_at) VALUES (?,?,?,?,?)').run(resultId, activityId, fileId, summary, createdAt);
+        audit(sqlite, principal.id, 'ACTIVITY_RESULT_UPLOADED', 'activity', activityId, null, { resultId, fileId });
+      })();
+    } catch (error) {
+      await unlink(file.path).catch(() => undefined);
+      throw error;
+    }
+    return reply.status(201).send(successResponse({ activityId, resultId, fileId, summary }));
+  });
   app.post('/api/admin/activities/:id/state', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const id = (request.params as { id: string }).id; const { status } = parse(z.object({ status: ActivityStatusSchema }), request.body);
@@ -617,7 +667,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ status, checkInCode: checkInCode ?? undefined });
   });
 
-  app.get('/api/admin/applications', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; const paging = getPaging(request.query); const items = sqlite.prepare('SELECT id,display_name,email,department_id,reason,status,rejection_reason,created_at FROM applications ORDER BY created_at DESC LIMIT ? OFFSET ?').all(paging.pageSize, paging.offset); const total = (sqlite.prepare('SELECT COUNT(*) count FROM applications').get() as { count: number }).count; return successResponse(pageData(items, total, paging.page, paging.pageSize)); });
+  app.get('/api/admin/applications', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; const paging = getPaging(request.query); const items = sqlite.prepare('SELECT id,display_name,email,college,department_id,reason,status,rejection_reason,created_at FROM applications ORDER BY created_at DESC LIMIT ? OFFSET ?').all(paging.pageSize, paging.offset); const total = (sqlite.prepare('SELECT COUNT(*) count FROM applications').get() as { count: number }).count; return successResponse(pageData(items, total, paging.page, paging.pageSize)); });
   async function approveApplication(id: string, actor: Principal): Promise<string> {
     const application = sqlite.prepare('SELECT * FROM applications WHERE id=?').get(id) as { display_name: string; email: string; department_id: string; status: string } | undefined;
     if (!application) throw new HttpError(404, 'NOT_FOUND', '申请不存在'); if (application.status !== 'PENDING') throw new HttpError(409, 'INVALID_STATE', '申请已处理');

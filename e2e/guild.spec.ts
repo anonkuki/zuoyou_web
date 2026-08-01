@@ -40,6 +40,7 @@ test('招新申请到激活登录形成完整闭环', async ({ page }) => {
   await page.goto('/join');
   await page.getByRole('button', { name: '继续填写资料' }).click();
   await page.getByLabel('称呼').fill(displayName);
+  await page.getByLabel('学院与年级').fill('数字媒体学院 2026级');
   await page.getByLabel('联系邮箱').fill(`qa.${suffix}@example.test`);
   await page.getByLabel('自我介绍与加入理由').fill('希望参与佐佑动漫社真实活动协作与作品创作。');
   await page.getByRole('button', { name: '提交加入申请' }).click();
@@ -132,7 +133,10 @@ test('成员作品、负责人审核、活动与文件操作可实际执行', as
   const endingActivity = page.locator('article').filter({ hasText: activityTitle });
   await endingActivity.getByRole('button', { name: '结束活动' }).click();
   await expect(endingActivity.getByText('已结束')).toBeVisible();
-  page.once('dialog', dialog => dialog.accept('成员协作完成，成果文件与总结已归档。'));
+  await page.getByLabel(`${activityTitle}成果说明`).fill('成员协作完成，成果文件与总结已归档。');
+  await page.getByLabel(`${activityTitle}成果文件`).setInputFiles({ name: `活动成果${suffix}.txt`, mimeType: 'text/plain', buffer: Buffer.from('activity result e2e') });
+  await endingActivity.getByRole('button', { name: '上传成果文件' }).click();
+  await expect(endingActivity.getByText(/成果文件已上传/)).toBeVisible();
   await endingActivity.getByRole('button', { name: '填写成果并归档' }).click();
   await expect(endingActivity.getByText('已归档', { exact: true })).toBeVisible();
 

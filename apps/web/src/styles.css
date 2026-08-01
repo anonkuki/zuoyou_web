@@ -33,3 +33,4 @@ footer{display:grid;grid-template-columns:1fr auto;gap:30px;padding:60px max(30p
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
 @media print{.public-nav,.console aside,.console-main>header,.guild-button,.filter-bar{display:none!important}.console,.console-main{display:block}.page-hero{min-height:auto;padding:30px;background:#fff;color:#222}.page-hero p{color:#444}.shell{width:100%}.chart-panel{break-inside:avoid;box-shadow:none}}
 .protected-preview{width:94px;height:70px;object-fit:cover;border:3px solid #76512d;box-shadow:3px 3px 0 #4a302033}
+.result-upload{display:grid;gap:7px;padding:10px;border:1px dashed #9b7441;background:#fff8e777}.result-upload input{width:230px;max-width:100%}.result-upload input[type=file]{font-size:.72rem}

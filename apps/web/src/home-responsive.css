@@ -1,0 +1,107 @@
+/* Homepage proportion system. Loaded after the shared design system on purpose. */
+@media (min-width: 1101px) {
+  .guild-hero { height: 610px; }
+  .guild-hero-copy { top: 43px; }
+  .guild-hero-copy h1 { font-size: 4.35rem; }
+  .guild-hero-copy > p { margin: 20px 0 19px; }
+  .hero-party { bottom: 100px; transform: scale(.88); transform-origin: right bottom; }
+  .guild-hud { min-height: 96px; }
+  .guild-hud article { padding-block: 10px; }
+  .guild-hud svg { width: 36px; height: 36px; }
+  .guild-hud strong { font-size: 1.62rem; }
+  .home-entry-zone { padding-top: 21px; padding-bottom: 23px; }
+  .adventure-entry-card { height: 268px; grid-template-rows: 66px 1fr 50px; }
+  .adventure-card-heading h2 { font-size: 1.34rem; }
+  .adventure-card-heading p { font-size: .63rem; }
+  .adventure-entry-card > a { margin: 6px 12px 9px; }
+  .open-book { bottom: 4px; transform: translateX(-50%) rotate(2deg) scale(.72); transform-origin: center bottom; }
+  .pixel-candle { bottom: 10px; transform: scale(.78); transform-origin: center bottom; }
+  .mini-banner { top: 6px; height: 88px; padding-top: 12px; }
+  .hall-table { bottom: 8px; height: 35px; }
+  .mini-fire { bottom: 39px; transform: scale(.78); transform-origin: center bottom; }
+  .photo { bottom: 8px; transform: scale(.72); transform-origin: left bottom; }
+  .photo-one { left: 12px; }
+  .photo-two { left: 61px; }
+  .pixel-camera { right: 13px; bottom: 12px; transform: scale(.75); transform-origin: right bottom; }
+  .archive-scroll { bottom: 4px; }
+  .notice-board { height: 268px; padding-top: 49px; }
+  .notice-board-title { height: 49px; }
+  .notice-list a { min-height: 39px; }
+  .notice-mascot { right: -25px; transform: scale(.82); transform-origin: left bottom; }
+  footer.pixel-footer > .pixel-footer-main { padding-top: 17px; padding-bottom: 14px; }
+  .pixel-footer h2 { margin-bottom: 9px; }
+}
+
+@media (max-width: 640px) {
+  .pixel-navbar { height: 60px; padding-inline: 10px; }
+  .pixel-navbar > nav { top: 60px; }
+  .brand-shield { width: 35px; height: 40px; }
+  .pixel-brand strong { font-size: .76rem; }
+  .pixel-brand small { font-size: .47rem; }
+  .guild-hero { min-height: 650px; }
+  .layered-guild-scene { height: 500px; }
+  .guild-scene-svg { left: -49%; width: 168%; height: 500px; }
+  .guild-hero-copy { top: 25px; width: calc(100% - 18px); }
+  .guild-hero-copy::before { left: 50%; top: -20px; width: 420px; height: 340px; transform: translateX(-50%); }
+  .guild-hero-copy h1 { font-size: 2.48rem; line-height: 1; }
+  .hero-title-plaque { width: 218px; margin-top: 9px; padding-block: 6px 7px; border-width: 4px; font-size: 1rem; }
+  .guild-hero-copy > b { font-size: .68rem; }
+  .guild-hero-copy > p { gap: 3px; margin: 13px 0 14px; font-size: .67rem; line-height: 1.35; }
+  .guild-hero-copy > div:last-child { gap: 8px; }
+  .hero-pixel-button { min-width: 112px; height: 41px; gap: 10px; border-width: 3px; font-size: .72rem; }
+  .hero-party { right: -37px; bottom: 150px; gap: 4px; transform: scale(.48); }
+  .guild-hud { bottom: 10px; grid-template-columns: 1.2fr repeat(2, 1fr); width: calc(100% - 20px); min-height: 140px; border-width: 4px; }
+  .guild-hud article { min-height: 58px; padding: 6px 4px; gap: 6px; border-bottom: 1px solid #5e3d29; }
+  .guild-hud .level-stat { grid-column: 1 / 2; grid-row: 1 / 3; border-bottom: 0; }
+  .guild-hud article:nth-child(2), .guild-hud article:nth-child(4) { border-right: 1px solid #5e3d29; }
+  .guild-hud article:nth-child(4), .guild-hud article:nth-child(5) { border-bottom: 0; }
+  .guild-hud article:not(:last-child)::after { display: none; }
+  .guild-hud svg { width: 22px; height: 22px; }
+  .guild-hud span { font-size: .55rem; letter-spacing: .02em; }
+  .guild-hud strong { font-size: 1rem; }
+  .level-progress { width: 88px; height: 7px; margin-top: 5px; }
+  .level-progress small { top: 5px; font-size: .42rem; }
+  .home-entry-zone { gap: 13px; padding: 15px 10px 18px; }
+  .entry-card-grid { gap: 11px; }
+  .adventure-entry-card { height: 154px; grid-template-columns: 118px minmax(0, 1fr); grid-template-rows: 1fr 48px; border-width: 4px; }
+  .adventure-entry-card::before, .adventure-entry-card::after { width: 18px; height: 18px; border-width: 3px; }
+  .card-artwork { grid-column: 1; grid-row: 1 / 3; border-right: 2px solid #b07942; }
+  .adventure-card-heading { grid-column: 2; grid-row: 1; padding: 10px 8px; border-bottom: 1px solid #6f492e; }
+  .adventure-card-heading h2 { font-size: 1.12rem; }
+  .adventure-card-heading p { font-size: .57rem; }
+  .adventure-entry-card > a { grid-column: 2; grid-row: 2; margin: 5px 8px 8px; gap: 12px; border-width: 2px; font-size: .7rem; }
+  .open-book { bottom: 9px; transform: translateX(-50%) rotate(2deg) scale(.52); transform-origin: center bottom; }
+  .pixel-candle { bottom: 7px; transform: scale(.56); transform-origin: center bottom; }
+  .pixel-candle.c1 { left: 5px; }
+  .pixel-candle.c2 { right: 5px; }
+  .mini-banner { top: 13px; width: 26px; height: 78px; padding-top: 10px; border-width: 3px; font-size: .68rem; }
+  .mini-banner.b1 { left: 4%; }
+  .mini-banner.b2 { left: 27%; }
+  .mini-banner.b3 { right: 27%; }
+  .mini-banner.b4 { right: 4%; }
+  .hall-table { left: 6%; right: 6%; bottom: 8px; height: 31px; border-width: 4px; }
+  .mini-fire { bottom: 35px; transform: scale(.55); }
+  .photo { width: 61px; height: 75px; padding: 4px; border-width: 3px; }
+  .photo-one { left: 2px; bottom: 11px; }
+  .photo-two { left: 35px; bottom: 17px; }
+  .pixel-camera { right: 1px; bottom: 13px; width: 68px; height: 50px; border-width: 5px; }
+  .pixel-camera::before { left: 14px; top: -13px; width: 28px; height: 12px; border-width: 3px; }
+  .pixel-camera b { left: 16px; top: 8px; width: 30px; height: 30px; border-width: 6px; }
+  .archive-scroll { left: 28%; bottom: 4px; width: 56px; }
+  .notice-board { height: 240px; padding: 45px 13px 10px; }
+  .notice-board-title { left: 9px; right: 9px; height: 44px; border-width: 3px; }
+  .notice-board-title h2 { font-size: 1.06rem; }
+  .notice-list a { min-height: 35px; font-size: .63rem; }
+  .notice-mascot { right: -48px; bottom: -4px; transform: scale(.72); transform-origin: left bottom; }
+  footer.pixel-footer > .pixel-footer-main { grid-template-columns: 1fr 1fr; column-gap: 16px; row-gap: 18px; padding: 18px 14px 14px; }
+  footer.pixel-footer > .pixel-footer-main > section { min-width: 0; }
+  .quick-entry-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .quick-entry-list a { grid-template-columns: 20px 1fr; justify-items: start; align-items: center; font-size: .56rem; }
+  .quick-entry-list svg { width: 19px; height: 19px; }
+  .follow-us > div { display: grid; grid-template-columns: repeat(2, 34px); gap: 8px; }
+  .follow-us button { width: 34px; height: 34px; }
+  .online-party { grid-column: 1 / -1; }
+  .online-party > div { gap: 5px; }
+  .footer-avatar { margin-right: -7px; transform: scale(.76); transform-origin: left top; }
+  .pixel-footer > small { font-size: .48rem; }
+}

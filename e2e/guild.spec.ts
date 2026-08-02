@@ -23,9 +23,22 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
     await expect(page.getByRole('heading', { name: '佐佑动漫社' })).toBeVisible();
     await expect(page.getByLabel('分层像素幻想公会大厅场景')).toBeVisible();
     await expect(page.getByText('1524', { exact: true })).toBeVisible();
+    const pageHeight = await page.locator('body').evaluate(body => body.scrollHeight);
+    const portalCards = page.locator('[data-portal-art]');
+    await expect(portalCards).toHaveCount(3);
+    const portalRatios = await portalCards.evaluateAll(cards => cards.map(card => {
+      const box = card.getBoundingClientRect();
+      return box.width / box.height;
+    }));
+    if (size.width === 1440) {
+      expect(pageHeight).toBeLessThanOrEqual(1160);
+      expect(Math.min(...portalRatios)).toBeGreaterThanOrEqual(1.1);
+    }
+    if (size.width === 390) {
+      expect(pageHeight).toBeLessThanOrEqual(2000);
+      expect(Math.min(...portalRatios)).toBeGreaterThanOrEqual(1.35);
+    }
     if (size.width === 768) {
-      const portalCards = page.locator('[data-portal-art]');
-      await expect(portalCards).toHaveCount(3);
       const cardBoxes = await portalCards.evaluateAll(cards => cards.map(card => card.getBoundingClientRect().top));
       expect(Math.max(...cardBoxes) - Math.min(...cardBoxes)).toBeLessThan(4);
       const footerSections = page.locator('.pixel-footer-main > section');

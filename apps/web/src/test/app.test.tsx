@@ -47,7 +47,9 @@ describe('Adventurer Guild app', () => {
     renderAt('/');
     expect(await screen.findByRole('heading', { name: /佐佑动漫社/ })).toBeInTheDocument();
     expect(await screen.findByText('82')).toBeInTheDocument();
-    expect(screen.getByText('欢迎来到冒险者公会')).toBeInTheDocument();
+    expect(screen.getByTestId('astral-guild-scene')).toBeInTheDocument();
+    expect(screen.getByText('这不是游戏，是我们一起创造的现实。')).toBeInTheDocument();
+    expect(screen.getByText('今夜，公会大厅依然为热爱亮着灯。')).toBeInTheDocument();
   });
 
   it('navigates to every public module with real links', async () => {

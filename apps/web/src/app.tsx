@@ -2,7 +2,8 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, Protected, useAuth } from './auth';
 import { ConsoleLayout, PublicLayout } from './layouts';
 import { ActivatePage, LoginPage } from './pages-auth';
-import { ActivitiesPage, ActivityDetailPage, ApplicationStatusPage, ChroniclePage, DepartmentDetailPage, DepartmentsPage, HomePage, JoinPage, NotFoundPage, WorksPage } from './pages-public';
+import { ActivitiesPage, ActivityDetailPage, ApplicationStatusPage, ChroniclePage, DepartmentDetailPage, DepartmentsPage, JoinPage, NotFoundPage, WorksPage } from './pages-public';
+import { HomePage } from './home-immersive';
 import { MemberActivitiesPage, MemberFilesPage, MemberTasksPage, MemberWorksPage, PortalHomePage, ProfilePage } from './pages-portal';
 import { ActivitiesAdminPage, AdminDashboardPage, AnalyticsAdminPage, AuditAdminPage, ChronicleAdminPage, DepartmentsAdminPage, FilesAdminPage, MembersAdminPage, RecruitmentAdminPage, SettingsAdminPage, TasksAdminPage, WorksAdminPage } from './pages-admin';
 

@@ -21,19 +21,27 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
     await page.setViewportSize(size);
     await page.goto('/');
     await expect(page.getByRole('heading', { name: '佐佑动漫社' })).toBeVisible();
-    await expect(page.getByLabel('像素幻想公会大厅动态场景')).toBeVisible();
+    await expect(page.getByLabel('星夜像素幻想公会大厅动态场景')).toBeVisible();
+    await expect(page.getByText('82', { exact: true })).toBeVisible();
     await page.screenshot({ path: `${qaRoot}/${size.name}`, fullPage: true });
   }
+  await page.setViewportSize({ width: 1440, height: 900 });
   for (const [path, heading] of [
     ['/chronicle', '公会编年史'], ['/departments', '职业大厅'], ['/activities', '冒险档案馆'], ['/works', '作品图鉴'], ['/join', '加入公会'],
   ] as const) {
     await page.goto(path);
     await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    if (path === '/departments') {
+      const lastDepartmentCard = page.getByRole('heading', { name: '外宣部' }).locator('..');
+      await expect(lastDepartmentCard).toHaveCSS('opacity', '1');
+      await page.screenshot({ path: `${qaRoot}/departments-1440x900.png`, fullPage: true });
+    }
   }
   expect(consoleErrors).toEqual([]);
 });
 
 test('招新申请到激活登录形成完整闭环', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   const suffix = Date.now().toString().slice(-8);
   const displayName = `验收旅人${suffix}`;
   const username = `qa.${suffix}`;
@@ -49,6 +57,7 @@ test('招新申请到激活登录形成完整闭环', async ({ page }) => {
 
   await loginDemo(page, '管理员');
   await expect(page.getByRole('heading', { name: '公会数据总览' })).toBeVisible();
+  await page.screenshot({ path: `${qaRoot}/admin-dashboard-1440x900.png`, fullPage: true });
   await page.goto('/admin/recruitment');
   const application = page.locator('article').filter({ hasText: displayName });
   await expect(application).toHaveCount(1);

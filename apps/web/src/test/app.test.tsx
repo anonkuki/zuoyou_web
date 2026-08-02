@@ -54,7 +54,7 @@ describe('Adventurer Guild app', () => {
     expect(screen.getByRole('button', { name: '搜索' })).toBeInTheDocument();
   });
 
-  it('composes a luminous valley guild scene from original layered artwork', async () => {
+  it('composes a painterly low-resolution valley scene with forest framing', async () => {
     renderAt('/');
     const scene = await screen.findByTestId('layered-guild-scene');
     expect(Array.from(scene.querySelectorAll('[data-scene-layer]')).map((layer) => layer.getAttribute('data-scene-layer'))).toEqual([
@@ -64,13 +64,22 @@ describe('Adventurer Guild app', () => {
       'valley',
       'guild-lodge',
       'foreground-garden',
+      'forest-frame',
       'adventurer-party',
     ]);
     expect(within(scene).getAllByRole('img', { name: /冒险者|公会执事|精灵|法师/ })).toHaveLength(4);
-    expect(scene.querySelectorAll('[data-cloud-mass]')).toHaveLength(3);
+    expect(scene.querySelectorAll('[data-cloud-mass]').length).toBeGreaterThanOrEqual(4);
     expect(scene.querySelector('[data-lighting="golden-hour"]')).toBeInTheDocument();
-    expect(scene.querySelectorAll('[data-pixel-detail]').length).toBeGreaterThanOrEqual(28);
+    expect(scene.querySelector('svg')).toHaveAttribute('viewBox', '0 0 400 190');
+    expect(scene.querySelector('svg')).toHaveAttribute('data-rendering', 'low-resolution-pixel-art');
+    expect(scene.querySelectorAll('[data-pixel-detail]').length).toBeGreaterThanOrEqual(40);
     expect(scene.querySelector('img')).toBeNull();
+  });
+
+  it('keeps the hero message open to the landscape instead of placing it in a large card', async () => {
+    renderAt('/');
+    await screen.findByTestId('layered-guild-scene');
+    expect(document.querySelector('.guild-hero-copy')).toHaveAttribute('data-surface', 'open-landscape-overlay');
   });
 
   it('builds every primary portal from layered pixel artwork', async () => {

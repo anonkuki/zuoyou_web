@@ -8,7 +8,7 @@ export function GuildHero() {
   return (
     <section className="guild-hero luminous-guild-hero">
       <LuminousGuildScene />
-      <motion.div className="guild-hero-copy" data-visual-priority="primary" initial={{ x: -28 }} animate={{ x: 0 }} transition={{ duration: .7 }}>
+      <motion.div className="guild-hero-copy" data-surface="open-landscape-overlay" data-visual-priority="primary" initial={{ x: -28 }} animate={{ x: 0 }} transition={{ duration: .7 }}>
         <span className="hero-mini-crest">✦</span>
         <small className="hero-season">MORNING OF ADVENTURE · 2026</small>
         <h1>佐佑动漫社</h1>

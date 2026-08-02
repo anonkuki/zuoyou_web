@@ -1,5 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
+const e2eRuntimeRoot = process.env.E2E_RUNTIME_ROOT
+  ?? `D:/Temp/zuoyou-dndweb-e2e-runs/run-${Date.now()}-${process.pid}`;
+process.env.E2E_RUNTIME_ROOT = e2eRuntimeRoot;
+
 export default defineConfig({
   testDir: './e2e',
   globalSetup: './e2e/global-setup.ts',
@@ -23,8 +27,8 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 120_000,
     env: {
-      DATABASE_PATH: 'D:/Temp/zuoyou-dndweb-e2e-runtime/guild.sqlite',
-      UPLOAD_ROOT: 'D:/Temp/zuoyou-dndweb-e2e-runtime/uploads',
+      DATABASE_PATH: `${e2eRuntimeRoot}/guild.sqlite`,
+      UPLOAD_ROOT: `${e2eRuntimeRoot}/uploads`,
       TMP: 'D:/Temp',
       TEMP: 'D:/Temp',
     },

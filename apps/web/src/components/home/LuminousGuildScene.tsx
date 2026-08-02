@@ -1,47 +1,92 @@
 import type { CSSProperties } from 'react';
 import { GuildCrest } from './GuildCrest';
 
-function ValleyCharacter({ variant, name }: { variant: number; name: string }) {
-  return (
-    <span className={`hero-character character-${variant}`} aria-label={name} role="img" data-pixel-detail="valley-character">
-      <i className="character-shadow" />
-      <i className="hair back" /><i className="face" /><i className="hair front" />
-      <i className="eye left" /><i className="eye right" />
-      <i className="body" /><i className="collar" /><i className="belt" />
-      <i className="arm left" /><i className="arm right" /><i className="hand left" /><i className="hand right" />
-      <i className="leg left" /><i className="leg right" /><i className="boot left" /><i className="boot right" />
-      <i className="accessory" /><i className="spark" />
-    </span>
-  );
-}
+type CloudProps = { x: number; y: number; scale?: number; className: string; variant: 1 | 2 | 3 | 4 };
 
-function CloudMass({ className, path, shade }: { className: string; path: string; shade: string }) {
+const cloudShapes = {
+  1: {
+    light: 'M0 40V31h8v-9h12v-9h14V7h18V2h20v6h17v8h15v7h20v8h16v17H0z',
+    mid: 'M0 48V38h17v-8h19v-8h18v8h20v-6h19v9h25v7h22v8H0z',
+    shine: 'M7 33v-8h14v-8h13v-7h16v7H39v9H25v7zm50-19V8h14v6h14v7H72v7H57v-7h9v-7z',
+    shade: 'M18 43v-7h22v-8h17v8h21v-6h21v9h25v9H18z',
+  },
+  2: {
+    light: 'M0 48V36h11V26h15V15h17V8h21V0h19v7h14v12h18v8h16v9h18v17H0z',
+    mid: 'M0 53V42h21v-8h20v-9h18v11h19v-8h21v9h28v7h22v9H0z',
+    shine: 'M12 34v-8h14v-9h16V9h20v9H49v8H34v8zm57-20V7h13v8h14v9H82v7H67v-8h9v-9z',
+    shade: 'M21 48v-8h24v-8h18v9h22v-7h21v10h27v9H21z',
+  },
+  3: {
+    light: 'M0 43V34h14v-7h12V16h20V8h18v5h18v-4h17v10h18v7h18v9h20v14H0z',
+    mid: 'M0 49V40h20v-7h21v-8h19v9h18v-7h21v9h28v6h28v7H0z',
+    shine: 'M12 32v-7h15v-7h18v-6h17v8H48v7H34v6zm55-13v-5h15v6h14v8H82v6H66v-7h10v-8z',
+    shade: 'M19 45v-7h25v-7h19v9h22v-7h21v9h28v7H19z',
+  },
+  4: {
+    light: 'M0 46V35h9v-8h13V18h13V8h20V3h20v6h16v9h18v-4h17v11h16v9h20v18H0z',
+    mid: 'M0 52V42h18v-8h19v-7h18v9h20v-8h19v10h25v-7h20v12h23v9H0z',
+    shine: 'M8 34v-7h14v-7h13v-8h18v8H41v8H28v6zm52-18v-6h14v7h14v8H74v7H59v-8h9v-8z',
+    shade: 'M18 48v-7h23v-8h18v9h21v-7h20v9h25v-7h20v15H18z',
+  },
+} as const;
+
+function PixelCloud({ x, y, scale = 1, className, variant }: CloudProps) {
+  const shape = cloudShapes[variant];
   return (
-    <g className={`valley-cloud ${className}`} data-cloud-mass data-pixel-detail="sunlit-cloud">
-      <path d={path} fill="url(#cloudCream)" />
-      <path d={shade} fill="#e9b77e" opacity=".66" />
-      <path d={path} fill="none" stroke="#fff8d8" strokeWidth="7" opacity=".54" />
+    <g className={`painted-cloud ${className}`} transform={`translate(${x} ${y}) scale(${scale})`} data-cloud-mass data-pixel-detail="painted-cloud-volume">
+      <path d={shape.light} fill="#fff4bb" />
+      <path d={shape.mid} fill="#f3cd82" />
+      <path d={shape.shine} fill="#fffbe0" data-pixel-detail="cloud-highlight" />
+      <path d={shape.shade} fill="#e6a268" opacity=".76" data-pixel-detail="cloud-shadow" />
+      <path d="M6 49h122v3H6z" fill="#d3825c" opacity=".25" />
     </g>
   );
 }
 
-function Pine({ x, y, scale = 1, tone = '#285f53' }: { x: number; y: number; scale?: number; tone?: string }) {
+function PixelPine({ x, y, scale = 1, tone = '#225a4d' }: { x: number; y: number; scale?: number; tone?: string }) {
   return (
-    <g transform={`translate(${x} ${y}) scale(${scale})`} data-pixel-detail="valley-pine">
-      <path d="M35 0L4 48h18L0 84h24L7 123h56L46 84h24L48 48h18z" fill={tone} />
-      <path d="M35 15L18 48h15L17 82h18L22 111h17z" fill="#69a55b" opacity=".72" />
-      <rect x="30" y="112" width="12" height="27" fill="#754e35" />
+    <g transform={`translate(${x} ${y}) scale(${scale})`} data-pixel-detail="layered-pine">
+      <rect x="8" y="26" width="4" height="13" fill="#6d4934" />
+      <path d="M10 0 3 10h4L1 20h5L0 31h20l-6-11h5l-6-10h4z" fill={tone} />
+      <path d="M10 3 6 10h4L5 20h5L5 27h5z" fill="#6f9c58" opacity=".78" />
+      <rect x="4" y="26" width="3" height="2" fill="#b4c96c" opacity=".65" />
     </g>
   );
 }
 
-function LodgeWindow({ x, y, width = 52, height = 62 }: { x: number; y: number; width?: number; height?: number }) {
+function PixelWindow({ x, y, wide = false }: { x: number; y: number; wide?: boolean }) {
+  const width = wide ? 18 : 12;
   return (
-    <g transform={`translate(${x} ${y})`} data-pixel-detail="lodge-window">
-      <rect width={width} height={height} fill="#4d372d" rx="3" />
-      <rect x="7" y="7" width={width - 14} height={height - 14} fill="url(#windowSun)" />
-      <path d={`M${width / 2} 7v${height - 14}M7 ${height / 2}h${width - 14}`} stroke="#7b4831" strokeWidth="5" />
-      <rect x="-5" y={height - 3} width={width + 10} height="8" fill="#d09a58" />
+    <g transform={`translate(${x} ${y})`} data-pixel-detail="warm-window">
+      <rect width={width} height="15" fill="#402f2b" />
+      <rect x="2" y="2" width={width - 4} height="11" fill="#ffce67" className="window-flicker" />
+      <rect x={width / 2 - 1} y="2" width="2" height="11" fill="#9c5635" />
+      <rect x="2" y="7" width={width - 4} height="2" fill="#9c5635" />
+      <rect x="-1" y="15" width={width + 2} height="2" fill="#d49555" />
+    </g>
+  );
+}
+
+const adventurers = [
+  { x: 282, hair: '#d74b70', coat: '#e96668', accent: '#ffd36b', name: '红发冒险者' },
+  { x: 297, hair: '#5a382b', coat: '#345b72', accent: '#eeb45b', name: '公会执事' },
+  { x: 312, hair: '#62a865', coat: '#416f58', accent: '#89d6c8', name: '绿发精灵' },
+  { x: 327, hair: '#e7e1d8', coat: '#59628d', accent: '#b5c7ff', name: '银发法师' },
+] as const;
+
+function PixelAdventurer({ x, hair, coat, accent, name, index }: (typeof adventurers)[number] & { index: number }) {
+  return (
+    <g className={`svg-adventurer adventurer-${index + 1}`} transform={`translate(${x} 129) scale(1.12)`} role="img" aria-label={name} data-pixel-detail="original-pixel-adventurer">
+      <rect x="-2" y="24" width="14" height="3" fill="#24483f" opacity=".35" />
+      <rect x="1" y="4" width="8" height="8" fill="#f3c89f" />
+      <path d="M0 3h2V1h7v2h2v7H9V6H7v3H5V6H3v4H0z" fill={hair} />
+      <rect x="2" y="6" width="1" height="1" fill="#2d2631" /><rect x="7" y="6" width="1" height="1" fill="#2d2631" />
+      <path d="M1 12h8l2 9H8v4H5v-4H0z" fill={coat} />
+      <rect x="1" y="14" width="8" height="2" fill={accent} />
+      <rect x="-2" y="13" width="3" height="7" fill={coat} /><rect x="9" y="13" width="3" height="7" fill={coat} />
+      <rect x="0" y="20" width="4" height="3" fill="#392f36" /><rect x="7" y="20" width="4" height="3" fill="#392f36" />
+      <rect x={index % 2 ? -4 : 11} y="11" width="2" height="10" fill={accent} />
+      <rect x={index % 2 ? -5 : 10} y="10" width="4" height="3" fill="#fff0a7" />
     </g>
   );
 }
@@ -49,88 +94,92 @@ function LodgeWindow({ x, y, width = 52, height = 62 }: { x: number; y: number; 
 export function LuminousGuildScene() {
   return (
     <div className="layered-guild-scene luminous-valley-scene" data-testid="layered-guild-scene" aria-label="分层像素幻想公会大厅场景">
-      <svg className="guild-scene-svg" viewBox="0 0 1600 760" preserveAspectRatio="xMidYMid slice" aria-hidden="true" shapeRendering="crispEdges">
+      <svg className="guild-scene-svg" viewBox="0 0 400 190" preserveAspectRatio="xMidYMid slice" shapeRendering="crispEdges" data-rendering="low-resolution-pixel-art">
         <defs>
-          <linearGradient id="dawnSky" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#3f8997" /><stop offset=".52" stopColor="#78b9b2" /><stop offset="1" stopColor="#ffd493" /></linearGradient>
-          <linearGradient id="cloudCream" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#fffbdc" /><stop offset=".55" stopColor="#ffe7aa" /><stop offset="1" stopColor="#eab276" /></linearGradient>
-          <linearGradient id="mountainMist" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#76aaa0" /><stop offset="1" stopColor="#376d69" /></linearGradient>
-          <linearGradient id="meadowLight" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#8fc96a" /><stop offset="1" stopColor="#376f52" /></linearGradient>
-          <linearGradient id="streamLight" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#dff7d7" /><stop offset=".4" stopColor="#83cfbe" /><stop offset="1" stopColor="#3c8d8c" /></linearGradient>
-          <linearGradient id="lodgeWall" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#f2d29c" /><stop offset="1" stopColor="#bc8158" /></linearGradient>
-          <linearGradient id="roofGreen" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#4f7563" /><stop offset=".55" stopColor="#28584f" /><stop offset="1" stopColor="#173b3c" /></linearGradient>
-          <linearGradient id="windowSun" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#fff5b0" /><stop offset=".55" stopColor="#ffc966" /><stop offset="1" stopColor="#ef8744" /></linearGradient>
-          <filter id="sunBloom" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="22" /></filter>
-          <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="8" /></filter>
-          <pattern id="lodgeStone" width="46" height="28" patternUnits="userSpaceOnUse"><rect width="46" height="28" fill="#8d7564" /><path d="M0 2h46M0 26h46M23 0v14M8 14v14M36 14v14" stroke="#61584f" strokeWidth="3" /><path d="M4 7h14M28 7h13" stroke="#bba792" strokeWidth="2" /></pattern>
+          <linearGradient id="pixelSky" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#397e9b" /><stop offset=".52" stopColor="#62a7ad" /><stop offset="1" stopColor="#e5bd78" /></linearGradient>
+          <linearGradient id="pixelMeadow" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#8fc666" /><stop offset="1" stopColor="#3c7552" /></linearGradient>
+          <linearGradient id="pixelStream" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#d8f0c3" /><stop offset=".45" stopColor="#76c8b6" /><stop offset="1" stopColor="#3b898b" /></linearGradient>
+          <linearGradient id="pixelRoof" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#355f55" /><stop offset="1" stopColor="#173a3a" /></linearGradient>
+          <pattern id="pixelShingles" width="8" height="5" patternUnits="userSpaceOnUse"><rect width="8" height="5" fill="#285148" /><path d="M0 4h8M4 0v4" stroke="#173b38" strokeWidth="1" /><path d="M1 1h3" stroke="#557c61" strokeWidth="1" /></pattern>
+          <pattern id="pixelStone" width="12" height="7" patternUnits="userSpaceOnUse"><rect width="12" height="7" fill="#b9855f" /><path d="M0 1h12M0 6h12M5 1v5" stroke="#8b624c" strokeWidth="1" /><path d="M1 3h3M7 3h4" stroke="#d6aa77" strokeWidth="1" /></pattern>
         </defs>
 
         <g data-scene-layer="sky-light">
-          <rect width="1600" height="760" fill="url(#dawnSky)" data-pixel-detail="dawn-gradient" />
-          <circle cx="322" cy="128" r="92" fill="#fff3a3" opacity=".44" filter="url(#sunBloom)" data-pixel-detail="morning-bloom" />
-          <circle cx="322" cy="128" r="48" fill="#fff8c6" opacity=".92" data-pixel-detail="pixel-sun" />
-          <g data-lighting="golden-hour" data-pixel-detail="golden-rays" fill="#fff5bd" opacity=".18">
-            <path d="M265 160L0 373v92l333-282z" /><path d="M324 178L70 510h121l180-320z" /><path d="M383 171L248 505h96l84-316z" />
+          <rect width="400" height="190" fill="url(#pixelSky)" data-pixel-detail="banded-dawn-sky" />
+          <rect y="74" width="400" height="8" fill="#f6c986" opacity=".34" data-pixel-detail="warm-horizon-band" />
+          <g data-lighting="golden-hour" data-pixel-detail="golden-hour-rays" fill="#fff4b2" opacity=".17">
+            <path d="M56 24 0 93v22L72 30z" /><path d="m69 28-31 92h25l17-88z" /><path d="m82 30 4 85h18L92 28z" />
           </g>
-          <g fill="#f9f0b7" opacity=".85" data-pixel-detail="sky-motes"><rect x="102" y="101" width="7" height="7" /><rect x="506" y="72" width="6" height="6" /><rect x="709" y="126" width="5" height="5" /><rect x="1290" y="82" width="6" height="6" /></g>
+          <g data-pixel-detail="square-sun"><rect x="57" y="19" width="20" height="20" fill="#fff4a5" /><rect x="53" y="23" width="28" height="12" fill="#fff4a5" /><rect x="61" y="15" width="12" height="28" fill="#fff8c7" /></g>
+          <g fill="#fff6b4" data-pixel-detail="sky-sparks"><rect x="20" y="30" width="1" height="1" /><rect x="104" y="17" width="2" height="2" /><rect x="211" y="28" width="1" height="1" /><rect x="365" y="18" width="2" height="2" /><rect x="338" y="48" width="1" height="1" /></g>
         </g>
 
         <g data-scene-layer="cloudscape">
-          <CloudMass className="cloud-mass-one" path="M42 303v-36h58v-48h67v-71h78V92h104v32h69v52h83v44h108v83z" shade="M42 303v-39h116v-37h105v-42h91v46h96v30h159v42z" />
-          <CloudMass className="cloud-mass-two" path="M530 272v-41h72v-56h79v-78h103v24h73v53h91v42h132v56z" shade="M530 272v-35h124v-43h112v-38h85v49h92v30h137v37z" />
-          <CloudMass className="cloud-mass-three" path="M1082 311v-47h76v-69h88v-57h86v30h72v51h83v-25h75v117z" shade="M1082 311v-34h115v-42h98v-35h72v46h90v-27h105v92z" />
-          <path d="M0 314h1600v58H0z" fill="#fff1c2" opacity=".18" data-pixel-detail="horizon-haze" />
+          <PixelCloud className="cloud-one" x={-12} y={28} scale={.82} variant={1} />
+          <PixelCloud className="cloud-two" x={57} y={9} scale={1.16} variant={2} />
+          <PixelCloud className="cloud-three" x={201} y={30} scale={.84} variant={3} />
+          <PixelCloud className="cloud-four" x={286} y={15} scale={.9} variant={4} />
+          <path d="M0 75h400v12H0z" fill="#ffe2a0" opacity=".23" data-pixel-detail="cloud-haze" />
         </g>
 
         <g data-scene-layer="far-mountains">
-          <path d="M0 457L139 331l95 72 114-155 105 124 114-102 118 137 121-112 104 118 117-129 129 146 129-119 109 108 126-102 100 96v257H0z" fill="url(#mountainMist)" opacity=".78" data-pixel-detail="mist-mountains" />
-          <path d="M0 491l126-84 103 56 108-79 96 73 111-65 119 83 112-74 98 64 116-77 114 83 96-60 113 66 91-52 117 71v175H0z" fill="#346e67" opacity=".76" data-pixel-detail="near-mountains" />
-          <path d="M121 401l18-15 20 15M584 419l22-19 24 19M1182 421l21-18 23 18" fill="none" stroke="#d5e4c8" strokeWidth="8" opacity=".55" data-pixel-detail="mountain-caps" />
+          <path d="m0 111 27-25 15 12 24-34 18 22 20-18 27 29 24-24 24 24 31-29 30 31 30-23 27 23 29-28 28 29 22-20 44 32v41H0z" fill="#6fa39a" opacity=".72" data-pixel-detail="misty-mountain-range" />
+          <path d="m0 126 24-18 21 12 26-20 23 19 27-15 26 19 25-18 27 18 25-16 28 21 30-20 30 22 23-17 32 20 27-18 33 24v28H0z" fill="#39766c" data-pixel-detail="near-mountain-range" />
+          <g fill="#dce6be" opacity=".58" data-pixel-detail="mountain-light"><path d="m62 100 9-8 10 9-9-5z" /><path d="m149 103 8-8 8 8-8-4z" /><path d="m276 107 8-7 9 8-9-4z" /></g>
+          <g data-pixel-detail="distant-tree-line"><PixelPine x={10} y={94} scale={.62} /><PixelPine x={38} y={103} scale={.48} tone="#336f5c" /><PixelPine x={118} y={99} scale={.55} /><PixelPine x={194} y={102} scale={.48} /><PixelPine x={360} y={96} scale={.62} /></g>
         </g>
 
         <g data-scene-layer="valley">
-          <path d="M0 494c210-82 420-54 608 12 216 76 443 45 992-58v312H0z" fill="url(#meadowLight)" data-pixel-detail="sunlit-meadow" />
-          <path d="M0 582c232-75 452-8 652 40 244 59 510 25 948-93v231H0z" fill="#4d8f5b" data-pixel-detail="rolling-valley" />
-          <path d="M534 760c120-128 184-162 303-190 84-19 132-59 178-117-3 83-51 143-133 179-98 42-151 78-191 128z" fill="url(#streamLight)" data-pixel-detail="valley-stream" />
-          <path d="M594 750c95-92 149-122 246-151 83-25 124-57 160-108" fill="none" stroke="#eff8cf" strokeWidth="12" opacity=".46" data-pixel-detail="stream-glint" />
-          <g data-pixel-detail="distant-pines"><Pine x={60} y={392} scale={.76} /><Pine x={156} y={420} scale={.62} tone="#326f5b" /><Pine x={360} y={390} scale={.72} /><Pine x={520} y={421} scale={.55} tone="#39785e" /><Pine x={1488} y={369} scale={.8} /></g>
-          <g fill="#fff1aa" data-pixel-detail="meadow-flowers"><rect x="184" y="557" width="9" height="9" /><rect x="278" y="604" width="8" height="8" /><rect x="424" y="566" width="9" height="9" /><rect x="735" y="633" width="8" height="8" /><rect x="865" y="552" width="8" height="8" /></g>
+          <path d="M0 124 44 111l46 8 48-7 47 15 49-7 51 10 50-15 65 2v73H0z" fill="url(#pixelMeadow)" data-pixel-detail="sunlit-valley" />
+          <path d="m0 143 49-11 47 6 41-4 52 13 50-6 52 8 51-14 58 4v51H0z" fill="#4b8d59" data-pixel-detail="rolling-meadow" />
+          <path d="M81 190h74l26-17 20-8 17-15 7-19-13 17-21 11-24 9-30 8z" fill="url(#pixelStream)" data-pixel-detail="winding-stream" />
+          <path d="m112 186 36-12 27-8 19-9 13-11" fill="none" stroke="#eaffc9" strokeWidth="3" opacity=".62" data-pixel-detail="stream-sun-glint" />
+          <path d="m214 152 24-12 27-4 30 5 23 12-37 9-37-2z" fill="#d8c486" opacity=".58" data-pixel-detail="guild-path" />
+          <g fill="#fff0a2" data-pixel-detail="meadow-flower-field"><rect x="28" y="139" width="2" height="2" /><rect x="50" y="151" width="2" height="2" /><rect x="70" y="132" width="2" height="2" /><rect x="104" y="147" width="2" height="2" /><rect x="128" y="137" width="2" height="2" /><rect x="235" y="151" width="2" height="2" /><rect x="354" y="142" width="2" height="2" /></g>
+          <g fill="#f18979" data-pixel-detail="coral-flowers"><rect x="37" y="145" width="3" height="3" /><rect x="91" y="155" width="3" height="3" /><rect x="120" y="144" width="3" height="3" /><rect x="228" y="158" width="3" height="3" /></g>
+          <g data-pixel-detail="distant-village" opacity=".82"><path d="m154 128 7-6 7 6v9h-14zm23 3 6-5 6 5v8h-12zm18-5 8-7 8 7v12h-16z" fill="#6e5846" /><path d="m152 128 9-8 9 8zm23 3 8-7 8 7zm18-5 10-9 10 9z" fill="#355e50" /><rect x="159" y="130" width="3" height="3" fill="#ffd97a" /><rect x="181" y="132" width="2" height="2" fill="#ffd97a" /><rect x="201" y="128" width="3" height="3" fill="#ffd97a" /></g>
         </g>
 
         <g data-scene-layer="guild-lodge">
-          <path d="M982 583V340h111v-91h204v76h183v258z" fill="url(#lodgeWall)" stroke="#594334" strokeWidth="9" data-pixel-detail="lodge-facade" />
-          <path d="M930 355l140-151h255l122 111 90 40-21 34H949z" fill="url(#roofGreen)" stroke="#2c413b" strokeWidth="12" data-pixel-detail="lodge-roof" />
-          <path d="M1027 250l86-99h139l89 99z" fill="url(#roofGreen)" stroke="#2c413b" strokeWidth="11" data-pixel-detail="lodge-dormer" />
-          <path d="M959 371h553M1084 250h209" stroke="#8cad72" strokeWidth="8" opacity=".75" data-pixel-detail="moss-roof-edge" />
-          <path d="M1001 389h467v194h-467z" fill="url(#lodgeStone)" opacity=".48" data-pixel-detail="stone-foundation" />
-          <g stroke="#684632" strokeWidth="13" data-pixel-detail="timber-frame"><path d="M1001 377h467M1070 340v243M1309 327v256M1001 462h467" /><path d="M1004 378l67 84M1137 377l-67 85M1310 377l72 85M1455 377l-73 85" /></g>
-          <LodgeWindow x={1018} y={397} /><LodgeWindow x={1392} y={397} /><LodgeWindow x={1162} y={224} width={50} height={66} />
-          <path d="M1170 583V454c0-49 38-86 84-86s84 37 84 86v129" fill="#5d3829" stroke="#493126" strokeWidth="11" data-pixel-detail="lodge-door" />
-          <path d="M1191 583V458c0-35 28-62 63-62s63 27 63 62v125" fill="#9a5937" /><path d="M1254 397v186M1192 494h124" stroke="#5e3428" strokeWidth="8" />
-          <path d="M1139 582h230l33 22h-296zM1095 604h322l38 27h-397z" fill="#c9a273" stroke="#78604c" strokeWidth="7" data-pixel-detail="lodge-steps" />
-          <g transform="translate(1100 304)" data-pixel-detail="lodge-sign"><path d="M0 0h303v82H0z" fill="#f1d49d" stroke="#594232" strokeWidth="8" /><path d="M13 13h277v56H13z" fill="#345f52" /><text x="151" y="52" textAnchor="middle" fill="#fff2c1" fontFamily="FusionPixel, sans-serif" fontSize="34">佐佑公会</text></g>
-          <GuildCrest symbol transform="translate(1215 167) scale(.62 .7)" />
-          <g data-pixel-detail="warm-lanterns"><path d="M1105 402v62M1376 402v62" stroke="#624433" strokeWidth="8" /><rect x="1088" y="429" width="34" height="48" fill="#4b372e" /><rect x="1096" y="437" width="18" height="32" fill="#ffd275" /><rect x="1359" y="429" width="34" height="48" fill="#4b372e" /><rect x="1367" y="437" width="18" height="32" fill="#ffd275" /></g>
-          <g data-pixel-detail="lodge-chimney"><path d="M1385 260v-99h61v140" fill="#8a6b58" stroke="#4f4038" strokeWidth="9" /><path d="M1374 165h83v21h-83z" fill="#4e4037" /></g>
+          <path d="M250 164V98h28V75h50v17h51v72z" fill="url(#pixelStone)" stroke="#543d34" strokeWidth="3" data-pixel-detail="guild-facade" />
+          <path d="m239 101 33-35h62l28 25 24 10-6 10H244z" fill="url(#pixelShingles)" stroke="#1d403d" strokeWidth="4" data-pixel-detail="main-roof" />
+          <path d="m269 77 20-24h35l22 24z" fill="url(#pixelRoof)" stroke="#1d403d" strokeWidth="3" data-pixel-detail="tower-roof" />
+          <path d="M244 106h136M276 76h66" stroke="#719267" strokeWidth="2" data-pixel-detail="mossy-roof-trim" />
+          <path d="M254 106h121v58H254z" fill="url(#pixelStone)" opacity=".82" data-pixel-detail="stone-wall-texture" />
+          <g stroke="#694834" strokeWidth="3" data-pixel-detail="timber-frame"><path d="M252 104h126M270 98v66M350 93v71M252 133h126" /><path d="m253 105 17 28 18-28m45 0 17 28 25-28" /></g>
+          <PixelWindow x={257} y={113} /><PixelWindow x={357} y={113} /><PixelWindow x={302} y={57} wide />
+          <path d="M294 164v-31c0-13 10-23 23-23s23 10 23 23v31z" fill="#513128" stroke="#3b2926" strokeWidth="3" data-pixel-detail="arched-guild-door" />
+          <path d="M300 164v-30c0-9 7-16 17-16s17 7 17 16v30z" fill="#9c5936" /><path d="M317 118v46m-17-22h34" stroke="#5b342a" strokeWidth="2" />
+          <path d="M286 164h62l8 5h-78zm-12 5h86l9 6H266z" fill="#d4b07b" stroke="#745a43" strokeWidth="2" data-pixel-detail="stone-steps" />
+          <g transform="translate(279 84)" data-pixel-detail="guild-name-sign"><rect width="76" height="22" fill="#e7ca87" stroke="#503b31" strokeWidth="2" /><rect x="3" y="3" width="70" height="16" fill="#315a4f" /><text x="38" y="15" textAnchor="middle" fill="#fff0b2" fontFamily="FusionPixel, sans-serif" fontSize="9">佐佑公会</text></g>
+          <GuildCrest symbol transform="translate(305 54) scale(.12)" />
+          <g data-pixel-detail="lantern-pair"><rect x="278" y="120" width="6" height="10" fill="#49342d" /><rect x="280" y="122" width="2" height="6" fill="#ffd36d" className="window-flicker" /><rect x="346" y="120" width="6" height="10" fill="#49342d" /><rect x="348" y="122" width="2" height="6" fill="#ffd36d" className="window-flicker" /></g>
+          <g data-pixel-detail="lodge-chimney"><rect x="354" y="55" width="14" height="32" fill="#765647" /><rect x="351" y="53" width="20" height="6" fill="#423733" /><rect x="358" y="48" width="5" height="4" fill="#d9d0b3" opacity=".45" /></g>
+          <g data-pixel-detail="ivy-and-flower-boxes"><rect x="254" y="132" width="16" height="4" fill="#7d5538" /><rect x="258" y="129" width="3" height="3" fill="#ef8c78" /><rect x="265" y="128" width="3" height="3" fill="#f2cf70" /><rect x="358" y="132" width="17" height="4" fill="#7d5538" /><rect x="362" y="128" width="3" height="3" fill="#f0d276" /><rect x="369" y="129" width="3" height="3" fill="#e78789" /></g>
         </g>
 
         <g data-scene-layer="foreground-garden">
-          <path d="M0 665c170-54 348-36 535 18 164 47 344 45 525 11 191-36 355-51 540-20v86H0z" fill="#2d684d" data-pixel-detail="foreground-grass" />
-          <path d="M0 724c190-45 405-19 589 24 214 50 444-27 686-34 117-3 218 7 325 28v18H0z" fill="#1f513f" data-pixel-detail="deep-foreground" />
-          <g data-pixel-detail="flower-border"><path d="M82 697h8v28h-8zM126 679h8v32h-8zM198 705h8v26h-8zM383 687h8v34h-8zM469 704h8v25h-8z" fill="#507a45" /><rect x="72" y="686" width="25" height="16" fill="#f18b8b" /><rect x="116" y="668" width="25" height="16" fill="#ffe291" /><rect x="188" y="694" width="25" height="16" fill="#d99ad3" /><rect x="373" y="676" width="25" height="16" fill="#f3a071" /><rect x="459" y="693" width="25" height="16" fill="#f6dc7b" /></g>
-          <g data-pixel-detail="foreground-shrubs"><path d="M0 700v-65h39v-33h43v39h52v59zM1455 708v-62h38v-45h46v37h61v70z" fill="#173f38" /><path d="M18 670v-38h35v38M1480 673v-42h37v42" fill="#3d7d55" /></g>
-          <g data-pixel-detail="wooden-waypost" transform="translate(834 595)"><rect x="34" y="0" width="15" height="113" fill="#704b32" /><path d="M0 9h105v40H0z" fill="#b77a46" stroke="#66412e" strokeWidth="6" /><text x="52" y="35" textAnchor="middle" fill="#fff0b6" fontFamily="FusionPixel, sans-serif" fontSize="19">公会大厅</text></g>
+          <path d="M0 170 32 163l33 4 35-5 38 9 45-4 41 8 42-7 45 6 40-4 49 7v13H0z" fill="#2a664a" data-pixel-detail="foreground-grass" />
+          <path d="m0 182 45-6 41 6 40-4 47 7 51-5 41 6 53-6 42 5 40-3v8H0z" fill="#163f38" data-pixel-detail="deep-foreground" />
+          <g data-pixel-detail="flowering-foreground"><rect x="15" y="165" width="2" height="13" fill="#4d7745" /><rect x="11" y="163" width="10" height="5" fill="#f08c82" /><rect x="51" y="160" width="2" height="14" fill="#4d7745" /><rect x="47" y="158" width="10" height="5" fill="#f5d477" /><rect x="91" y="167" width="2" height="12" fill="#4d7745" /><rect x="87" y="164" width="10" height="5" fill="#d899c7" /><rect x="211" y="171" width="2" height="11" fill="#4d7745" /><rect x="207" y="168" width="10" height="5" fill="#f19777" /></g>
+          <g transform="translate(220 139)" data-pixel-detail="wooden-waypost"><rect x="7" y="0" width="4" height="35" fill="#67452f" /><path d="M0 3h31v12H0z" fill="#b97843" stroke="#5f3f2d" strokeWidth="2" /><text x="15.5" y="11" textAnchor="middle" fill="#fff0b7" fontFamily="FusionPixel, sans-serif" fontSize="6">公会大厅</text></g>
+        </g>
+
+        <g data-scene-layer="forest-frame">
+          <g data-pixel-detail="left-forest-silhouette"><path d="M0 0h28v12h12v15h-9v17h8v18H27v21H15v31H0z" fill="#173d39" /><path d="M0 19h18V8h13v15h-8v17h7v18H18v18H6z" fill="#2b654d" /><rect x="5" y="33" width="9" height="7" fill="#6f9655" /><rect x="16" y="16" width="9" height="7" fill="#789e56" /></g>
+          <g data-pixel-detail="right-forest-silhouette"><path d="M400 0h-22v15h-13v17h8v16h-11v22h12v25h13v31h13z" fill="#173b38" /><path d="M400 22h-15V11h-12v15h7v18h-8v18h12v23h8z" fill="#2d654d" /><rect x="383" y="31" width="10" height="7" fill="#739755" /><rect x="370" y="18" width="9" height="7" fill="#82a75a" /></g>
+          <g data-pixel-detail="near-pines"><PixelPine x={2} y={103} scale={1.35} tone="#173f3b" /><PixelPine x={25} y={119} scale={1.02} tone="#225c4a" /><PixelPine x={371} y={112} scale={1.18} tone="#173f3b" /></g>
+          <g fill="#fff4ad" opacity=".76" data-pixel-detail="forest-fireflies"><rect x="19" y="112" width="2" height="2" /><rect x="35" y="139" width="1" height="1" /><rect x="381" y="104" width="2" height="2" /><rect x="367" y="142" width="1" height="1" /></g>
+        </g>
+
+        <g data-scene-layer="adventurer-party">
+          {adventurers.map((adventurer, index) => <PixelAdventurer key={adventurer.name} {...adventurer} index={index} />)}
         </g>
       </svg>
 
       <div className="hero-atmosphere valley-atmosphere" data-atmosphere="cinematic-depth" aria-hidden="true">
         <i className="atmosphere-ray" /><i className="atmosphere-mist mist-left" /><i className="atmosphere-mist mist-right" />
         {Array.from({ length: 10 }, (_, index) => <span key={index} style={{ '--particle-index': index } as CSSProperties} data-atmosphere-particle />)}
-      </div>
-      <div className="hero-party valley-party" data-scene-layer="adventurer-party">
-        <ValleyCharacter variant={1} name="红发冒险者" />
-        <ValleyCharacter variant={2} name="公会执事" />
-        <ValleyCharacter variant={3} name="绿发精灵" />
-        <ValleyCharacter variant={4} name="银发法师" />
       </div>
     </div>
   );

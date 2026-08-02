@@ -2,18 +2,22 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
-  ArrowUpRight,
   BookOpen,
   CalendarDays,
   ChevronDown,
   Compass,
   Crown,
+  Flame,
   GalleryVerticalEnd,
-  Heart,
+  Hammer,
   Map,
+  Music,
+  Palette,
+  ScrollText,
   Shield,
   Sparkles,
   Users,
+  WandSparkles,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from './api';
@@ -26,268 +30,173 @@ interface GuildSummary {
   workCount: number;
 }
 
-const portalCards = [
-  {
-    to: '/chronicle',
-    index: '01',
-    english: 'CHRONICLE',
-    title: '读懂我们的来处',
-    text: '从第一次相遇，到一次次把喜欢变成作品。每一年的佐佑，都有值得被记住的章节。',
-    icon: BookOpen,
-    tone: 'violet',
-  },
-  {
-    to: '/departments',
-    index: '02',
-    english: 'CLASS HALL',
-    title: '找到并肩的同伴',
-    text: '六个真实协作部门，六种不同的专业方向。RPG 职业只是我们的浪漫称谓。',
-    icon: Shield,
-    tone: 'cyan',
-  },
-  {
-    to: '/activities',
-    index: '03',
-    english: 'QUEST ARCHIVE',
-    title: '看见热爱正在发生',
-    text: '舞台、漫展、创作与日常企划，都在真实的活动档案中留下完整轨迹。',
-    icon: Map,
-    tone: 'amber',
-  },
+const departments = [
+  ['COS部', '幻术师', 'cos', WandSparkles, '角色、妆造与舞台呈现'],
+  ['技术部', '魔导工程师', 'tech', Hammer, '影像、后期与技术支持'],
+  ['轻音部', '吟游诗人', 'music', Music, '乐队、演出与音乐交流'],
+  ['原创部', '绘卷术士', 'original', Palette, '绘画、文字与原创表达'],
+  ['舞装部', '舞刃使', 'dance', Sparkles, '舞蹈、WOTA与舞台编排'],
+  ['外宣部', '传令官', 'publicity', Compass, '宣传、新媒体与内容策划'],
 ] as const;
 
-const departmentNames = [
-  ['COS部', '幻术师', 'cos'],
-  ['技术部', '魔导工程师', 'tech'],
-  ['轻音部', '吟游诗人', 'music'],
-  ['原创部', '绘卷术士', 'original'],
-  ['舞装部', '舞刃使', 'dance'],
-  ['外宣部', '传令官', 'publicity'],
-] as const;
-
-function GuildMark({ compact = false }: { compact?: boolean }) {
+function TavernScene() {
   return (
-    <span className={`astral-mark ${compact ? 'compact' : ''}`} aria-hidden="true">
-      <i className="mark-orbit" />
-      <i className="mark-star">✦</i>
-      <b>Z</b>
-    </span>
-  );
-}
-
-function AstralGuildScene() {
-  return (
-    <div className="astral-scene" data-testid="astral-guild-scene" aria-label="星夜像素幻想公会大厅动态场景">
-      <svg className="astral-sky" viewBox="0 0 1600 920" preserveAspectRatio="xMidYMid slice" role="img" aria-hidden="true">
+    <div className="tavern-scene" data-testid="tavern-guild-scene" aria-label="高精度像素酒馆公会大厅动态场景">
+      <svg viewBox="0 0 1600 920" preserveAspectRatio="xMidYMid slice" role="img" aria-hidden="true">
         <defs>
-          <linearGradient id="sky" x1="0" y1="0" x2="0.8" y2="1">
-            <stop offset="0" stopColor="#080b24" />
-            <stop offset="0.48" stopColor="#17234f" />
-            <stop offset="0.78" stopColor="#5a3564" />
-            <stop offset="1" stopColor="#e38a66" />
-          </linearGradient>
-          <radialGradient id="moonHalo">
-            <stop offset="0" stopColor="#fffbe0" stopOpacity=".98" />
-            <stop offset=".16" stopColor="#f6dca8" stopOpacity=".88" />
-            <stop offset=".48" stopColor="#e6a9c9" stopOpacity=".23" />
-            <stop offset="1" stopColor="#c18bea" stopOpacity="0" />
-          </radialGradient>
-          <linearGradient id="mountain" x1="0" y1="0" x2="0" y2="1">
-            <stop stopColor="#27375c" />
-            <stop offset="1" stopColor="#10172f" />
-          </linearGradient>
-          <linearGradient id="roof" x1="0" y1="0" x2="1" y2="1">
-            <stop stopColor="#472d59" />
-            <stop offset=".55" stopColor="#271c3e" />
-            <stop offset="1" stopColor="#171329" />
-          </linearGradient>
-          <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
-            <stop stopColor="#3b3650" />
-            <stop offset="1" stopColor="#191828" />
-          </linearGradient>
-          <linearGradient id="window" x1="0" y1="0" x2="0" y2="1">
-            <stop stopColor="#fff4b4" />
-            <stop offset=".48" stopColor="#ffbd6b" />
-            <stop offset="1" stopColor="#e46768" />
-          </linearGradient>
-          <filter id="softGlow" x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur stdDeviation="13" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
+          <linearGradient id="tavernWall" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#352d2b"/><stop offset="1" stopColor="#171414"/></linearGradient>
+          <linearGradient id="timber" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#6e4227"/><stop offset=".45" stopColor="#3c2418"/><stop offset="1" stopColor="#1d1511"/></linearGradient>
+          <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#4a2d1e"/><stop offset="1" stopColor="#170f0c"/></linearGradient>
+          <radialGradient id="hearth"><stop stopColor="#fff2a6"/><stop offset=".22" stopColor="#ffb23e"/><stop offset=".55" stopColor="#e45328"/><stop offset="1" stopColor="#7b201b" stopOpacity="0"/></radialGradient>
+          <radialGradient id="candleGlow"><stop stopColor="#fff1b2" stopOpacity=".72"/><stop offset="1" stopColor="#ef7c32" stopOpacity="0"/></radialGradient>
+          <pattern id="stone" width="92" height="50" patternUnits="userSpaceOnUse"><rect width="92" height="50" fill="#2d2826"/><path d="M0 1h92M0 49h92M46 0v25M0 25h92M20 25v25M72 25v25" stroke="#171514" strokeWidth="3"/><path d="M3 5h39M49 5h38M4 30h13M24 30h44M75 30h13" stroke="#4c413b" strokeWidth="2" opacity=".5"/></pattern>
+          <filter id="fireGlow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="17" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="sceneSoft"><feGaussianBlur stdDeviation=".35"/></filter>
         </defs>
 
-        <rect width="1600" height="920" fill="url(#sky)" />
-        <ellipse cx="1195" cy="198" rx="260" ry="260" fill="url(#moonHalo)" />
-        <circle cx="1195" cy="198" r="72" fill="#fff5d5" opacity=".96" />
-        <circle cx="1171" cy="179" r="13" fill="#e5d5bb" opacity=".34" />
-        <circle cx="1222" cy="219" r="18" fill="#e5d5bb" opacity=".24" />
+        <rect width="1600" height="920" fill="#120f10"/>
+        <rect x="0" y="70" width="1600" height="650" fill="url(#stone)"/>
+        <rect x="0" y="0" width="1600" height="170" fill="#171113"/>
+        <path d="M0 0h1600v82H0zM0 70l800 185 800-185v67L800 322 0 137z" fill="url(#timber)" stroke="#160e0b" strokeWidth="12"/>
+        <path d="M140 0l535 282M1460 0L925 282M370 0l353 266M1230 0L877 266" stroke="#794529" strokeWidth="38" opacity=".8"/>
 
-        <g className="svg-stars" fill="#fff9d9">
-          <circle cx="130" cy="125" r="2" /><circle cx="236" cy="213" r="1.7" /><circle cx="363" cy="108" r="2.2" />
-          <circle cx="492" cy="182" r="1.5" /><circle cx="639" cy="92" r="1.8" /><circle cx="766" cy="166" r="2.5" />
-          <circle cx="899" cy="80" r="1.4" /><circle cx="1015" cy="288" r="2" /><circle cx="1341" cy="99" r="2" />
-          <circle cx="1450" cy="228" r="1.7" /><path d="M310 267h18M319 258v18" stroke="#fff9d9" strokeWidth="2" />
-          <path d="M883 231h22M894 220v22" stroke="#fff9d9" strokeWidth="2" />
+        <g className="arched-windows">
+          <path d="M116 490V260c0-72 55-130 122-130s122 58 122 130v230z" fill="#161827" stroke="#744b32" strokeWidth="18"/>
+          <path d="M144 456V267c0-53 42-98 94-98s94 45 94 98v189z" fill="#26384a" stroke="#201a1a" strokeWidth="8"/>
+          <path d="M238 170v286M145 326h187" stroke="#7d573a" strokeWidth="12"/>
+          <path d="M1240 490V260c0-72 55-130 122-130s122 58 122 130v230z" fill="#161827" stroke="#744b32" strokeWidth="18"/>
+          <path d="M1268 456V267c0-53 42-98 94-98s94 45 94 98v189z" fill="#243747" stroke="#201a1a" strokeWidth="8"/>
+          <path d="M1362 170v286M1269 326h187" stroke="#7d573a" strokeWidth="12"/>
         </g>
 
-        <g className="svg-cloud cloud-far" fill="#a7b0d0" opacity=".13">
-          <ellipse cx="250" cy="303" rx="190" ry="45" /><ellipse cx="405" cy="314" rx="130" ry="34" />
-        </g>
-        <g className="svg-cloud cloud-near" fill="#d6c1d5" opacity=".18">
-          <ellipse cx="1180" cy="382" rx="210" ry="46" /><ellipse cx="1420" cy="370" rx="176" ry="38" />
+        <g className="back-door">
+          <path d="M595 594V325c0-117 91-211 205-211s205 94 205 211v269z" fill="#171313" stroke="#6d4229" strokeWidth="24"/>
+          <path d="M640 594V337c0-87 71-158 160-158s160 71 160 158v257z" fill="url(#timber)" stroke="#241713" strokeWidth="9"/>
+          <path d="M800 181v413M650 370h300" stroke="#2a1913" strokeWidth="11"/>
+          <circle cx="916" cy="443" r="12" fill="#d5a553" stroke="#3b2417" strokeWidth="5"/>
+          <path d="M760 259h80l20 46-60 42-60-42z" fill="#26191a" stroke="#c18a49" strokeWidth="5"/>
+          <text x="800" y="318" textAnchor="middle" fill="#f1ca73" fontFamily="Georgia" fontSize="34" fontWeight="700">Z · G</text>
         </g>
 
-        <path d="M0 618L130 470l92 76 143-203 128 184 96-96 150 178 122-150 127 100 175-226 119 189 112-104 126 175v327H0z" fill="url(#mountain)" opacity=".67" />
-        <path d="M0 700l170-115 128 68 136-139 163 148 152-98 137 98 160-77 190 99 155-131 129 108v259H0z" fill="#0d142a" opacity=".91" />
-
-        <g className="guild-citadel">
-          <ellipse cx="1175" cy="782" rx="420" ry="115" fill="#070a18" opacity=".7" />
-          <path d="M840 770V530h90V422l43-66 43 66v108h98V390l61-105 62 105v140h105V438l45-71 46 71v332z" fill="url(#wall)" stroke="#78668f" strokeWidth="4" />
-          <path d="M815 538l70-96h104l58 96zM1057 402l118-178 118 178zM1275 449l112-145 94 145z" fill="url(#roof)" stroke="#a47aad" strokeWidth="5" />
-          <path d="M1112 770V568c0-45 28-86 63-86s63 41 63 86v202" fill="#11101e" stroke="#7d627f" strokeWidth="6" />
-          <path d="M1132 770V579c0-29 18-58 43-58s43 29 43 58v191" fill="url(#window)" opacity=".82" filter="url(#softGlow)" />
-          <g fill="url(#window)" filter="url(#softGlow)">
-            <path d="M875 584v-53c0-18 11-32 25-32s25 14 25 32v53z" />
-            <path d="M1327 575v-53c0-18 11-32 25-32s25 14 25 32v53z" />
-            <path d="M1148 432v-46c0-18 12-31 27-31s27 13 27 31v46z" />
+        <g className="quest-board">
+          <path d="M392 253h215v284H392z" fill="#4e2e1c" stroke="#21130e" strokeWidth="13"/>
+          <path d="M408 269h183v252H408z" fill="#8a5a32" stroke="#bd8550" strokeWidth="4"/>
+          <g fill="#ddc69b" stroke="#5d3c25" strokeWidth="3">
+            <path d="M426 288h72v88h-72z" transform="rotate(-3 462 332)"/><path d="M510 300h62v74h-62z" transform="rotate(4 541 337)"/>
+            <path d="M430 391h63v105h-63z" transform="rotate(2 461 443)"/><path d="M507 392h67v101h-67z" transform="rotate(-4 540 442)"/>
           </g>
-          <path d="M1153 297h44v-74h-44zM1175 223v-51M1151 194h48" stroke="#d9b1c9" strokeWidth="6" />
-          <path d="M795 770h720M860 795h610" stroke="#645377" strokeWidth="8" opacity=".55" />
+          <g fill="#7d2e23"><circle cx="460" cy="304" r="7"/><circle cx="541" cy="316" r="7"/><circle cx="462" cy="409" r="7"/><circle cx="540" cy="408" r="7"/></g>
+          <path d="M453 326h25M449 342h34M528 337h28M447 435h31M525 436h34M524 454h29" stroke="#6e5435" strokeWidth="4"/>
         </g>
 
-        <g className="scene-lanterns" fill="#ffd477" filter="url(#softGlow)">
-          <circle cx="768" cy="705" r="7" /><circle cx="1510" cy="685" r="7" /><circle cx="702" cy="751" r="5" />
+        <g className="hearth-group">
+          <path d="M1045 272h282v314h-282z" fill="#211918" stroke="#5e4232" strokeWidth="17"/>
+          <path d="M1082 586V425c0-70 47-125 104-125s104 55 104 125v161z" fill="#0f0c0b" stroke="#7b5740" strokeWidth="11"/>
+          <ellipse cx="1186" cy="516" rx="142" ry="130" fill="url(#hearth)" opacity=".34" filter="url(#fireGlow)"/>
+          <g className="svg-fire" filter="url(#fireGlow)"><path d="M1133 556c-25-57 36-80 25-137 52 31 41 72 54 93 15-24 22-44 17-73 49 52 31 99 2 117z" fill="#e65a28"/><path d="M1160 558c-7-31 22-51 25-84 31 29 30 62 16 84z" fill="#ffc34d"/><path d="M1177 556c-1-20 12-29 14-47 18 18 14 35 7 47z" fill="#fff2a4"/></g>
+          <path d="M1018 256h336v30h-336z" fill="#3b251b" stroke="#7a4b30" strokeWidth="8"/>
         </g>
-        <path d="M0 760c280-59 498 15 725 71 269 67 526-25 875-18v107H0z" fill="#080b18" />
-        <path d="M930 920c82-95 146-137 245-150 97 13 170 63 258 150" fill="#141528" opacity=".9" />
+
+        <g className="shelves" fill="url(#timber)" stroke="#20130e" strokeWidth="6">
+          <path d="M24 392h306v25H24zM24 542h306v25H24z"/>
+          <path d="M43 410h24v132H43zM287 410h24v132h-24z"/>
+          <path d="M1288 540h286v27h-286z"/>
+        </g>
+        <g fill="#715133" stroke="#251811" strokeWidth="4"><path d="M86 344h34v48H86z"/><path d="M130 356h28v36h-28z"/><path d="M178 332h39v60h-39z"/><circle cx="266" cy="364" r="28"/><path d="M1342 492h38v48h-38z"/><path d="M1393 476h42v64h-42z"/><circle cx="1490" cy="505" r="34"/></g>
+
+        <g className="chandelier" stroke="#1a1110" strokeWidth="8">
+          <path d="M800 0v148M732 148h136M742 148l-52 69M858 148l52 69" fill="none"/>
+          <path d="M672 217h276" stroke="#6f4327" strokeWidth="18"/>
+          <g className="candle"><path d="M700 178v39M760 168v49M840 168v49M900 178v39" stroke="#d9c39d" strokeWidth="10"/><path d="M700 174c-10-16 6-25 0-38 19 12 17 26 0 38M760 164c-10-16 6-25 0-38 19 12 17 26 0 38M840 164c-10-16 6-25 0-38 19 12 17 26 0 38M900 174c-10-16 6-25 0-38 19 12 17 26 0 38" fill="#ffc95f" stroke="#ff9d31" strokeWidth="3"/></g>
+        </g>
+
+        <path d="M0 625h1600v295H0z" fill="url(#floor)"/>
+        <path d="M800 625L0 920M800 625l800 295M800 625v295M800 625L400 920M800 625l400 295" stroke="#21140f" strokeWidth="9"/>
+        <path d="M0 704h1600M0 790h1600M0 882h1600" stroke="#6e4025" strokeWidth="5" opacity=".45"/>
+
+        <g className="tavern-table">
+          <ellipse cx="800" cy="710" rx="270" ry="62" fill="#1c120f" opacity=".55"/>
+          <path d="M590 673h420l-38 92H628z" fill="url(#timber)" stroke="#1d120e" strokeWidth="12"/>
+          <path d="M654 753h44l-23 167h-54zM902 753h44l33 167h-54z" fill="#251711"/>
+          <path d="M700 650h42v29h-42zM864 643h37v36h-37z" fill="#8b633b" stroke="#24150f" strokeWidth="5"/>
+          <path d="M778 660h54l14 19h-81z" fill="#d7bd89" stroke="#5f4129" strokeWidth="4"/>
+        </g>
+
+        <g className="tavern-members" filter="url(#sceneSoft)">
+          <g transform="translate(380 570)"><circle cx="0" cy="0" r="33" fill="#2a1a18"/><path d="M-54 151c3-93 17-126 54-126s51 33 54 126z" fill="#39252a" stroke="#160f10" strokeWidth="9"/><path d="M-34 48h68" stroke="#955440" strokeWidth="12"/></g>
+          <g transform="translate(1260 578)"><circle cx="0" cy="0" r="31" fill="#211719"/><path d="M-50 143c5-86 18-118 50-118s45 32 50 118z" fill="#263440" stroke="#100e11" strokeWidth="9"/><path d="M-27 43l54 63" stroke="#b38b57" strokeWidth="8"/></g>
+          <g transform="translate(1090 700)"><circle cx="0" cy="0" r="26" fill="#211718"/><path d="M-44 128c3-75 14-104 44-104s41 29 44 104z" fill="#4d3330" stroke="#120e0f" strokeWidth="8"/></g>
+        </g>
       </svg>
-      <div className="aurora aurora-one" /><div className="aurora aurora-two" />
-      <span className="firefly f1" /><span className="firefly f2" /><span className="firefly f3" /><span className="firefly f4" />
-      <div className="pixel-sentinel sentinel-left"><i /><b /><span /></div>
-      <div className="pixel-sentinel sentinel-right"><i /><b /><span /></div>
+      <div className="tavern-ambient"/><span className="ember e1"/><span className="ember e2"/><span className="ember e3"/><span className="ember e4"/>
     </div>
   );
 }
 
-function LiveGuildStats() {
-  const summary = useQuery({ queryKey: ['public', 'summary'], queryFn: () => api<GuildSummary>('/api/public/summary') });
-  if (summary.isLoading) return <LoadingPanel label="正在读取公会状态" />;
-  if (summary.error) return <ErrorPanel error={summary.error} />;
-  const stats = [
-    [summary.data!.memberCount, '位成员', 'MEMBERS', Users],
-    [summary.data!.departmentCount, '个部门', 'CLASSES', Shield],
-    [summary.data!.activityCount, '项活动', 'QUESTS', CalendarDays],
-    [summary.data!.workCount, '件作品', 'CREATIONS', GalleryVerticalEnd],
+function GuildStats() {
+  const query = useQuery({ queryKey: ['public', 'summary'], queryFn: () => api<GuildSummary>('/api/public/summary') });
+  if (query.isLoading) return <LoadingPanel label="正在清点公会名册"/>;
+  if (query.error) return <ErrorPanel error={query.error}/>;
+  const entries = [
+    [query.data!.memberCount, '正式成员', Users],
+    [query.data!.departmentCount, '协作部门', Shield],
+    [query.data!.activityCount, '活动档案', CalendarDays],
+    [query.data!.workCount, '作品收录', GalleryVerticalEnd],
   ] as const;
-  return (
-    <div className="astral-stats" aria-label="公会实时数据">
-      {stats.map(([value, label, english, Icon]) => (
-        <article key={english}>
-          <span className="stat-icon"><Icon /></span>
-          <strong>{value}</strong>
-          <div><b>{label}</b><small>{english}</small></div>
-        </article>
-      ))}
-    </div>
-  );
+  return <div className="ledger-stats">{entries.map(([value,label,Icon])=><article key={label}><Icon/><strong>{value}</strong><span>{label}</span></article>)}</div>;
 }
 
 export function HomePage() {
-  const moveLight = (event: React.PointerEvent<HTMLElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    event.currentTarget.style.setProperty('--mx', `${((event.clientX - rect.left) / rect.width) * 100}%`);
-    event.currentTarget.style.setProperty('--my', `${((event.clientY - rect.top) / rect.height) * 100}%`);
-  };
-
   return (
-    <main className="astral-home">
-      <section className="astral-hero" onPointerMove={moveLight}>
-        <AstralGuildScene />
-        <div className="hero-vignette" />
-        <div className="astral-hero-inner">
-          <motion.div className="hero-copy" initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: .8 }}>
-            <span className="worldline"><i /> ZOUYOU ANIME SOCIETY · SINCE 2013</span>
-            <div className="hero-title-lockup">
-              <span className="title-side">佐佑<br />动漫社</span>
-              <h1>佐佑动漫社<em>Adventurer Guild</em></h1>
-            </div>
-            <p className="hero-lead">今夜，公会大厅依然为热爱亮着灯。</p>
-            <p className="hero-sub">这里汇聚角色创作、音乐、舞蹈、技术与幻想。<br />我们用冒险公会的浪漫，认真经营一个真实社团。</p>
-            <div className="astral-actions">
-              <Link className="light-button" to="/departments"><span>进入公会大厅</span><ArrowRight /></Link>
-              <Link className="line-button" to="/join">递交入会申请 <ArrowUpRight /></Link>
-            </div>
-            <div className="reality-note"><Heart /><span><b>这不是游戏，是我们一起创造的现实。</b>REAL PEOPLE · REAL CREATIONS · REAL MEMORIES</span></div>
-          </motion.div>
-
-          <motion.aside className="guild-dispatch" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .35, duration: .7 }}>
-            <div className="dispatch-top"><span>NO. 013</span><i>LIVE</i></div>
-            <GuildMark />
-            <small>TODAY'S GUILD NOTE</small>
-            <h2>欢迎回到佐佑</h2>
-            <p>公会成员正在各自的领域，为下一次相遇准备新的作品。</p>
-            <div className="dispatch-location"><Compass /><span><b>公会大厅</b>坐标 · 中国 / 校园</span></div>
-          </motion.aside>
-        </div>
-        <a className="discover-cue" href="#guild-overview"><ChevronDown /><span>DISCOVER<br />THE GUILD</span></a>
+    <main className="tavern-home">
+      <section className="tavern-hero">
+        <TavernScene/>
+        <div className="tavern-vignette"/>
+        <motion.div className="tavern-title" initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.8}}>
+          <span className="tavern-kicker"><i/> ZOUYOU ANIME SOCIETY <i/></span>
+          <div className="title-crest"><Crown/><span>Z · G</span></div>
+          <h1>佐佑动漫社</h1>
+          <h2>ADVENTURER GUILD</h2>
+          <div className="forged-divider"><i/><b>◆</b><i/></div>
+          <p>烛火未熄，欢迎归队。</p>
+          <small>动漫文化让我们相遇 · 真实协作让故事继续</small>
+          <div className="tavern-actions"><Link to="/departments">推开大厅之门 <ArrowRight/></Link><Link to="/join">在招募簿上留名</Link></div>
+        </motion.div>
+        <a className="tavern-scroll" href="#guild-ledger"><ChevronDown/><span>翻阅公会账簿</span></a>
       </section>
 
-      <section className="guild-overview" id="guild-overview">
-        <div className="shell overview-heading">
-          <div><span className="section-code">GUILD STATUS / 00</span><h2>我们的故事，<br /><em>正在发生。</em></h2></div>
-          <p>动漫文化让我们相遇，真实协作让我们留下。这里的每一项数字，都来自成员、活动与作品档案。</p>
+      <section className="guild-ledger" id="guild-ledger">
+        <div className="iron-rule"><i/><span>GUILD RECORD · 013</span><i/></div>
+        <div className="shell ledger-intro">
+          <div><span className="chapter-mark">第一章</span><h2>这是公会，<br/>也是我们的社团。</h2></div>
+          <div className="ledger-copy"><p>RPG 是我们讲故事的方式，社团管理才是这里真正发生的事情。每次活动、每件作品、每位成员的贡献，都被认真记录。</p><span><Flame/> 这不是游戏，是我们一起创造的现实。</span></div>
         </div>
-        <div className="shell"><LiveGuildStats /></div>
+        <div className="shell"><GuildStats/></div>
       </section>
 
-      <section className="guild-manifesto shell">
-        <div className="manifesto-art" aria-hidden="true">
-          <div className="art-moon"><Sparkles /></div>
-          <div className="art-card card-a"><span>CREATE</span></div>
-          <div className="art-card card-b"><span>CONNECT</span></div>
-          <div className="art-card card-c"><span>RECORD</span></div>
-          <div className="constellation"><i /><i /><i /><i /></div>
+      <section className="guild-board-section">
+        <div className="shell board-heading"><div><span className="chapter-mark light">第二章</span><h2>六张职业委托</h2></div><p>选择的不是战斗职业，<br/>而是你愿意投入的真实协作方向。</p></div>
+        <div className="guild-board shell">
+          {departments.map(([name,title,slug,Icon,text],index)=><motion.article key={slug} className={`wanted-note note-${index+1}`} whileHover={{rotate:0,y:-8}}>
+            <span className="pin"/><small>CLASS · 0{index+1}</small><Icon/><h3>{title}</h3><b>{name}</b><p>{text}</p><Link to={`/departments/${slug}`}>查看部门档案 <ArrowRight/></Link>
+          </motion.article>)}
         </div>
-        <div className="manifesto-copy">
-          <span className="section-code">WHAT WE BELIEVE / 01</span>
-          <h2>热爱不是标签，<br />而是共同完成的事。</h2>
-          <p>在佐佑，有人站到聚光灯下，也有人守在镜头、电脑与策划案之后。不同的能力在这里相互支撑，最终成为一次活动、一件作品，以及多年以后仍能被翻阅的回忆。</p>
-          <Link to="/chronicle">翻阅公会编年史 <ArrowRight /></Link>
+        <Link className="board-all-link" to="/departments"><Shield/> 进入完整职业大厅</Link>
+      </section>
+
+      <section className="archive-passages shell">
+        <div className="passage-heading"><span className="chapter-mark">第三章</span><h2>每一扇门后，<br/>都有真实记录。</h2></div>
+        <div className="passage-grid">
+          <Link to="/chronicle"><span>01 / HISTORY</span><BookOpen/><h3>公会编年史</h3><p>沿着年份，阅读佐佑一路留下的故事。</p><b>翻开卷宗 <ArrowRight/></b></Link>
+          <Link to="/activities"><span>02 / ACTIVITIES</span><Map/><h3>冒险档案馆</h3><p>查看筹备、报名、签到与成果归档。</p><b>查看委托 <ArrowRight/></b></Link>
+          <Link to="/works"><span>03 / CREATIONS</span><Palette/><h3>作品图鉴</h3><p>收藏由成员共同完成的舞台与创作。</p><b>进入图鉴 <ArrowRight/></b></Link>
         </div>
       </section>
 
-      <section className="path-section">
-        <div className="shell path-heading">
-          <div><span className="section-code">CHOOSE YOUR PATH / 02</span><h2>从这里，走近佐佑。</h2></div>
-          <p>不需要先成为“勇者”。<br />只要带着真实的兴趣与愿意协作的心。</p>
-        </div>
-        <div className="shell astral-portals">
-          {portalCards.map(({ to, index, english, title, text, icon: Icon, tone }) => (
-            <motion.article className={`astral-portal ${tone}`} key={to} whileHover={{ y: -9 }} transition={{ type: 'spring', stiffness: 250, damping: 20 }}>
-              <div className="portal-head"><span>{index}</span><Icon /></div>
-              <small>{english}</small><h3>{title}</h3><p>{text}</p>
-              <Link to={to} aria-label={`前往${title}`}><span>EXPLORE</span><ArrowUpRight /></Link>
-            </motion.article>
-          ))}
-        </div>
-      </section>
-
-      <section className="class-ribbon">
-        <div className="shell class-ribbon-head"><span className="section-code">SIX REAL DEPARTMENTS / 03</span><h2>六种职业称谓，六个真实部门。</h2></div>
-        <div className="class-track">
-          {departmentNames.map(([name, title, slug], index) => (
-            <Link to={`/departments/${slug}`} key={slug}><span>0{index + 1}</span><div><b>{title}</b><small>{name}</small></div><ArrowUpRight /></Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="closing-invitation">
-        <div className="closing-orbit"><GuildMark compact /></div>
-        <span className="section-code">THE NEXT CHAPTER IS YOURS</span>
-        <h2>下一页编年史，<br />也许会有你的名字。</h2>
-        <p>选择感兴趣的方向，提交一份真实的入会申请。</p>
-        <Link className="light-button" to="/join"><span>加入佐佑动漫社</span><ArrowRight /></Link>
-        <Crown className="closing-crown" />
+      <section className="tavern-invitation">
+        <div className="invitation-seal"><ScrollText/><span>佐佑</span></div>
+        <small>RECRUITMENT SCROLL</small><h2>下一位推门而入的人，<br/>会是你吗？</h2><p>带上兴趣、技能和愿意协作的心，剩下的故事一起写。</p>
+        <Link to="/join">递交入会申请 <ArrowRight/></Link>
       </section>
     </main>
   );

@@ -21,7 +21,7 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
     await page.setViewportSize(size);
     await page.goto('/');
     await expect(page.getByRole('heading', { name: '佐佑动漫社' })).toBeVisible();
-    await expect(page.getByLabel('星夜像素幻想公会大厅动态场景')).toBeVisible();
+    await expect(page.getByLabel('高精度像素酒馆公会大厅动态场景')).toBeVisible();
     await expect(page.getByText('82', { exact: true })).toBeVisible();
     await page.screenshot({ path: `${qaRoot}/${size.name}`, fullPage: true });
   }

@@ -11,14 +11,14 @@ const cardMeta: Record<CardVariant, { title: string; subtitle: string; button: s
 };
 
 function CardArtwork({ variant }: { variant: CardVariant }) {
-  if (variant === 'history') return <div className="card-artwork history-art"><span className="pixel-candle c1"/><span className="pixel-candle c2"/><div className="open-book"><i/><b/><span/><em/></div></div>;
-  if (variant === 'departments') return <div className="card-artwork department-art"><div className="hall-table"/><span className="mini-banner b1">✦</span><span className="mini-banner b2">♜</span><span className="mini-banner b3">♪</span><span className="mini-banner b4">✎</span><i className="mini-fire"/></div>;
-  return <div className="card-artwork archive-art"><span className="photo photo-one"><i/></span><span className="photo photo-two"><i/></span><span className="pixel-camera"><b/><i/></span><em className="archive-scroll"/></div>;
+  if (variant === 'history') return <div className="card-artwork history-art"><span className="card-skyline" data-card-art-layer="backdrop"/><span className="library-shelf" data-card-art-layer="midground"><i/><b/><em/></span><span className="history-desk" data-card-art-layer="foreground"/><span className="pixel-candle c1"/><span className="pixel-candle c2"/><div className="open-book"><i/><b/><span/><em/></div></div>;
+  if (variant === 'departments') return <div className="card-artwork department-art"><span className="hall-brick-wall" data-card-art-layer="backdrop"/><span className="guild-hall-crowd" data-card-art-layer="midground"><i/><b/><em/><strong/></span><div className="hall-table" data-card-art-layer="foreground"/><span className="mini-banner b1">✦</span><span className="mini-banner b2">♜</span><span className="mini-banner b3">♪</span><span className="mini-banner b4">✎</span><i className="mini-fire"/></div>;
+  return <div className="card-artwork archive-art"><span className="archive-shelves" data-card-art-layer="backdrop"><i/><b/></span><span className="archive-paper-stack" data-card-art-layer="midground"/><span className="archive-desk" data-card-art-layer="foreground"/><span className="photo photo-one"><i/></span><span className="photo photo-two"><i/></span><span className="pixel-camera"><b/><i/></span><em className="archive-scroll"/></div>;
 }
 
 export function AdventureCard({ variant }: { variant: CardVariant }) {
   const meta = cardMeta[variant];
-  return <motion.article className={`adventure-entry-card ${variant}`} whileHover={{y:-9}} whileTap={{scale:.985}} transition={{type:'spring',stiffness:260,damping:20}}>
+  return <motion.article className={`adventure-entry-card ${variant}`} data-portal-art={variant} whileHover={{y:-9}} whileTap={{scale:.985}} transition={{type:'spring',stiffness:260,damping:20}}>
     <div className="adventure-card-heading"><meta.Icon/><div><h2>{meta.title}</h2><p>{meta.subtitle}</p></div></div>
     <CardArtwork variant={variant}/>
     <Link to={meta.to}>{meta.button}<ArrowRight/></Link>

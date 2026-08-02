@@ -54,6 +54,37 @@ describe('Adventurer Guild app', () => {
     expect(screen.getByRole('button', { name: '搜索' })).toBeInTheDocument();
   });
 
+  it('composes the hero from the complete reference scene layers', async () => {
+    renderAt('/');
+    const scene = await screen.findByTestId('layered-guild-scene');
+    expect(Array.from(scene.querySelectorAll('[data-scene-layer]')).map((layer) => layer.getAttribute('data-scene-layer'))).toEqual([
+      'sky',
+      'distant-town',
+      'guild-building',
+      'architectural-lighting',
+      'foreground',
+      'adventurer-party',
+    ]);
+    expect(within(scene).getAllByRole('img', { name: /冒险者|公会执事|精灵|法师/ })).toHaveLength(4);
+    expect(scene.querySelectorAll('[data-pixel-detail]').length).toBeGreaterThanOrEqual(24);
+    expect(scene.querySelector('img')).toBeNull();
+  });
+
+  it('builds every primary portal from layered pixel artwork', async () => {
+    renderAt('/');
+    await screen.findByTestId('layered-guild-scene');
+    const portals = document.querySelectorAll('[data-portal-art]');
+    expect(portals).toHaveLength(3);
+    portals.forEach((portal) => {
+      expect(portal.querySelectorAll('[data-card-art-layer]').length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  it('keeps the hero message fully legible on the first rendered frame', () => {
+    renderAt('/');
+    expect(document.querySelector('.guild-hero-copy')).not.toHaveStyle({ opacity: '0' });
+  });
+
   it('navigates to every public module with real links', async () => {
     const user = userEvent.setup();
     renderAt('/');

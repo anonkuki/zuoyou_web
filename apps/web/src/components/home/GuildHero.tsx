@@ -1,7 +1,9 @@
 import { ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { GuildStats } from './GuildStats';
+import { GuildCrest } from './GuildCrest';
 
 const facadeStones = [
   [704, 294, 72, 23], [784, 284, 92, 28], [884, 301, 66, 22], [966, 282, 82, 26],
@@ -88,7 +90,8 @@ function GuildScene() {
           <LitWindow x={724} y={306} width={58} height={92} /><LitWindow x={842} y={248} width={54} height={86} /><LitWindow x={1279} y={282} width={56} height={90} /><LitWindow x={1402} y={328} width={54} height={86} /><LitWindow x={1122} y={111} width={58} height={92} />
           <g className="guild-banners" data-pixel-detail="guild-banners">
             <path d="M955 93h142v223l-71-37-71 37z" fill="#3b2694" stroke="#e0a23d" strokeWidth="9" />
-            <path d="M985 119h82v134l-41 22-41-22z" fill="#5637be" /><path d="M1026 139l14 34 37 3-29 23 10 36-32-20-32 20 10-36-29-23 37-3z" fill="#ffd15a" />
+            <path d="M985 119h82v134l-41 22-41-22z" fill="#5637be" />
+            <GuildCrest symbol transform="translate(986 125) scale(.8 1.25)" />
             <path d="M824 340h78v177l-39-25-39 25zM1350 337h78v177l-39-25-39 25z" fill="#432aa1" stroke="#d99a3e" strokeWidth="7" /><path d="M855 376h16v78h-16zM1381 374h16v78h-16z" fill="#f7c851" />
           </g>
           <g data-pixel-detail="guild-sign"><path d="M947 254h365v104H947z" fill="#271713" stroke="#17100f" strokeWidth="11" /><path d="M963 267h333v77H963z" fill="#5a311d" stroke="#b87332" strokeWidth="7" /><text x="1130" y="322" textAnchor="middle" fill="#ffe096" fontFamily="FusionPixel, sans-serif" fontSize="44">公会大厅</text></g>
@@ -107,6 +110,10 @@ function GuildScene() {
         </g>
       </svg>
       <div className="moving-cloud cloud-a" /><div className="moving-cloud cloud-b" />
+      <div className="hero-atmosphere" data-atmosphere="cinematic-depth" aria-hidden="true">
+        <i className="atmosphere-ray" /><i className="atmosphere-mist mist-left" /><i className="atmosphere-mist mist-right" />
+        {Array.from({ length: 10 }, (_, index) => <span key={index} style={{ '--particle-index': index } as CSSProperties} data-atmosphere-particle />)}
+      </div>
       <div className="hero-party" data-scene-layer="adventurer-party">
         <PixelCharacter variant={1} name="红发冒险者" />
         <PixelCharacter variant={2} name="公会执事" />
@@ -121,7 +128,7 @@ export function GuildHero() {
   return (
     <section className="guild-hero">
       <GuildScene />
-      <motion.div className="guild-hero-copy" initial={{ x: -28 }} animate={{ x: 0 }} transition={{ duration: .7 }}>
+      <motion.div className="guild-hero-copy" data-visual-priority="primary" initial={{ x: -28 }} animate={{ x: 0 }} transition={{ duration: .7 }}>
         <span className="hero-mini-crest">✦</span>
         <h1>佐佑动漫社</h1>
         <div className="hero-title-plaque">冒险者公会</div>

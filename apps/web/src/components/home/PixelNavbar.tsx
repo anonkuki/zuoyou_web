@@ -2,6 +2,7 @@ import { Menu, Search, UserRound, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../../auth';
+import { GuildCrest } from './GuildCrest';
 
 const navigation = [
   ['/', '首页'],
@@ -28,7 +29,7 @@ export function PixelNavbar() {
   return <>
     <header className="pixel-navbar">
       <Link className="pixel-brand" to="/" aria-label="佐佑动漫社首页">
-        <span className="brand-shield"><i>✦</i><b>Z</b></span>
+        <GuildCrest className="brand-shield" />
         <span><strong>佐佑动漫社</strong><small>Zouyou Anime Guild</small></span>
       </Link>
       <nav className={menuOpen ? 'open' : ''} aria-label="主导航">

@@ -85,6 +85,24 @@ describe('Adventurer Guild app', () => {
     expect(document.querySelector('.guild-hero-copy')).not.toHaveStyle({ opacity: '0' });
   });
 
+  it('uses one coherent guild crest system and a single primary focal point', async () => {
+    renderAt('/');
+    await screen.findByTestId('layered-guild-scene');
+    const crests = screen.getAllByTestId('guild-crest');
+    expect(crests).toHaveLength(2);
+    crests.forEach((crest) => expect(crest.querySelectorAll('[data-crest-layer]').length).toBeGreaterThanOrEqual(5));
+    expect(document.querySelectorAll('[data-visual-priority="primary"]')).toHaveLength(1);
+  });
+
+  it('adds a dedicated atmospheric depth pass without flattening the scene into an image', async () => {
+    renderAt('/');
+    const scene = await screen.findByTestId('layered-guild-scene');
+    const atmosphere = scene.querySelector('[data-atmosphere="cinematic-depth"]');
+    expect(atmosphere).toBeInTheDocument();
+    expect(atmosphere?.querySelectorAll('[data-atmosphere-particle]')).toHaveLength(10);
+    expect(scene.querySelector('img')).toBeNull();
+  });
+
   it('navigates to every public module with real links', async () => {
     const user = userEvent.setup();
     renderAt('/');

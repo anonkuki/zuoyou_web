@@ -46,18 +46,29 @@ describe('Adventurer Guild app', () => {
   it('renders the high-fidelity guild hall with live summary', async () => {
     renderAt('/');
     expect(await screen.findByRole('heading', { name: /佐佑动漫社/ })).toBeInTheDocument();
-    expect(await screen.findByText('82')).toBeInTheDocument();
-    expect(screen.getByTestId('tavern-guild-scene')).toBeInTheDocument();
-    expect(screen.getByText('这不是游戏，是我们一起创造的现实。')).toBeInTheDocument();
-    expect(screen.getByText('烛火未熄，欢迎归队。')).toBeInTheDocument();
+    expect(screen.getByTestId('layered-guild-scene')).toBeInTheDocument();
+    expect(screen.getByText('1524')).toBeInTheDocument();
+    expect(screen.getByText('我们是来自不同世界的冒险者，')).toBeInTheDocument();
+    expect(screen.getByText('2026春季招新开启！')).toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('link', { name: '首页' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '搜索' })).toBeInTheDocument();
   });
 
   it('navigates to every public module with real links', async () => {
     const user = userEvent.setup();
     renderAt('/');
-    await user.click(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('link', { name: '公会编年史' }));
+    await user.click(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('link', { name: '公会历史' }));
     expect(await screen.findByRole('heading', { name: '公会编年史' })).toBeInTheDocument();
     expect(screen.getByText('公会启程')).toBeInTheDocument();
+  });
+
+  it('opens the pixel search and returns real route links', async () => {
+    const user = userEvent.setup();
+    renderAt('/');
+    await user.click(screen.getByRole('button', { name: '搜索' }));
+    expect(screen.getByRole('dialog', { name: '站内搜索' })).toBeInTheDocument();
+    await user.type(screen.getByLabelText('搜索关键词'), '职业');
+    expect(within(screen.getByRole('navigation', { name: '搜索结果' })).getByRole('link', { name: /职业大厅/ })).toHaveAttribute('href', '/departments');
   });
 
   it('shows application form controls instead of placeholder buttons', async () => {

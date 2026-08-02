@@ -1,14 +1,14 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Activity, BarChart3, BookOpen, BriefcaseBusiness, Castle, ChevronLeft, ClipboardCheck, FileArchive, History, LayoutDashboard, LogOut, Menu, Palette, ScrollText, Settings, Shield, Sparkles, UserRound, Users, X } from 'lucide-react';
+import { Activity, BarChart3, BookOpen, BriefcaseBusiness, Castle, ChevronLeft, ClipboardCheck, FileArchive, History, LayoutDashboard, LogOut, Palette, ScrollText, Settings, Shield, Sparkles, UserRound, Users } from 'lucide-react';
 import { api, json } from './api';
 import { useAuth } from './auth';
+import { PixelFooter } from './components/home/PixelFooter';
+import { PixelNavbar } from './components/home/PixelNavbar';
 
 export function PublicLayout(){
-  const [open,setOpen]=useState(false); const {user}=useAuth();
-  const links=[['/chronicle','公会编年史'],['/departments','职业大厅'],['/activities','活动档案'],['/works','作品图鉴'],['/join','加入公会']] as const;
-  return <div className="app-shell"><header className="public-nav"><Link className="brand" to="/"><span>佐佑</span><strong>ADVENTURER GUILD</strong></Link><nav className={open?'open':''} aria-label="主导航">{links.map(([to,label])=><NavLink onClick={()=>setOpen(false)} key={to} to={to}>{label}</NavLink>)}<NavLink className="nav-access" to={user?(user.role==='MEMBER'?'/portal':'/admin'):'/login'}>{user?'进入公会':'成员登录'}</NavLink></nav><button className="mobile-menu" aria-label={open?'关闭菜单':'打开菜单'} onClick={()=>setOpen(!open)}>{open?<X/>:<Menu/>}</button></header><Outlet/><footer><div><span className="footer-mark">Z · G</span><strong>佐佑动漫社 Adventurer Guild</strong><p>以动漫文化连接兴趣，以真实协作留下作品。</p></div><div><Link to="/chronicle">编年史</Link><Link to="/departments">部门</Link><Link to="/activities">活动</Link><Link to="/join">招新</Link></div><small>© 2026 ZOUYOU ANIME GUILD · RPG 视觉包装 / 社团管理系统</small></footer></div>;
+  return <div className="app-shell"><PixelNavbar/><Outlet/><PixelFooter/></div>;
 }
 
 const portalLinks=[

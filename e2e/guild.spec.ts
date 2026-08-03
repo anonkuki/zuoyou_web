@@ -37,10 +37,20 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
     if (size.width === 390) {
       expect(pageHeight).toBeLessThanOrEqual(2000);
       expect(Math.min(...portalRatios)).toBeGreaterThanOrEqual(1.35);
+      const statLabels = page.locator('.guild-hud article > div > span');
+      const statValues = page.locator('.guild-hud strong');
+      const labelSizes = await statLabels.evaluateAll(labels => labels.map(label => Number.parseFloat(getComputedStyle(label).fontSize)));
+      const valueSizes = await statValues.evaluateAll(values => values.map(value => Number.parseFloat(getComputedStyle(value).fontSize)));
+      expect(Math.min(...labelSizes)).toBeGreaterThanOrEqual(9);
+      expect(Math.min(...valueSizes)).toBeGreaterThanOrEqual(14);
+      const lodgeBox = await page.locator('.guild-building-art').evaluate(element => element.getBoundingClientRect().toJSON());
+      expect(lodgeBox.x).toBeGreaterThanOrEqual(-12);
+      expect(lodgeBox.right).toBeLessThanOrEqual(size.width + 12);
     }
     if (size.width === 768) {
       const cardBoxes = await portalCards.evaluateAll(cards => cards.map(card => card.getBoundingClientRect().top));
-      expect(Math.max(...cardBoxes) - Math.min(...cardBoxes)).toBeLessThan(4);
+      expect(cardBoxes[1] - cardBoxes[0]).toBeGreaterThan(180);
+      expect(Math.abs(cardBoxes[1] - cardBoxes[2])).toBeLessThan(4);
       const footerSections = page.locator('.pixel-footer-main > section');
       await expect(footerSections).toHaveCount(3);
       const footerTops = await footerSections.evaluateAll(sections => sections.map(section => section.getBoundingClientRect().top));

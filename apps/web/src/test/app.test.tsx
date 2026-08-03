@@ -119,6 +119,37 @@ describe('Adventurer Guild app', () => {
     expect(scene.querySelectorAll('img').length).toBeGreaterThanOrEqual(11);
   });
 
+  it('welcomes visitors through a grounded approach and six real anime club departments', async () => {
+    renderAt('/');
+    const scene = await screen.findByTestId('layered-guild-scene');
+    expect(scene.querySelector('[data-environment="guild-approach"]')).toBeInTheDocument();
+    const cultureProps = scene.querySelector('[data-anime-culture="six-departments"]') as HTMLElement;
+    const departmentProps = Array.from(cultureProps.querySelectorAll('[data-department-prop]'));
+    expect(departmentProps).toHaveLength(6);
+    expect(departmentProps.map((prop) => prop.getAttribute('aria-label'))).toEqual([
+      'COS部服装箱',
+      '技术部像素终端',
+      '轻音部乐器箱',
+      '原创部画板',
+      '舞装部折扇',
+      '外宣部相机',
+    ]);
+    expect(scene.querySelector('[data-open-asset-layer="adventurer-party"]')).toHaveAttribute('data-facing', 'visitor');
+  });
+
+  it('gives each primary story entrance a distinct editorial format', async () => {
+    renderAt('/');
+    await screen.findByTestId('layered-guild-scene');
+    expect(Array.from(document.querySelectorAll('[data-story-format]')).map((entry) => entry.getAttribute('data-story-format'))).toEqual([
+      'chronicle',
+      'guild-roster',
+      'field-report',
+    ]);
+    expect(document.querySelector('.notice-board')).toHaveAttribute('data-surface', 'wooden-quest-board');
+    const avatars = document.querySelectorAll('.footer-avatar[data-facing="visitor"]');
+    expect(avatars).toHaveLength(4);
+  });
+
   it('navigates to every public module with real links', async () => {
     const user = userEvent.setup();
     renderAt('/');

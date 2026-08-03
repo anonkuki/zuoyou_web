@@ -4,10 +4,10 @@ import { Link } from 'react-router-dom';
 
 type CardVariant = 'history' | 'departments' | 'activities';
 
-const cardMeta: Record<CardVariant, { title: string; subtitle: string; button: string; to: string; Icon: LucideIcon }> = {
-  history: { title: '公会历史', subtitle: '记录我们的成长轨迹', button: '查看历史', to: '/chronicle', Icon: BookOpen },
-  departments: { title: '职业大厅', subtitle: '了解各部门与职责', button: '探索部门', to: '/departments', Icon: Castle },
-  activities: { title: '冒险档案', subtitle: '回顾精彩活动瞬间', button: '查看档案', to: '/activities', Icon: Camera },
+const cardMeta: Record<CardVariant, { title: string; subtitle: string; eyebrow: string; stamp: string; button: string; to: string; storyFormat: string; Icon: LucideIcon }> = {
+  history: { title: '公会历史', subtitle: '从 2018 年的第一张招新海报，到如今并肩前行的我们。', eyebrow: 'CHAPTER · 2018—2026', stamp: '编年史', button: '翻开编年史', to: '/chronicle', storyFormat: 'chronicle', Icon: BookOpen },
+  departments: { title: '职业大厅', subtitle: '六种专长，一座真正属于动漫人的公会大厅。', eyebrow: 'SIX GUILD CLASSES', stamp: '六职业', button: '选择你的职业', to: '/departments', storyFormat: 'guild-roster', Icon: Castle },
+  activities: { title: '冒险档案', subtitle: '漫展、Live、外拍与创作，把每次相聚收进档案。', eyebrow: 'LATEST FIELD NOTES', stamp: '新记录', button: '查看最新档案', to: '/activities', storyFormat: 'field-report', Icon: Camera },
 };
 
 function CardArtwork({ variant }: { variant: CardVariant }) {
@@ -18,8 +18,8 @@ function CardArtwork({ variant }: { variant: CardVariant }) {
 
 export function AdventureCard({ variant }: { variant: CardVariant }) {
   const meta = cardMeta[variant];
-  return <motion.article className={`adventure-entry-card ${variant}`} data-portal-art={variant} whileHover={{y:-9}} whileTap={{scale:.985}} transition={{type:'spring',stiffness:260,damping:20}}>
-    <div className="adventure-card-heading"><meta.Icon/><div><h2>{meta.title}</h2><p>{meta.subtitle}</p></div></div>
+  return <motion.article className={`adventure-entry-card ${variant}`} data-portal-art={variant} data-story-format={meta.storyFormat} whileHover={{y:-7}} whileTap={{scale:.985}} transition={{type:'spring',stiffness:260,damping:20}}>
+    <div className="adventure-card-heading"><meta.Icon/><div><small>{meta.eyebrow}</small><h2>{meta.title}</h2><p>{meta.subtitle}</p></div><span>{meta.stamp}</span></div>
     <CardArtwork variant={variant}/>
     <Link to={meta.to}>{meta.button}<ArrowRight/></Link>
   </motion.article>;

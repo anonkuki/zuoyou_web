@@ -23,6 +23,15 @@ const adventurers = [
   { file: 'silver-ranger.png', name: '银发游侠', className: 'party-member party-ranger' },
 ] as const;
 
+const departmentProps = [
+  { name: 'COS部服装箱', short: 'COS', className: 'culture-costume' },
+  { name: '技术部像素终端', short: 'TECH', className: 'culture-terminal' },
+  { name: '轻音部乐器箱', short: 'MUSIC', className: 'culture-music' },
+  { name: '原创部画板', short: 'ART', className: 'culture-art' },
+  { name: '舞装部折扇', short: 'DANCE', className: 'culture-dance' },
+  { name: '外宣部相机', short: 'MEDIA', className: 'culture-camera' },
+] as const;
+
 function ArchitectureImage({ file, className, piece = true }: { file: string; className: string; piece?: true | string }) {
   return <img src={`${ARCH_ROOT}/${file}`} className={className} alt="" aria-hidden="true" draggable={false} data-architecture-piece={piece} />;
 }
@@ -69,14 +78,37 @@ export function LuminousGuildScene() {
       ))}
 
       <div className="valley-floor" aria-hidden="true"><i /><b /><em /></div>
+      <div className="guild-approach" data-environment="guild-approach" aria-hidden="true">
+        <span className="approach-shadow" />
+        {Array.from({ length: 14 }, (_, index) => {
+          const row = Math.floor(index / 2);
+          const side = index % 2 ? 1 : -1;
+          return <i key={index} style={{ '--stone-left': `${50 + side * (9 + row * 3.6)}%`, '--stone-top': `${row * 12}%`, '--stone-width': `${36 + row * 5}px` } as CSSProperties} />;
+        })}
+        <b className="approach-grass grass-a" /><b className="approach-grass grass-b" />
+      </div>
       <img className="scene-tree tree-left" src={`${SCENE_ROOT}/tree-left.png`} alt="" aria-hidden="true" draggable={false} />
       <img className="scene-tree tree-right" src={`${SCENE_ROOT}/tree-right.png`} alt="" aria-hidden="true" draggable={false} />
       <GuildBuilding />
 
-      <div className="licensed-party" data-open-asset-layer="adventurer-party" data-license="CC0 · Eldiran">
+      <div className="anime-culture-props" data-anime-culture="six-departments" aria-label="六部门文化陈列">
+        <div className="culture-stall creative-stall"><strong>创作工坊</strong>{departmentProps.slice(0, 3).map((prop) => (
+          <span className={`culture-prop ${prop.className}`} data-department-prop aria-label={prop.name} role="img" key={prop.name}>
+            <i /><b /><em /><small>{prop.short}</small>
+          </span>
+        ))}</div>
+        <div className="culture-stall stage-stall"><strong>舞台仓库</strong>{departmentProps.slice(3).map((prop) => (
+          <span className={`culture-prop ${prop.className}`} data-department-prop aria-label={prop.name} role="img" key={prop.name}>
+            <i /><b /><em /><small>{prop.short}</small>
+          </span>
+        ))}</div>
+      </div>
+
+      <div className="licensed-party" data-open-asset-layer="adventurer-party" data-license="CC0 · Eldiran" data-facing="visitor">
         {adventurers.map((adventurer) => (
           <img key={adventurer.name} src={`${CHARACTER_ROOT}/${adventurer.file}`} className={adventurer.className} alt={adventurer.name} draggable={false} />
         ))}
+        <span className="party-welcome">欢迎来到佐佑！</span>
       </div>
 
       <div className="hero-atmosphere valley-atmosphere" data-atmosphere="cinematic-depth" aria-hidden="true">

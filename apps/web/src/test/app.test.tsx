@@ -54,26 +54,27 @@ describe('Adventurer Guild app', () => {
     expect(screen.getByRole('button', { name: '搜索' })).toBeInTheDocument();
   });
 
-  it('composes a painterly low-resolution valley scene with forest framing', async () => {
+  it('composes the hero from independently licensed parallax and architecture layers', async () => {
     renderAt('/');
     const scene = await screen.findByTestId('layered-guild-scene');
-    expect(Array.from(scene.querySelectorAll('[data-scene-layer]')).map((layer) => layer.getAttribute('data-scene-layer'))).toEqual([
-      'sky-light',
-      'cloudscape',
-      'far-mountains',
-      'valley',
-      'guild-lodge',
-      'foreground-garden',
-      'forest-frame',
+    const assetLayers = Array.from(scene.querySelectorAll('[data-open-asset-layer]'));
+    expect(assetLayers.length).toBeGreaterThanOrEqual(7);
+    expect(assetLayers.map((layer) => layer.getAttribute('data-open-asset-layer'))).toEqual(expect.arrayContaining([
+      'clouds',
+      'castle-silhouette',
+      'far-forest',
+      'mid-forest',
+      'near-forest',
+      'guild-architecture',
       'adventurer-party',
-    ]);
-    expect(within(scene).getAllByRole('img', { name: /冒险者|公会执事|精灵|法师/ })).toHaveLength(4);
-    expect(scene.querySelectorAll('[data-cloud-mass]').length).toBeGreaterThanOrEqual(4);
+    ]));
+    assetLayers.forEach((layer) => expect(layer).toHaveAttribute('data-license'));
+    const party = scene.querySelector('[data-open-asset-layer="adventurer-party"]') as HTMLElement;
+    expect(within(party).getAllByRole('img', { name: /冒险者|公会执事|精灵|法师|游侠/ })).toHaveLength(4);
+    expect(scene.querySelector('[data-architecture-piece="cohesive-lodge"]')).toBeInTheDocument();
+    expect(scene.querySelectorAll('[data-architecture-piece]').length).toBeGreaterThanOrEqual(6);
     expect(scene.querySelector('[data-lighting="golden-hour"]')).toBeInTheDocument();
-    expect(scene.querySelector('svg')).toHaveAttribute('viewBox', '0 0 400 190');
-    expect(scene.querySelector('svg')).toHaveAttribute('data-rendering', 'low-resolution-pixel-art');
-    expect(scene.querySelectorAll('[data-pixel-detail]').length).toBeGreaterThanOrEqual(40);
-    expect(scene.querySelector('img')).toBeNull();
+    expect(scene).toHaveAttribute('data-layout', 'cinematic-wide');
   });
 
   it('keeps the hero message open to the landscape instead of placing it in a large card', async () => {
@@ -102,17 +103,20 @@ describe('Adventurer Guild app', () => {
     await screen.findByTestId('layered-guild-scene');
     const crests = screen.getAllByTestId('guild-crest');
     expect(crests).toHaveLength(2);
-    crests.forEach((crest) => expect(crest.querySelectorAll('[data-crest-layer]').length).toBeGreaterThanOrEqual(5));
+    crests.forEach((crest) => {
+      expect(crest.tagName.toLowerCase()).toBe('svg');
+      expect(crest.querySelectorAll('[data-crest-layer]').length).toBeGreaterThanOrEqual(5);
+    });
     expect(document.querySelectorAll('[data-visual-priority="primary"]')).toHaveLength(1);
   });
 
-  it('adds a dedicated atmospheric depth pass without flattening the scene into an image', async () => {
+  it('adds a dedicated atmospheric depth pass over the independent art layers', async () => {
     renderAt('/');
     const scene = await screen.findByTestId('layered-guild-scene');
     const atmosphere = scene.querySelector('[data-atmosphere="cinematic-depth"]');
     expect(atmosphere).toBeInTheDocument();
     expect(atmosphere?.querySelectorAll('[data-atmosphere-particle]')).toHaveLength(10);
-    expect(scene.querySelector('img')).toBeNull();
+    expect(scene.querySelectorAll('img').length).toBeGreaterThanOrEqual(11);
   });
 
   it('navigates to every public module with real links', async () => {

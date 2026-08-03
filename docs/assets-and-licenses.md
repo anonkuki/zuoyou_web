@@ -2,10 +2,20 @@
 
 ## 自制视觉
 
-- 首页像素幻想天空、城堡、公会大厅、火把、NPC、状态牌、RPG 卡片、Logo 与装饰均以项目内 HTML/CSS/SVG 代码原创实现。
-- 未调用图片生成工具，未下载第三方背景图、角色图或商业图标包；仅新增开源中文像素字体文件。
-- 设计稿还原阶段将首页拆分为天空、云朵、山脉、远景城镇、公会建筑、人物、HUD 与前景装饰八个独立代码图层，没有把设计稿或相似背景图作为网页背景。
-- 素材目录已按 `background/character/ui/icon/decoration` 建立；本阶段仅登记代码绘制方案，后续加入开源素材时必须逐项补充作者、URL 与许可证。
+- 页面没有调用 DALL-E、Midjourney、Stable Diffusion 或其他生成式图像工具。
+- CSS 绘制天空渐变、草地、道路、景深暗角、光束、萤火颗粒、HUD、按钮、卡片道具和公告板；SVG 绘制公会统一纹章。
+- Hero 没有使用单张完整背景图，而是把云层、远山、城堡剪影、五层森林、地面、建筑、人物、光雾分别定位与动画。
+
+## 首页开源像素素材
+
+| 素材 | 作者与来源 | 许可证 | 项目内用途与修改 |
+| --- | --- | --- | --- |
+| Pixel Gloomy Fantasy Tileset | Loota；[itch.io 原始页面](https://loota9.itch.io/pixel-fantasy-tileset) | CC0 1.0；原页面标记 No generative AI | Hero 云层、城堡剪影、五层森林、树木；仅重命名，并通过 CSS 调色、缩放和视差动画组合 |
+| Sideview Fantasy Patreon Collection | ansimuz；[OpenGameArt 原始页面](https://opengameart.org/content/sideview-fantasy-patreon-collection) | CC0 1.0 | Hero 日照山体以及历史、活动入口卡片场景；裁切与 CSS 调色 |
+| Medieval town | Keith Karnage；[OpenGameArt 原始页面](https://opengameart.org/content/medieval-town-0) | CC BY 3.0 | 公会建筑与职业大厅卡片；从公开瓦片和示例图中裁出建筑立面、招牌、窗、门等组件，并以 CSS 叠加公会旗帜 |
+| 32x32 RPG Character Sprites | Eldiran；[OpenGameArt 原始页面](https://opengameart.org/content/32x32-rpg-character-sprites) | CC0 1.0 | 四名公会人物；裁取静态帧并将原始纯洋红背景转为透明 |
+
+以上素材均为传统像素素材库资源；其中 Loota 页面明确声明未使用生成式 AI，其余资源发布于 2014–2019 年的 OpenGameArt 条目。项目保留作者署名，即使 CC0 项目不强制要求。
 
 ## 受保护的社团照片
 

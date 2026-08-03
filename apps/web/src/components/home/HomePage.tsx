@@ -6,8 +6,15 @@ export function HomePage() {
   return <main className="reference-home">
     <GuildHero/>
     <section className="home-entry-zone">
-      <div className="entry-card-grid"><AdventureCard variant="history"/><AdventureCard variant="departments"/><AdventureCard variant="activities"/></div>
-      <NoticeBoard/>
+      <header className="entry-zone-heading">
+        <small>ADVENTURER'S GUIDE</small>
+        <h2>从这里，走进我们的故事</h2>
+        <p>查阅公会编年史、认识六大职业部门，或翻开最近一次冒险的记录。</p>
+      </header>
+      <div className="entry-zone-content">
+        <div className="entry-card-grid"><AdventureCard variant="history"/><AdventureCard variant="departments"/><AdventureCard variant="activities"/></div>
+        <NoticeBoard/>
+      </div>
     </section>
   </main>;
 }

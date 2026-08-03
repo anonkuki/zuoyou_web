@@ -31,8 +31,8 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
       return box.width / box.height;
     }));
     if (size.width === 1440) {
-      expect(pageHeight).toBeLessThanOrEqual(1160);
-      expect(Math.min(...portalRatios)).toBeGreaterThanOrEqual(1.1);
+      expect(pageHeight).toBeLessThanOrEqual(1800);
+      expect(Math.min(...portalRatios)).toBeGreaterThanOrEqual(.75);
     }
     if (size.width === 390) {
       expect(pageHeight).toBeLessThanOrEqual(2000);

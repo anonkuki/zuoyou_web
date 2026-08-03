@@ -1,3 +1,3 @@
 # Character
 
-阶段 1 的四名像素成员由 `GuildHero.tsx` 的 `PixelCharacter` 组件和 CSS 色板绘制。
+四名公会人物来自 Eldiran 的 CC0 32×32 RPG Character Sprites。项目只裁取静态帧并将纯洋红底色转为透明；没有使用生成式图像工具。

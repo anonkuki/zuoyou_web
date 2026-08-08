@@ -62,6 +62,16 @@ describe('production seed safety', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('backfills homepage mock data when an existing development database is upgraded', async () => {
+    await withDevelopmentSeed(async (sqlite) => {
+      sqlite.exec("DELETE FROM announcements; DELETE FROM site_settings WHERE key IN ('guildLevel','guildLevelCurrent','guildLevelTarget','honorCount','foundedYear'); DELETE FROM activities WHERE id LIKE 'activity-archive-%';");
+      await seedDatabase(sqlite);
+      expect((sqlite.prepare('SELECT COUNT(*) count FROM announcements').get() as { count: number }).count).toBe(4);
+      expect((sqlite.prepare("SELECT COUNT(*) count FROM activities WHERE status IN ('ENDED','ARCHIVED')").get() as { count: number }).count).toBe(328);
+      expect((sqlite.prepare("SELECT value FROM site_settings WHERE key='foundedYear'").get() as { value: string }).value).toBe('2018');
+    });
+  });
 });
 
 describe.sequential('Adventurer Guild API', () => {
@@ -109,6 +119,55 @@ describe.sequential('Adventurer Guild API', () => {
     ]);
     const activities = await app.inject({ method: 'GET', url: '/api/public/activities' });
     expect(activities.json().data.items.every((activity: Record<string, unknown>) => !('check_in_code' in activity) && !('checkInCode' in activity))).toBe(true);
+  });
+
+  it('serves database-derived homepage stats and only published announcements', async () => {
+    const home = await app.inject({ method: 'GET', url: '/api/public/home' });
+    expect(home.statusCode).toBe(200);
+    expect(home.json().data.stats).toEqual({
+      guildLevel: 12,
+      levelProgress: { current: 2390, target: 3000 },
+      memberCount: 82,
+      completedActivityCount: 328,
+      honorCount: 56,
+      foundedYear: 2018,
+    });
+    expect(home.json().data.announcements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: '2026 秋季招新现已开启', category: 'RECRUITMENT', href: '/join' }),
+    ]));
+    expect(home.json().data.announcements.every((item: { published: boolean }) => item.published)).toBe(true);
+  });
+
+  it('closes the admin announcement publish and unpublish workflow', async () => {
+    const payload = {
+      title: '六部门联合成果展开放预约',
+      summary: '年度成果展将在星门大厅集中呈现。',
+      category: 'ACTIVITY',
+      href: '/activities',
+      pinned: true,
+      published: true,
+      publishedAt: '2026-08-08T08:00:00.000Z',
+    };
+    expect((await app.inject({ method: 'POST', url: '/api/admin/announcements', payload })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/announcements', headers: { cookie: memberCookie }, payload })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/announcements', headers: { cookie: adminCookie }, payload: { ...payload, href: 'https://example.com' } })).statusCode).toBe(400);
+
+    const created = await app.inject({ method: 'POST', url: '/api/admin/announcements', headers: { cookie: adminCookie }, payload });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().data.id as string;
+
+    const adminList = await app.inject({ method: 'GET', url: '/api/admin/announcements?page=1&pageSize=100', headers: { cookie: adminCookie } });
+    expect(adminList.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ id, title: payload.title, published: 1 })]));
+    const publicAfterCreate = await app.inject({ method: 'GET', url: '/api/public/home' });
+    expect(publicAfterCreate.json().data.announcements).toEqual(expect.arrayContaining([expect.objectContaining({ id, title: payload.title })]));
+
+    const unpublished = await app.inject({ method: 'PATCH', url: `/api/admin/announcements/${id}`, headers: { cookie: adminCookie }, payload: { published: false } });
+    expect(unpublished.statusCode).toBe(200);
+    const publicAfterUnpublish = await app.inject({ method: 'GET', url: '/api/public/home' });
+    expect(publicAfterUnpublish.json().data.announcements.some((item: { id: string }) => item.id === id)).toBe(false);
+
+    const audit = await app.inject({ method: 'GET', url: '/api/admin/audit-log?page=1&pageSize=100', headers: { cookie: adminCookie } });
+    expect(audit.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'ANNOUNCEMENT_UPDATED', entity_id: id })]));
   });
 
   it('serves the production web app without masking unknown API routes', async () => {

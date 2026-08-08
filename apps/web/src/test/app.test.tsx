@@ -7,6 +7,13 @@ import { App } from '../app';
 import { api } from '../api';
 
 const payloads: Record<string, unknown> = {
+  '/api/public/home': {
+    stats: { guildLevel: 12, levelProgress: { current: 2390, target: 3000 }, memberCount: 82, completedActivityCount: 328, honorCount: 56, foundedYear: 2018 },
+    announcements: [
+      { id: 'notice-1', title: '2026 秋季招新现已开启', summary: '六部门联合招募', category: 'RECRUITMENT', href: '/join', pinned: true, published: true, publishedAt: '2026-08-08T00:00:00.000Z' },
+      { id: 'notice-2', title: '月下轻音会活动报名', summary: '轻音部专场', category: 'ACTIVITY', href: '/activities', pinned: false, published: true, publishedAt: '2026-08-06T00:00:00.000Z' },
+    ],
+  },
   '/api/public/summary': { memberCount: 82, departmentCount: 6, activityCount: 4, workCount: 1 },
   '/api/public/departments': { items: [{ id: 'dept-cos', slug: 'cos', name: 'COS部', title: '幻术师', description: '角色造型与舞台呈现', memberCount: 15 }] },
   '/api/public/chronicles?page=1&pageSize=20': { items: [{ id: 'c1', title: '公会启程', content: '新的篇章', occurred_at: '2023-05-01T00:00:00.000Z' }], page: 1, pageSize: 20, total: 1 },
@@ -47,9 +54,9 @@ describe('Adventurer Guild app', () => {
     renderAt('/');
     expect(await screen.findByRole('heading', { name: /佐佑动漫社/ })).toBeInTheDocument();
     expect(screen.getByTestId('layered-guild-scene')).toBeInTheDocument();
-    expect(screen.getByText('1524')).toBeInTheDocument();
+    expect(await screen.findByText('82')).toBeInTheDocument();
     expect(screen.getByText('我们是来自不同世界的冒险者，')).toBeInTheDocument();
-    expect(screen.getByText('2026春季招新开启！')).toBeInTheDocument();
+    expect(screen.getByText('2026 秋季招新现已开启')).toBeInTheDocument();
     expect(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('link', { name: '首页' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '搜索' })).toBeInTheDocument();
   });
@@ -203,5 +210,30 @@ describe('Adventurer Guild app', () => {
     expect(save).toBeEnabled();
     await user.click(save);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/files/upload', expect.objectContaining({ method: 'POST' })));
+  });
+
+  it('lets an administrator publish and unpublish homepage announcements', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: { id: 'admin', username: 'admin', displayName: '管理员', email: 'admin@example.com', role: 'ADMIN', departmentId: null, bio: '' } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path.startsWith('/api/admin/announcements?')) return new Response(JSON.stringify({ ok: true, data: { items: [{ id: 'notice-1', title: '招新公告', summary: '六部门联合招募', category: 'RECRUITMENT', href: '/join', pinned: 0, published: 1, published_at: '2026-08-08T00:00:00.000Z' }], page: 1, pageSize: 100, total: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/announcements' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { id: 'notice-new' } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/announcements/notice-1' && init?.method === 'PATCH') return new Response(JSON.stringify({ ok: true, data: { updated: true } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/admin/announcements');
+    expect(await screen.findByRole('heading', { name: '公会公告' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '招新公告' })).toBeInTheDocument();
+    const meta=document.querySelector('.announcement-meta');
+    expect(Array.from(meta?.childNodes??[]).some(node=>node.nodeType===Node.TEXT_NODE&&node.textContent==='0')).toBe(false);
+    await user.click(screen.getByRole('button', { name: '新建公告' }));
+    await user.type(screen.getByLabelText('公告标题'), '六部门联合成果展');
+    await user.type(screen.getByLabelText('公告摘要'), '年度成果集中展示');
+    await user.click(screen.getByRole('button', { name: '保存公告' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/announcements', expect.objectContaining({ method: 'POST' })));
+    await user.click(screen.getByRole('button', { name: '下架 招新公告' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/announcements/notice-1', expect.objectContaining({ method: 'PATCH' })));
   });
 });

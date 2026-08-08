@@ -20,13 +20,42 @@ const departments = [
   ['dept-publicity', 'publicity', '外宣部', '传令官'],
 ] as const;
 
+const archiveThemes = [
+  ['dept-cos', '幻装工坊回顾'], ['dept-tech', '魔导影像技术交流'], ['dept-music', '月下轻音排练'],
+  ['dept-original', '原创绘卷共创'], ['dept-dance', '宅舞舞台排演'], ['dept-publicity', '番剧鉴赏与外宣周常'],
+] as const;
+
+function ensureHomeShowcaseData(sqlite: Database.Database, timestamp: string): void {
+  sqlite.transaction(() => {
+    const insertActivity = sqlite.prepare('INSERT OR IGNORE INTO activities(id,department_id,title,description,status,capacity,check_in_code,result_summary,starts_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+    for (let index = 1; index <= 327; index += 1) {
+      const [departmentId, title] = archiveThemes[(index - 1) % archiveThemes.length];
+      const year = 2018 + ((index - 1) % 8);
+      const month = String(((index - 1) % 12) + 1).padStart(2, '0');
+      const day = String(((index * 3) % 27) + 1).padStart(2, '0');
+      insertActivity.run(`activity-archive-${String(index).padStart(3, '0')}`, departmentId, `${title} · ${String(index).padStart(3, '0')}`, '虚构的社团历史活动记录', 'ARCHIVED', 40, null, '活动记录与成果已归档', `${year}-${month}-${day}T10:00:00.000Z`, timestamp, timestamp);
+    }
+
+    const insertSetting = sqlite.prepare('INSERT OR IGNORE INTO site_settings(key,value,updated_at) VALUES (?,?,?)');
+    for (const [key, value] of [['guildLevel', '12'], ['guildLevelCurrent', '2390'], ['guildLevelTarget', '3000'], ['honorCount', '56'], ['foundedYear', '2018']] as const) {
+      insertSetting.run(key, value, timestamp);
+    }
+
+    const insertAnnouncement = sqlite.prepare('INSERT OR IGNORE INTO announcements(id,title,summary,category,href,pinned,published,published_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)');
+    insertAnnouncement.run('announcement-recruitment-2026', '2026 秋季招新现已开启', '六大部门联合招募，欢迎新的冒险者加入公会。', 'RECRUITMENT', '/join', 1, 1, '2026-08-08T00:00:00.000Z', timestamp, timestamp);
+    insertAnnouncement.run('announcement-exhibition-2026', '六部门夏日联合成果展', '幻装、技术、轻音、原创、舞装与外宣作品集中展示。', 'ACTIVITY', '/activities', 1, 1, '2026-08-06T00:00:00.000Z', timestamp, timestamp);
+    insertAnnouncement.run('announcement-music-2026', '月下轻音会活动报名', '轻音部专场开放成员报名。', 'ACTIVITY', '/activities', 0, 1, '2026-08-03T00:00:00.000Z', timestamp, timestamp);
+    insertAnnouncement.run('announcement-review-2025', '2025 社团年度回顾已收录', '年度活动足迹与六部门故事已经写入公会编年史。', 'NOTICE', '/chronicle', 0, 1, '2026-07-28T00:00:00.000Z', timestamp, timestamp);
+  })();
+}
+
 export async function openDatabase(databasePath: string): Promise<DatabaseContext> {
   await mkdir(dirname(databasePath), { recursive: true });
   const sqlite = new Database(databasePath);
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');
@@ -54,6 +83,7 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
       const seedProfile = sqlite.prepare("SELECT value FROM site_settings WHERE key='seedProfile'").get() as { value: string } | undefined;
       if (demoAccount || seedProfile?.value === 'development') throw new Error('Refusing production startup: development demo credentials detected in existing database');
     }
+    if (!options.production) ensureHomeShowcaseData(sqlite, new Date().toISOString());
     return;
   }
   const now = new Date().toISOString();
@@ -117,4 +147,5 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   insertSetting.run('siteName', '星辉冒险者协会', now);
   insertSetting.run('recruitmentOpen', 'true', now);
   insertSetting.run('seedProfile', options.production ? 'production' : 'development', now);
+  ensureHomeShowcaseData(sqlite, now);
 }

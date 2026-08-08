@@ -61,8 +61,21 @@ export const siteSettings = sqliteTable('site_settings', {
   key: text('key').primaryKey(), value: text('value').notNull(), updatedAt: utcText('updated_at'),
 });
 
+export const announcements = sqliteTable('announcements', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  summary: text('summary').notNull(),
+  category: text('category').notNull(),
+  href: text('href').notNull(),
+  pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false),
+  published: integer('published', { mode: 'boolean' }).notNull().default(false),
+  publishedAt: utcText('published_at'),
+  createdAt: utcText('created_at'),
+  updatedAt: utcText('updated_at'),
+});
+
 export const auditLogs = sqliteTable('audit_logs', {
   id: text('id').primaryKey(), actorId: text('actor_id').references(() => users.id), targetUserId: text('target_user_id').references(() => users.id), action: text('action').notNull(), entityType: text('entity_type').notNull(), entityId: text('entity_id').notNull(), details: text('details'), createdAt: utcText('created_at'),
 }, (table) => [uniqueIndex('contribution_event_unique').on(table.action, table.entityType, table.entityId, table.targetUserId)]);
 
-export const schema = { departments, users, chronicles, activities, activityRegistrations, activityResults, applications, activationTokens, works, files, departmentTasks, sessions, siteSettings, auditLogs };
+export const schema = { departments, users, chronicles, activities, activityRegistrations, activityResults, applications, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, auditLogs };

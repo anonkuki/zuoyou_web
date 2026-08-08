@@ -22,7 +22,7 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
     await page.goto('/');
     await expect(page.getByRole('heading', { name: '佐佑动漫社' })).toBeVisible();
     await expect(page.getByLabel('分层像素幻想公会大厅场景')).toBeVisible();
-    await expect(page.getByText('1524', { exact: true })).toBeVisible();
+    await expect(page.getByText('82', { exact: true })).toBeVisible();
     const pageHeight = await page.locator('body').evaluate(body => body.scrollHeight);
     const portalCards = page.locator('[data-portal-art]');
     await expect(portalCards).toHaveCount(3);
@@ -108,6 +108,33 @@ test('招新申请到激活登录形成完整闭环', async ({ page }) => {
   await page.getByLabel('密码').fill('GuildQa!2026');
   await page.getByRole('button', { name: '登录公会' }).click();
   await expect(page.getByRole('heading', { name: `欢迎回来，${displayName}` })).toBeVisible();
+});
+
+test('管理员公告发布后进入首页并可再次下架', async ({ page }) => {
+  const title = `六部门联合成果展${Date.now().toString().slice(-8)}`;
+  await loginDemo(page, '管理员');
+  await page.goto('/admin/announcements');
+  await page.getByRole('button', { name: '新建公告' }).click();
+  await page.getByLabel('公告标题').fill(title);
+  await page.getByLabel('公告分类').selectOption('ACTIVITY');
+  await page.getByLabel('公告摘要').fill('端到端验收发布的虚构社团活动公告。');
+  await page.getByLabel('站内链接').fill('/activities');
+  await page.getByText('置顶显示 NEW 标记').click();
+  await page.getByRole('button', { name: '保存公告' }).click();
+  const announcement = page.locator('article').filter({ hasText: title });
+  await expect(announcement).toHaveCount(1);
+  await expect(announcement.getByRole('button', { name: `下架 ${title}` })).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: `${qaRoot}/admin-announcements-1440x900.png`, fullPage: true });
+
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: new RegExp(title) })).toBeVisible();
+  await page.goto('/admin/announcements');
+  const publishedAnnouncement = page.locator('article').filter({ hasText: title });
+  await publishedAnnouncement.getByRole('button', { name: `下架 ${title}` }).click();
+  await expect(publishedAnnouncement.getByRole('button', { name: `发布 ${title}` })).toBeVisible();
+  await page.goto('/');
+  await expect(page.getByText(title, { exact: true })).toHaveCount(0);
 });
 
 test('成员作品、负责人审核、活动与文件操作可实际执行', async ({ page }) => {

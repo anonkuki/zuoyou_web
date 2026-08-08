@@ -1,10 +1,14 @@
+import { useQuery } from '@tanstack/react-query';
+import type { HomeData } from '@guild/contracts';
+import { api } from '../../api';
 import { AdventureCard } from './AdventureCard';
 import { GuildHero } from './GuildHero';
 import { NoticeBoard } from './NoticeBoard';
 
 export function HomePage() {
+  const home = useQuery({ queryKey: ['public-home'], queryFn: () => api<HomeData>('/api/public/home') });
   return <main className="reference-home">
-    <GuildHero/>
+    <GuildHero stats={home.data?.stats} loading={home.isLoading}/>
     <section className="home-entry-zone">
       <header className="entry-zone-heading">
         <small>ADVENTURER'S GUIDE</small>
@@ -13,7 +17,7 @@ export function HomePage() {
       </header>
       <div className="entry-zone-content">
         <div className="entry-card-grid"><AdventureCard variant="history"/><AdventureCard variant="departments"/><AdventureCard variant="activities"/></div>
-        <NoticeBoard/>
+        <NoticeBoard announcements={home.data?.announcements} loading={home.isLoading} error={home.error}/>
       </div>
     </section>
   </main>;

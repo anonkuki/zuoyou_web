@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 import {
-  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, pageQuerySchema, successResponse,
+  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, homeDataSchema, pageQuerySchema, successResponse,
   type ActivityStatus, type Role,
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
@@ -166,6 +166,40 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   }
 
   app.get('/api/health', async () => successResponse({ status: 'ok', timestamp: now() }));
+
+  app.get('/api/public/home', async () => {
+    const settings = Object.fromEntries((sqlite.prepare("SELECT key,value FROM site_settings WHERE key IN ('guildLevel','guildLevelCurrent','guildLevelTarget','honorCount','foundedYear')").all() as Array<{ key: string; value: string }>).map((entry) => [entry.key, entry.value]));
+    const numericSetting = (key: string, fallback: number) => {
+      const value = Number(settings[key]);
+      return Number.isInteger(value) && value >= 0 ? value : fallback;
+    };
+    const levelTarget = Math.max(1, numericSetting('guildLevelTarget', 1));
+    const memberCount = (sqlite.prepare('SELECT COUNT(*) count FROM users WHERE is_active=1').get() as { count: number }).count;
+    const completedActivityCount = (sqlite.prepare("SELECT COUNT(*) count FROM activities WHERE status IN ('ENDED','ARCHIVED')").get() as { count: number }).count;
+    const rows = sqlite.prepare(`SELECT id,title,summary,category,href,pinned,published,published_at
+      FROM announcements WHERE published=1 ORDER BY pinned DESC,published_at DESC,id LIMIT 6`).all() as Array<{
+        id: string; title: string; summary: string; category: 'RECRUITMENT' | 'ACTIVITY' | 'NOTICE'; href: string;
+        pinned: number; published: number; published_at: string;
+      }>;
+    const data = homeDataSchema.parse({
+      stats: {
+        guildLevel: Math.min(999, Math.max(1, numericSetting('guildLevel', 1))),
+        levelProgress: {
+          current: Math.min(levelTarget, numericSetting('guildLevelCurrent', 0)),
+          target: levelTarget,
+        },
+        memberCount,
+        completedActivityCount,
+        honorCount: numericSetting('honorCount', 0),
+        foundedYear: Math.min(2200, Math.max(1900, numericSetting('foundedYear', new Date().getUTCFullYear()))),
+      },
+      announcements: rows.map((row) => ({
+        id: row.id, title: row.title, summary: row.summary, category: row.category, href: row.href,
+        pinned: Boolean(row.pinned), published: Boolean(row.published), publishedAt: row.published_at,
+      })),
+    });
+    return successResponse(data);
+  });
 
   app.get('/api/public/summary', async () => {
     const memberCount = (sqlite.prepare('SELECT COUNT(*) count FROM users').get() as { count: number }).count;
@@ -455,6 +489,45 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       publishedWorks: (sqlite.prepare("SELECT COUNT(*) count FROM works WHERE status='PUBLISHED'").get() as { count: number }).count,
     };
     return successResponse({ ...counts, contributions });
+  });
+
+  app.get('/api/admin/announcements', async (request, reply) => {
+    const principal = requireAdmin(request, reply); if (!principal) return;
+    const paging = getPaging(request.query);
+    const items = sqlite.prepare('SELECT * FROM announcements ORDER BY pinned DESC,published_at DESC,id LIMIT ? OFFSET ?').all(paging.pageSize, paging.offset);
+    const total = (sqlite.prepare('SELECT COUNT(*) count FROM announcements').get() as { count: number }).count;
+    return successResponse(pageData(items, total, paging.page, paging.pageSize));
+  });
+  app.post('/api/admin/announcements', async (request, reply) => {
+    const principal = requireAdmin(request, reply); if (!principal) return;
+    const body = parse(announcementInputSchema, request.body);
+    const id = newId('announcement');
+    sqlite.prepare('INSERT INTO announcements(id,title,summary,category,href,pinned,published,published_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+      .run(id, body.title, body.summary, body.category, body.href, body.pinned ? 1 : 0, body.published ? 1 : 0, body.publishedAt, now(), now());
+    audit(sqlite, principal.id, 'ANNOUNCEMENT_CREATED', 'announcement', id, null, body);
+    return reply.status(201).send(successResponse({ id }));
+  });
+  app.patch('/api/admin/announcements/:id', async (request, reply) => {
+    const principal = requireAdmin(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const existing = sqlite.prepare('SELECT title,summary,category,href,pinned,published,published_at FROM announcements WHERE id=?').get(id) as {
+      title: string; summary: string; category: 'RECRUITMENT' | 'ACTIVITY' | 'NOTICE'; href: string; pinned: number; published: number; published_at: string;
+    } | undefined;
+    if (!existing) throw new HttpError(404, 'NOT_FOUND', '公告不存在');
+    const patch = parse(announcementUpdateSchema, request.body);
+    const next = announcementInputSchema.parse({
+      title: patch.title ?? existing.title,
+      summary: patch.summary ?? existing.summary,
+      category: patch.category ?? existing.category,
+      href: patch.href ?? existing.href,
+      pinned: patch.pinned ?? Boolean(existing.pinned),
+      published: patch.published ?? Boolean(existing.published),
+      publishedAt: patch.publishedAt ?? existing.published_at,
+    });
+    sqlite.prepare('UPDATE announcements SET title=?,summary=?,category=?,href=?,pinned=?,published=?,published_at=?,updated_at=? WHERE id=?')
+      .run(next.title, next.summary, next.category, next.href, next.pinned ? 1 : 0, next.published ? 1 : 0, next.publishedAt, now(), id);
+    audit(sqlite, principal.id, 'ANNOUNCEMENT_UPDATED', 'announcement', id, null, patch);
+    return successResponse({ updated: true });
   });
   app.get('/api/admin/analytics', async (request, reply) => {
     const principal = requireAdmin(request, reply); if (!principal) return;

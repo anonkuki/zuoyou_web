@@ -1,10 +1,11 @@
 import { ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
+import type { GuildHomeStats } from '@guild/contracts';
 import { GuildStats } from './GuildStats';
 import { LuminousGuildScene } from './LuminousGuildScene';
 
-export function GuildHero() {
+export function GuildHero({ stats, loading = false }: { stats?: GuildHomeStats; loading?: boolean }) {
   return (
     <section className="guild-hero luminous-guild-hero">
       <LuminousGuildScene />
@@ -17,7 +18,7 @@ export function GuildHero() {
         <p><span>我们是来自不同世界的冒险者，</span><span>因为热爱动漫而相聚，</span><span>在晨光里书写属于我们的故事。</span></p>
         <div><Link className="hero-pixel-button gold" to="/departments">探索公会 <ArrowRight /></Link><Link className="hero-pixel-button blue" to="/join">加入冒险 <ArrowRight /></Link></div>
       </motion.div>
-      <GuildStats />
+      <GuildStats stats={stats} loading={loading} />
     </section>
   );
 }

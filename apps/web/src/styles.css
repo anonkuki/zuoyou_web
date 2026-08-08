@@ -315,6 +315,9 @@ svg.brand-shield{display:block;width:50px;height:58px;clip-path:none;background:
 @media(min-width:641px) and (max-width:820px){.entry-card-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.adventure-entry-card{height:332px;grid-template-rows:76px 1fr 54px}.adventure-card-heading h2{font-size:1.15rem}.adventure-card-heading p{font-size:.58rem}.adventure-entry-card>a{margin-inline:9px;gap:10px;font-size:.7rem}.open-book{transform:translateX(-50%) rotate(2deg) scale(.82)}.mini-banner{width:35px}.pixel-camera{right:12px;transform:scale(.82);transform-origin:right bottom}.photo{transform:scale(.8)}.photo-one{left:7px}.photo-two{left:48px}.notice-board{height:290px}footer.pixel-footer>.pixel-footer-main{grid-template-columns:1.25fr .7fr 1fr;column-gap:22px;row-gap:0;padding:24px 20px 20px}.quick-entry-list{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.quick-entry-list a{font-size:.55rem}.follow-us>div{gap:8px}.online-party>div{gap:6px}.footer-avatar{transform:scale(.88);transform-origin:left top}}
 @media(max-width:640px){.entry-card-grid{grid-template-columns:1fr}}
 
+/* Database-backed quest board and announcement editor. */
+.announcement-editor .announcement-summary{grid-column:1/-1}.announcement-meta{display:flex;align-items:center;gap:10px;margin-bottom:6px}.pin-label{display:inline-flex;align-items:center;gap:4px;color:#7d4b20;font-size:.72rem;font-weight:800}.pin-label svg{width:14px}.announcement-list article>div:first-child{display:grid;gap:4px}.notice-board-title>a{position:absolute;right:9px;bottom:5px;color:#c5a274;font-size:.55rem}.notice-state{margin:24px 8px;color:#c9ad8b;text-align:center;font-size:.7rem}.notice-state.error{color:#f0a79b}.guild-hud.is-loading strong{opacity:.65}
+
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    THE EMBER HALL — high-detail pixel tavern direction 03
    Dark fantasy craft, aged paper, forged bronze and warm fire.

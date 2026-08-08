@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Activity as ActivityIcon, ArchiveRestore, Ban, Check, CircleGauge, ClipboardCheck, FileArchive, History, ListChecks, RotateCcw, Search, Settings, ShieldCheck, Trash2, UserCog, Users, X } from 'lucide-react';
+import { Activity as ActivityIcon, ArchiveRestore, Ban, Check, CircleGauge, ClipboardCheck, FileArchive, History, ListChecks, Megaphone, Pencil, Pin, RotateCcw, Search, Settings, ShieldCheck, Trash2, UserCog, Users, X } from 'lucide-react';
 import { api, json, type PageData } from './api';
 import { useAuth } from './auth';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero, StatusBadge } from './components';
@@ -16,6 +16,7 @@ interface GuildFile { id:string; name:string; mime_type:string; size:number; vis
 interface Task { id:string; title:string; description:string; department_id:string; assignee_id:string; completed_at?:string; confirmed_at?:string; due_at?:string }
 interface Audit { id:string; action:string; entity_type:string; entity_id:string; actor_id?:string; created_at:string }
 interface Chronicle { id:string; title:string; content:string; occurred_at:string }
+interface AdminAnnouncement { id:string; title:string; summary:string; category:'RECRUITMENT'|'ACTIVITY'|'NOTICE'; href:string; pinned:number; published:number; published_at:string }
 
 function useInvalidate(...keys:string[]){const client=useQueryClient();return ()=>keys.forEach(key=>client.invalidateQueries({queryKey:[key]}));}
 
@@ -50,6 +51,38 @@ export function ActivitiesAdminPage(){
   const uploadResult=useMutation({mutationFn:async({id,file,summary}:{id:string;file:File;summary:string})=>{const body=new FormData();body.append('summary',summary||file.name);body.append('file',file);return api(`/api/admin/activities/${id}/results/upload`,{method:'POST',body});},onSuccess:(_data,variables)=>{setUploadedResults(current=>({...current,[variables.id]:variables.file.name}));refresh();}});
   const next:Record<string,string>={PREPARING:'REGISTRATION',REGISTRATION:'IN_PROGRESS',IN_PROGRESS:'ENDED',ENDED:'ARCHIVED'};
   return <main><PageHero eyebrow="QUEST OPERATIONS" title="活动管理" description="按筹备、报名、进行、结束、成果、归档推进完整生命周期。"><button className="guild-button primary" onClick={()=>setOpen(!open)}>{open?'取消创建':'创建活动'}</button></PageHero><section className="shell">{open&&<form className="inline-create" onSubmit={e=>{e.preventDefault();create.mutate();}}><label>活动名称<input required minLength={2} value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label><label>活动说明<textarea required value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label>活动地点<input required minLength={2} value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/></label><label>开始时间<input type="datetime-local" required value={form.startsAt.slice(0,16)} onChange={e=>setForm({...form,startsAt:new Date(e.target.value).toISOString()})}/></label><label>人数上限<input type="number" min={1} value={form.capacity} onChange={e=>setForm({...form,capacity:Number(e.target.value)})}/></label>{create.error&&<p className="form-error">{create.error.message}</p>}<button className="guild-button primary">保存筹备活动</button></form>}{query.isLoading?<LoadingPanel/>:query.error?<ErrorPanel error={query.error}/>:<div className="manage-list">{query.data?.items.map(a=><article key={a.id}><div><StatusBadge status={a.status}/><h2>{a.title}</h2><p>{a.description} · {a.location} · {formatDate(a.starts_at)}</p>{a.result_summary&&<small>成果：{a.result_summary}</small>}{generatedCodes[a.id]&&<strong className="check-in-code">签到码：{generatedCodes[a.id]}</strong>}{uploadedResults[a.id]&&<strong className="form-success">成果文件已上传：{uploadedResults[a.id]}</strong>}</div><div className="row-actions">{a.status==='ENDED'&&<div className="result-upload"><input aria-label={`${a.title}成果说明`} placeholder="成果说明" value={resultSummaries[a.id]??''} onChange={e=>setResultSummaries({...resultSummaries,[a.id]:e.target.value})}/><input aria-label={`${a.title}成果文件`} type="file" onChange={e=>setResultFiles({...resultFiles,[a.id]:e.target.files?.[0]??null})}/><button disabled={!resultFiles[a.id]||uploadResult.isPending} onClick={()=>{const file=resultFiles[a.id];if(file)uploadResult.mutate({id:a.id,file,summary:resultSummaries[a.id]??''});}}>上传成果文件</button></div>}{next[a.status]&&<button onClick={()=>{const resultSummary=a.status==='ENDED'?(resultSummaries[a.id]?.trim()||prompt('归档前填写成果摘要')||undefined):undefined;transition.mutate({id:a.id,status:next[a.status],resultSummary});}}>{next[a.status]==='REGISTRATION'?'开放报名':next[a.status]==='IN_PROGRESS'?'开始并生成签到码':next[a.status]==='ENDED'?'结束活动':'填写成果并归档'}</button>}</div></article>)}</div>}</section></main>;
+}
+
+const emptyAnnouncementForm=()=>({title:'',summary:'',category:'NOTICE' as AdminAnnouncement['category'],href:'/activities',pinned:false,published:true,publishedAt:new Date().toISOString().slice(0,16)});
+
+export function AnnouncementsAdminPage(){
+  const refresh=useInvalidate('admin-announcements','public-home');
+  const [open,setOpen]=useState(false);
+  const [editingId,setEditingId]=useState<string|null>(null);
+  const [form,setForm]=useState(emptyAnnouncementForm);
+  const query=useQuery({queryKey:['admin-announcements'],queryFn:()=>api<PageData<AdminAnnouncement>>('/api/admin/announcements?page=1&pageSize=100')});
+  const closeEditor=()=>{setOpen(false);setEditingId(null);setForm(emptyAnnouncementForm());};
+  const save=useMutation({
+    mutationFn:()=>api(editingId?`/api/admin/announcements/${editingId}`:'/api/admin/announcements',json(editingId?'PATCH':'POST',{...form,publishedAt:new Date(form.publishedAt).toISOString()})),
+    onSuccess:()=>{closeEditor();refresh();},
+  });
+  const toggle=useMutation({mutationFn:(item:AdminAnnouncement)=>api(`/api/admin/announcements/${item.id}`,json('PATCH',{published:!item.published})),onSuccess:refresh});
+  const edit=(item:AdminAnnouncement)=>{setEditingId(item.id);setForm({title:item.title,summary:item.summary,category:item.category,href:item.href,pinned:Boolean(item.pinned),published:Boolean(item.published),publishedAt:item.published_at.slice(0,16)});setOpen(true);};
+  return <main><PageHero eyebrow="QUEST BOARD EDITOR" title="公会公告" description="维护首页任务公告板；发布、置顶、编辑与下架都会真实写入数据库。"><button className="guild-button primary" onClick={()=>{if(open)closeEditor();else setOpen(true);}}>{open?'取消编辑':'新建公告'}</button></PageHero><section className="shell">
+    {open&&<form className="inline-create announcement-editor" onSubmit={e=>{e.preventDefault();save.mutate();}}>
+      <h2>{editingId?'编辑公告':'发布新公告'}</h2>
+      <label>公告标题<input required minLength={2} maxLength={80} value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/></label>
+      <label>公告分类<select value={form.category} onChange={e=>setForm({...form,category:e.target.value as AdminAnnouncement['category']})}><option value="RECRUITMENT">招新信息</option><option value="ACTIVITY">活动公告</option><option value="NOTICE">社团通知</option></select></label>
+      <label className="announcement-summary">公告摘要<textarea required minLength={2} maxLength={240} value={form.summary} onChange={e=>setForm({...form,summary:e.target.value})}/></label>
+      <label>站内链接<input required pattern="/.*" value={form.href} onChange={e=>setForm({...form,href:e.target.value})}/></label>
+      <label>发布时间<input type="datetime-local" required value={form.publishedAt} onChange={e=>setForm({...form,publishedAt:e.target.value})}/></label>
+      <label className="check-label"><input type="checkbox" checked={form.pinned} onChange={e=>setForm({...form,pinned:e.target.checked})}/>置顶显示 NEW 标记</label>
+      <label className="check-label"><input type="checkbox" checked={form.published} onChange={e=>setForm({...form,published:e.target.checked})}/>立即发布到游客首页</label>
+      {save.error&&<p className="form-error">{save.error.message}</p>}
+      <button className="guild-button primary" disabled={save.isPending}>保存公告</button>
+    </form>}
+    {query.isLoading?<LoadingPanel/>:query.error?<ErrorPanel error={query.error}/>:!query.data?.items.length?<EmptyPanel label="尚未创建公告"/>:<div className="manage-list announcement-list">{query.data.items.map(item=><article key={item.id}><div><div className="announcement-meta"><StatusBadge status={item.published?'PUBLISHED':'DRAFT'}/>{Boolean(item.pinned)&&<span className="pin-label"><Pin/>置顶</span>}<small>{formatDate(item.published_at)}</small></div><h2>{item.title}</h2><p>{item.summary}</p><small>{item.category} · {item.href}</small></div><div className="row-actions"><button onClick={()=>edit(item)}><Pencil/>编辑</button><button aria-label={`${item.published?'下架':'发布'} ${item.title}`} onClick={()=>toggle.mutate(item)}>{item.published?<><X/>下架</>:<><Megaphone/>发布</>}</button></div></article>)}</div>}
+  </section></main>;
 }
 
 export function RecruitmentAdminPage(){
@@ -118,7 +151,25 @@ export function ChronicleAdminPage(){
 
 export function AnalyticsAdminPage(){const query=useQuery({queryKey:['admin-analytics'],queryFn:()=>api<Analytics>('/api/admin/analytics')});return <main><PageHero eyebrow="GUILD INTELLIGENCE" title="数据统计" description="成员增长、活动数量、部门活跃度、贡献排行与年度报告。"/><section className="shell chart-grid">{query.isLoading?<LoadingPanel/>:<><article className="chart-panel"><h2>成员增长</h2><ResponsiveContainer width="100%" height={320}><BarChart data={query.data?.memberGrowth??[]}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="month"/><YAxis/><Tooltip/><Bar dataKey="count" fill="#4b9cd3"/></BarChart></ResponsiveContainer></article><article className="chart-panel"><h2>部门活跃度</h2><ResponsiveContainer width="100%" height={320}><BarChart data={query.data?.departmentActivity??[]} layout="vertical"><XAxis type="number"/><YAxis type="category" dataKey="departmentName" width={80}/><Tooltip/><Bar dataKey="score" fill="#c89b3c"/></BarChart></ResponsiveContainer></article></>}</section><section className="shell report-actions"><button className="guild-button" onClick={()=>window.print()}>打印年度报告</button><button className="guild-button ghost" onClick={()=>{const rows=query.data?.departmentActivity??[];const csv=['部门,活跃度',...rows.map(r=>`${r.departmentName},${r.score}`)].join('\n');const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='佐佑动漫社年度报告.csv';a.click();URL.revokeObjectURL(url);}}>导出统计 CSV</button></section></main>}
 
-export function SettingsAdminPage(){const [settings,setSettings]=useState<Record<string,string>>({});const query=useQuery({queryKey:['admin-settings'],queryFn:async()=>{const d=await api<{settings:Record<string,string>}>('/api/admin/site-settings');setSettings(d.settings);return d;}});const save=useMutation({mutationFn:()=>api('/api/admin/site-settings',json('PUT',settings))});return <main><PageHero eyebrow="GUILD CONFIGURATION" title="系统设置" description="维护站点名称、欢迎语、公会等级和招新开关。"/><section className="shell narrow">{query.isLoading?<LoadingPanel/>:<form className="parchment-form" onSubmit={e=>{e.preventDefault();save.mutate();}}><label>站点名称<input value={settings.siteName??''} onChange={e=>setSettings({...settings,siteName:e.target.value})}/></label><label>首页欢迎语<input value={settings.welcomeMessage??'欢迎来到冒险者公会'} onChange={e=>setSettings({...settings,welcomeMessage:e.target.value})}/></label><label>公会等级<input value={settings.guildLevel??'12'} onChange={e=>setSettings({...settings,guildLevel:e.target.value})}/></label><label className="check-label"><input type="checkbox" checked={settings.recruitmentOpen!=='false'} onChange={e=>setSettings({...settings,recruitmentOpen:String(e.target.checked)})}/>开放招新</label>{save.isSuccess&&<p className="form-success">设置已保存</p>}<button className="guild-button primary"><Settings/>保存设置</button></form>}</section></main>}
+export function SettingsAdminPage(){
+  const [settings,setSettings]=useState<Record<string,string>>({});
+  const refresh=useInvalidate('public-home','admin-settings');
+  const query=useQuery({queryKey:['admin-settings'],queryFn:async()=>{const d=await api<{settings:Record<string,string>}>('/api/admin/site-settings');setSettings(d.settings);return d;}});
+  const save=useMutation({mutationFn:()=>api('/api/admin/site-settings',json('PUT',settings)),onSuccess:refresh});
+  const setValue=(key:string,value:string)=>setSettings(current=>({...current,[key]:value}));
+  return <main><PageHero eyebrow="GUILD CONFIGURATION" title="系统设置" description="维护站点名称、首页公会状态和招新开关。"/><section className="shell narrow">{query.isLoading?<LoadingPanel/>:<form className="parchment-form" onSubmit={e=>{e.preventDefault();save.mutate();}}>
+    <label>站点名称<input value={settings.siteName??''} onChange={e=>setValue('siteName',e.target.value)}/></label>
+    <label>首页欢迎语<input value={settings.welcomeMessage??'欢迎来到冒险者公会'} onChange={e=>setValue('welcomeMessage',e.target.value)}/></label>
+    <label>公会等级<input type="number" min="1" max="999" value={settings.guildLevel??'12'} onChange={e=>setValue('guildLevel',e.target.value)}/></label>
+    <label>当前经验<input type="number" min="0" value={settings.guildLevelCurrent??'2390'} onChange={e=>setValue('guildLevelCurrent',e.target.value)}/></label>
+    <label>升级目标<input type="number" min="1" value={settings.guildLevelTarget??'3000'} onChange={e=>setValue('guildLevelTarget',e.target.value)}/></label>
+    <label>荣誉数量<input type="number" min="0" value={settings.honorCount??'56'} onChange={e=>setValue('honorCount',e.target.value)}/></label>
+    <label>成立年份<input type="number" min="1900" max="2200" value={settings.foundedYear??'2018'} onChange={e=>setValue('foundedYear',e.target.value)}/></label>
+    <label className="check-label"><input type="checkbox" checked={settings.recruitmentOpen!=='false'} onChange={e=>setValue('recruitmentOpen',String(e.target.checked))}/>开放招新</label>
+    {save.isSuccess&&<p className="form-success">设置已保存，游客首页刷新后生效。</p>}{save.error&&<p className="form-error">{save.error.message}</p>}
+    <button className="guild-button primary"><Settings/>保存设置</button>
+  </form>}</section></main>;
+}
 
 export function AuditAdminPage(){const query=useQuery({queryKey:['admin-audit'],queryFn:()=>api<PageData<Audit>>('/api/admin/audit-log?page=1&pageSize=100')});return <main><PageHero eyebrow="AUDIT TRAIL" title="审计日志" description="记录登录、审核、状态迁移和贡献确认等关键管理操作。"/><section className="shell">{query.isLoading?<LoadingPanel/>:query.error?<ErrorPanel error={query.error}/>:<div className="audit-list">{query.data?.items.map(a=><article key={a.id}><CircleGauge/><div><strong>{a.action}</strong><span>{a.entity_type} · {a.entity_id}</span></div><time>{formatDate(a.created_at)}</time></article>)}</div>}</section></main>}
 

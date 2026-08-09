@@ -77,6 +77,26 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
   expect(consoleErrors).toEqual([]);
 });
 
+test('首页主要景深层会随指针产生可辨认的差速位移', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const scene = page.getByTestId('layered-guild-scene');
+  await expect(scene).toHaveAttribute('data-motion', 'parallax-ready');
+  await page.mouse.move(720, 360);
+  const restingBuilding = await page.locator('.guild-building-art').evaluate(element => getComputedStyle(element).translate);
+  await page.mouse.move(1380, 90);
+  await expect.poll(() => page.locator('.guild-building-art').evaluate(element => getComputedStyle(element).translate)).not.toBe(restingBuilding);
+  await expect.poll(() => page.locator('.guild-building-art').evaluate(element => Math.abs(Number.parseFloat(getComputedStyle(element).translate) || 0))).toBeGreaterThanOrEqual(14);
+  const [cloudX, buildingX, partyX] = await page.locator('.layered-guild-scene').evaluate(element => {
+    const readX = (selector: string) => Number.parseFloat(getComputedStyle(element.querySelector(selector)!).translate) || 0;
+    return [readX('.clouds-layer'), readX('.guild-building-art'), readX('.licensed-party')];
+  });
+  expect(Math.abs(buildingX)).toBeGreaterThan(Math.abs(cloudX) + 5);
+  expect(Math.abs(partyX)).toBeGreaterThan(Math.abs(buildingX) + 3);
+  await page.mouse.move(170, 210);
+  await expect.poll(() => page.locator('.guild-building-art').evaluate(element => Number.parseFloat(getComputedStyle(element).translate) || 0)).toBeGreaterThan(8);
+});
+
 test('招新申请到激活登录形成完整闭环', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const suffix = Date.now().toString().slice(-8);

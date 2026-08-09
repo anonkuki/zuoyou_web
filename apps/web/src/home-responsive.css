@@ -885,6 +885,14 @@ footer.pixel-footer > .pixel-footer-main { padding-top: 20px; padding-bottom: 16
 
 .guild-hero-copy { top: 92px; }
 .open-layer, .scene-tree, .guild-building-art, .licensed-party { will-change: transform, filter; }
+.layered-guild-scene[data-motion="parallax-ready"] .clouds-layer { animation: none; }
+.layered-guild-scene[data-motion="parallax-ready"] .open-layer,
+.layered-guild-scene[data-motion="parallax-ready"] .scene-tree,
+.layered-guild-scene[data-motion="parallax-ready"] .valley-floor,
+.layered-guild-scene[data-motion="parallax-ready"] .guild-approach,
+.layered-guild-scene[data-motion="parallax-ready"] .guild-building-art,
+.layered-guild-scene[data-motion="parallax-ready"] .anime-culture-props,
+.layered-guild-scene[data-motion="parallax-ready"] .licensed-party { will-change: translate, transform, filter; }
 
 @keyframes hero-scroll-travel {
   0% { transform: translateY(0); opacity: 0; }

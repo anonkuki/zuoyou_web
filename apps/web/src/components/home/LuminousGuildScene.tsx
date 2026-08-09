@@ -1,6 +1,7 @@
-import type { CSSProperties } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import { GuildCrest } from './GuildCrest';
 import { GuildAtmosphereCanvas } from './GuildAtmosphereCanvas';
+import { useGuildSceneParallax } from './useGuildSceneParallax';
 
 const SCENE_ROOT = '/assets/background/golden-valley';
 const ARCH_ROOT = '/assets/architecture/guild';
@@ -55,8 +56,12 @@ function GuildBuilding() {
 }
 
 export function LuminousGuildScene() {
+  const sceneRef = useRef<HTMLDivElement>(null);
+  useGuildSceneParallax(sceneRef);
+
   return (
     <div
+      ref={sceneRef}
       className="layered-guild-scene luminous-valley-scene"
       data-testid="layered-guild-scene"
       data-layout="cinematic-wide"

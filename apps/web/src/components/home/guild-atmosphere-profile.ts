@@ -41,3 +41,32 @@ export function calculateSceneScrollProgress({
   const progress = (scrollY - heroTop) / Math.max(1, heroHeight);
   return Math.min(1, Math.max(0, progress));
 }
+
+export type ParallaxOffset = { x: number; y: number };
+
+export function calculateLayerParallax({
+  pointerX,
+  pointerY,
+  scrollProgress,
+}: {
+  pointerX: number;
+  pointerY: number;
+  scrollProgress: number;
+}) {
+  const x = Math.min(1, Math.max(-1, pointerX));
+  const y = Math.min(1, Math.max(-1, pointerY));
+  const scroll = Math.min(1, Math.max(0, scrollProgress));
+  const offset = (xDepth: number, yDepth: number, scrollDepth: number): ParallaxOffset => ({
+    x: Math.round(-x * xDepth),
+    y: Math.round(-y * yDepth - scroll * scrollDepth),
+  });
+
+  return {
+    cloud: offset(10, 4, 0),
+    mountain: offset(6, 3, 4),
+    farForest: offset(4, 2, 6),
+    nearForest: offset(13, 5, 16),
+    building: offset(19, 7, 36),
+    party: offset(25, 8, 46),
+  };
+}

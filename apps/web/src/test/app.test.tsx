@@ -126,6 +126,15 @@ describe('Adventurer Guild app', () => {
     expect(scene.querySelectorAll('img').length).toBeGreaterThanOrEqual(11);
   });
 
+  it('keeps the cinematic atmosphere progressive and the chapter framing semantic', async () => {
+    renderAt('/');
+    const atmosphere = await screen.findByTestId('guild-atmosphere-canvas');
+    expect(atmosphere).toHaveAttribute('data-renderer', 'static-fallback');
+    expect(atmosphere.querySelector('canvas')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-hero-chapter="guild-arrival"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-scroll-cue="continue"]')).toBeInTheDocument();
+  });
+
   it('welcomes visitors through a grounded approach and six real anime club departments', async () => {
     renderAt('/');
     const scene = await screen.findByTestId('layered-guild-scene');

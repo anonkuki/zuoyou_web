@@ -9,7 +9,7 @@ export function HomePage() {
   const home = useQuery({ queryKey: ['public-home'], queryFn: () => api<HomeData>('/api/public/home') });
   return <main className="reference-home">
     <GuildHero stats={home.data?.stats} loading={home.isLoading}/>
-    <section className="home-entry-zone">
+    <section className="home-entry-zone" id="guild-passages">
       <header className="entry-zone-heading">
         <small>ADVENTURER'S GUIDE</small>
         <h2>从这里，走进我们的故事</h2>

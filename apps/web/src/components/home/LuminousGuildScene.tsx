@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { GuildCrest } from './GuildCrest';
+import { GuildAtmosphereCanvas } from './GuildAtmosphereCanvas';
 
 const SCENE_ROOT = '/assets/background/golden-valley';
 const ARCH_ROOT = '/assets/architecture/guild';
@@ -89,6 +90,7 @@ export function LuminousGuildScene() {
       </div>
       <img className="scene-tree tree-left" src={`${SCENE_ROOT}/tree-left.png`} alt="" aria-hidden="true" draggable={false} />
       <img className="scene-tree tree-right" src={`${SCENE_ROOT}/tree-right.png`} alt="" aria-hidden="true" draggable={false} />
+      <GuildAtmosphereCanvas />
       <GuildBuilding />
 
       <div className="anime-culture-props" data-anime-culture="six-departments" aria-label="六部门文化陈列">

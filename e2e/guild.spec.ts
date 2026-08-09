@@ -21,6 +21,10 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
     await page.setViewportSize(size);
     await page.goto('/');
     await expect(page.getByRole('heading', { name: '佐佑动漫社' })).toBeVisible();
+    const atmosphere = page.getByTestId('guild-atmosphere-canvas');
+    await expect(atmosphere).toHaveAttribute('data-renderer', 'three');
+    await expect(atmosphere.locator('canvas')).toBeVisible();
+    await expect(atmosphere).toHaveAttribute('data-quality', size.width === 390 ? 'mobile' : 'cinematic');
     await expect(page.getByLabel('分层像素幻想公会大厅场景')).toBeVisible();
     await expect(page.getByText('82', { exact: true })).toBeVisible();
     const pageHeight = await page.locator('body').evaluate(body => body.scrollHeight);

@@ -20,7 +20,17 @@ const adminLinks=[
 
 export function ConsoleLayout({admin=false}:{admin?:boolean}){
   const [collapsed,setCollapsed]=useState(false); const {user}=useAuth(); const client=useQueryClient(); const navigate=useNavigate(); const logout=useMutation({mutationFn:()=>api('/api/auth/logout',json('POST')),onSuccess:async()=>{client.clear();navigate('/');}}); const links=admin?(user?.role==='ADMIN'?adminLinks:adminLinks.filter(([to])=>['/admin/members','/admin/activities','/admin/works','/admin/files','/admin/tasks'].includes(to))):portalLinks;
-  return <div className={`console ${collapsed?'collapsed':''}`}><aside><div className="console-brand"><Castle/><div><span>佐佑动漫社</span><strong>{admin?'公会管理台':'成员驻地'}</strong></div></div><button className="collapse-button" onClick={()=>setCollapsed(!collapsed)} aria-label="折叠侧栏"><ChevronLeft/></button><nav aria-label={admin?'后台管理':'成员中心'}>{links.map(([to,Icon,label])=><NavLink end={to==='/admin'||to==='/portal'} key={to} to={to}><Icon/><span>{label}</span></NavLink>)}</nav><div className="console-user"><div>{user?.displayName.slice(0,1)}</div><span><strong>{user?.displayName}</strong><small>{user?.role}</small></span><button onClick={()=>logout.mutate()} title="退出登录"><LogOut/></button></div></aside><section className="console-main"><header><div><span className="signal-dot"/>系统在线</div><Link to="/"><Castle/>游客首页</Link>{admin&&<Link to="/portal"><BriefcaseBusiness/>成员中心</Link>}</header><Outlet/></section></div>;
+  return <div className={`console ${collapsed?'collapsed':''}`} data-workspace={admin?'admin':'member'}>
+    <aside data-surface="guild-navigation">
+      <span className="console-rail-ornament ornament-top" aria-hidden="true"/><span className="console-rail-ornament ornament-bottom" aria-hidden="true"/>
+      <div className="console-brand"><Castle/><div><span>佐佑动漫社</span><strong>{admin?'公会管理台':'成员驻地'}</strong></div></div>
+      <button className="collapse-button" onClick={()=>setCollapsed(!collapsed)} aria-label="折叠侧栏"><ChevronLeft/></button>
+      <small className="console-nav-caption">{admin?'GUILD OPERATIONS':'MEMBER LODGE'}</small>
+      <nav aria-label={admin?'后台管理':'成员中心'}>{links.map(([to,Icon,label],index)=><NavLink end={to==='/admin'||to==='/portal'} key={to} to={to} data-index={String(index+1).padStart(2,'0')}><Icon/><span>{label}</span></NavLink>)}</nav>
+      <div className="console-user"><div>{user?.displayName.slice(0,1)}</div><span><strong>{user?.displayName}</strong><small>{user?.role}</small></span><button onClick={()=>logout.mutate()} title="退出登录"><LogOut/></button></div>
+    </aside>
+    <section className="console-main"><header data-surface="console-utility"><div className="console-context"><span className="signal-dot"/><span><small>{admin?'OPERATION STATUS':'LODGE STATUS'}</small>系统在线</span></div><div className="console-utility-links"><Link to="/"><Castle/>游客首页</Link>{admin&&<Link to="/portal"><BriefcaseBusiness/>成员中心</Link>}</div></header><Outlet/></section>
+  </div>;
 }
 
 export function RootProviders({children}:{children:ReactNode}){return children}

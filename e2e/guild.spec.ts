@@ -9,6 +9,19 @@ async function loginDemo(page: Page, role: '管理员' | '负责人' | '成员')
   await expect(page).toHaveURL(role === '成员' ? /\/portal$/ : role === '负责人' ? /\/admin\/activities$/ : /\/admin$/);
 }
 
+async function revealScrollMotion(page: Page) {
+  const animated = page.locator('.chronicle-entry, .department-card, .activity-card, .work-card');
+  const count = await animated.count();
+  for (let index = 0; index < count; index += 1) {
+    await animated.nth(index).scrollIntoViewIfNeeded();
+  }
+  await page.evaluate(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    document.querySelector('.department-grid')?.scrollTo({ left: 0, behavior: 'instant' });
+  });
+  await expect.poll(() => animated.evaluateAll(elements => elements.every(element => Number(getComputedStyle(element).opacity) > .99))).toBe(true);
+}
+
 test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page }) => {
   const consoleErrors: string[] = [];
   page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
@@ -95,6 +108,63 @@ test('首页主要景深层会随指针产生可辨认的差速位移', async ({
   expect(Math.abs(partyX)).toBeGreaterThan(Math.abs(buildingX) + 3);
   await page.mouse.move(170, 210);
   await expect.poll(() => page.locator('.guild-building-art').evaluate(element => Number.parseFloat(getComputedStyle(element).translate) || 0)).toBeGreaterThan(8);
+});
+
+test('非首页页面使用统一精修视觉系统', async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  for (const [path, name] of [
+    ['/chronicle', 'chronicle-polished-1440x900.png'],
+    ['/departments', 'departments-1440x900.png'],
+    ['/activities', 'activities-polished-1440x900.png'],
+    ['/works', 'works-polished-1440x900.png'],
+    ['/join', 'join-polished-1440x900.png'],
+  ] as const) {
+    await page.goto(path);
+    await expect(page.locator('.page-hero')).toHaveAttribute('data-visual', 'guild-page-v2');
+    await expect(page.locator('[data-ornament="constellation"]')).toBeVisible();
+    await revealScrollMotion(page);
+    await page.screenshot({ path: `${qaRoot}/${name}`, fullPage: true });
+  }
+
+  await page.goto('/login');
+  await page.screenshot({ path: `${qaRoot}/login-polished-1440x900.png`, fullPage: true });
+  await loginDemo(page, '管理员');
+  await expect(page.locator('.console')).toHaveAttribute('data-workspace', 'admin');
+  await expect(page.locator('.console aside')).toHaveAttribute('data-surface', 'guild-navigation');
+  await expect(page.locator('.console-main > header')).toHaveAttribute('data-surface', 'console-utility');
+  await page.screenshot({ path: `${qaRoot}/admin-dashboard-1440x900.png`, fullPage: true });
+
+  await page.goto('/admin/files');
+  await page.screenshot({ path: `${qaRoot}/manager-files-1440x900.png`, fullPage: true });
+  await page.goto('/portal');
+  await expect(page.locator('.console')).toHaveAttribute('data-workspace', 'member');
+  await page.screenshot({ path: `${qaRoot}/member-dashboard-polished-1440x900.png`, fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/departments');
+  await expect(page.locator('.department-grid')).toBeVisible();
+  await revealScrollMotion(page);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: `${qaRoot}/departments-polished-390x844.png` });
+  await page.goto('/admin');
+  await expect(page.locator('.console aside nav')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: `${qaRoot}/admin-dashboard-polished-390x844.png` });
+
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.goto('/activities');
+  await expect(page.locator('.activity-grid')).toBeVisible();
+  await revealScrollMotion(page);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: `${qaRoot}/activities-polished-768x1024.png` });
+  await page.goto('/admin/files');
+  await expect(page.locator('.console aside nav')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: `${qaRoot}/manager-files-polished-768x1024.png` });
+  expect(consoleErrors).toEqual([]);
 });
 
 test('招新申请到激活登录形成完整闭环', async ({ page }) => {

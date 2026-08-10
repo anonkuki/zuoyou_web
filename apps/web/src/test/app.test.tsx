@@ -192,6 +192,15 @@ describe('Adventurer Guild app', () => {
     expect(screen.getByRole('button', { name: '提交加入申请' })).toBeEnabled();
   });
 
+  it('frames every secondary public route with the authored guild visual system', async () => {
+    renderAt('/departments');
+    expect(await screen.findByRole('heading', { name: '职业大厅' })).toBeInTheDocument();
+    const hero = document.querySelector('.page-hero');
+    expect(hero).toHaveAttribute('data-visual', 'guild-page-v2');
+    expect(hero?.querySelector('[data-ornament="constellation"]')).toBeInTheDocument();
+    expect(hero?.querySelector('[data-ornament="chapter-mark"]')).toBeInTheDocument();
+  });
+
   it('protects the management area for unauthenticated visitors', async () => {
     renderAt('/admin');
     expect(await screen.findByText('需要公会身份验证')).toBeInTheDocument();
@@ -213,6 +222,9 @@ describe('Adventurer Guild app', () => {
     const user = userEvent.setup();
     renderAt('/admin/files');
     expect(await screen.findByRole('heading', { name: '文件管理' })).toBeInTheDocument();
+    expect(document.querySelector('.console')).toHaveAttribute('data-workspace', 'admin');
+    expect(document.querySelector('.console aside')).toHaveAttribute('data-surface', 'guild-navigation');
+    expect(document.querySelector('.console-main > header')).toHaveAttribute('data-surface', 'console-utility');
     await user.click(screen.getByRole('button', { name: '上传文件' }));
     await user.upload(screen.getByLabelText('选择文件'), new File(['guild-data'], '内部手册.txt', { type: 'text/plain' }));
     const save = screen.getByRole('button', { name: '保存文件' });

@@ -18,6 +18,33 @@ export type FileVisibility = z.infer<typeof FileVisibilitySchema>;
 export const AnnouncementCategorySchema = z.enum(['RECRUITMENT', 'ACTIVITY', 'NOTICE']);
 export type AnnouncementCategory = z.infer<typeof AnnouncementCategorySchema>;
 
+export const ProfileVisibilitySchema = z.enum(['MEMBERS', 'PRIVATE']);
+export type ProfileVisibility = z.infer<typeof ProfileVisibilitySchema>;
+
+export const ConversationTypeSchema = z.enum(['DIRECT', 'DEPARTMENT']);
+export type ConversationType = z.infer<typeof ConversationTypeSchema>;
+
+const profileTagSchema = z.string().trim().min(1).max(20);
+export const memberProfileUpdateSchema = z.object({
+  displayName: z.string().trim().min(2).max(60).optional(),
+  bio: z.string().trim().max(500).optional(),
+  guildTitle: z.string().trim().max(40).optional(),
+  college: z.string().trim().max(80).optional(),
+  grade: z.string().trim().max(30).optional(),
+  skills: z.array(profileTagSchema).max(8).optional(),
+  interests: z.array(profileTagSchema).max(8).optional(),
+  avatarColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  profileVisibility: ProfileVisibilitySchema.optional(),
+}).refine((value) => Object.keys(value).length > 0, '至少提供一个修改字段');
+export type MemberProfileUpdate = z.infer<typeof memberProfileUpdateSchema>;
+
+export const directConversationInputSchema = z.object({ userId: z.string().trim().min(1).max(100) });
+export const messageCreateSchema = z.object({
+  content: z.string().trim().min(1).max(2000),
+  replyToId: z.string().trim().min(1).max(100).nullable().optional(),
+});
+export const messageUpdateSchema = z.object({ content: z.string().trim().min(1).max(2000) });
+
 const internalHrefSchema = z.string().trim().min(1).max(240)
   .regex(/^\/(?!\/)[A-Za-z0-9/_?=&%#.-]*$/, '公告链接必须是站内路径');
 

@@ -9,6 +9,11 @@ import {
   RoleSchema,
   WorkStatusSchema,
   pageQuerySchema,
+  ConversationTypeSchema,
+  ProfileVisibilitySchema,
+  directConversationInputSchema,
+  memberProfileUpdateSchema,
+  messageCreateSchema,
 } from '../src/index.js';
 
 describe('shared contracts', () => {
@@ -70,5 +75,19 @@ describe('shared contracts', () => {
       },
       announcements: [],
     }).success).toBe(false);
+  });
+
+  it('validates profile privacy, structured tags, and conversation payloads', () => {
+    expect(ProfileVisibilitySchema.options).toEqual(['MEMBERS', 'PRIVATE']);
+    expect(ConversationTypeSchema.options).toEqual(['DIRECT', 'DEPARTMENT']);
+    expect(memberProfileUpdateSchema.parse({
+      guildTitle: '幻装见习生', college: '艺术设计学院', grade: '2025级',
+      skills: ['角色塑造', '活动协作'], interests: ['动画'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS',
+    })).toMatchObject({ guildTitle: '幻装见习生', skills: ['角色塑造', '活动协作'] });
+    expect(memberProfileUpdateSchema.safeParse({ skills: Array.from({ length: 9 }, (_, index) => `技能${index}`) }).success).toBe(false);
+    expect(memberProfileUpdateSchema.safeParse({ avatarColor: 'red' }).success).toBe(false);
+    expect(directConversationInputSchema.safeParse({ userId: '' }).success).toBe(false);
+    expect(messageCreateSchema.parse({ content: '  明天大厅见！  ' }).content).toBe('明天大厅见！');
+    expect(messageCreateSchema.safeParse({ content: '   ' }).success).toBe(false);
   });
 });

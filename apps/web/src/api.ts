@@ -46,4 +46,12 @@ export interface User {
   role: 'MEMBER' | 'DEPARTMENT_LEAD' | 'ADMIN';
   departmentId: string | null;
   bio: string;
+  guildTitle: string;
+  college: string;
+  grade: string;
+  skills: string[];
+  interests: string[];
+  avatarColor: string;
+  profileVisibility: 'MEMBERS' | 'PRIVATE';
+  lastSeenAt?: string | null;
 }

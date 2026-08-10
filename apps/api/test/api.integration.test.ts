@@ -72,6 +72,25 @@ describe('production seed safety', () => {
       expect((sqlite.prepare("SELECT value FROM site_settings WHERE key='foundedYear'").get() as { value: string }).value).toBe('2018');
     });
   });
+
+  it('migrates and seeds mature member profiles and guild conversations', async () => {
+    await withDevelopmentSeed(async (sqlite) => {
+      const userColumns = sqlite.prepare("PRAGMA table_info('users')").all() as Array<{ name: string }>;
+      expect(userColumns.map((column) => column.name)).toEqual(expect.arrayContaining([
+        'guild_title', 'college', 'grade', 'skills', 'interests', 'avatar_color', 'profile_visibility', 'last_seen_at',
+      ]));
+      expect((sqlite.prepare("SELECT COUNT(*) count FROM conversations WHERE type='DEPARTMENT'").get() as { count: number }).count).toBe(6);
+      expect((sqlite.prepare('SELECT COUNT(*) count FROM conversation_participants').get() as { count: number }).count).toBeGreaterThanOrEqual(3);
+      expect((sqlite.prepare('SELECT COUNT(*) count FROM messages').get() as { count: number }).count).toBeGreaterThanOrEqual(6);
+      expect((sqlite.prepare("SELECT COUNT(*) count FROM works WHERE user_id='user-lead' AND status='PUBLISHED'").get() as { count: number }).count).toBeGreaterThanOrEqual(2);
+      expect((sqlite.prepare("SELECT COUNT(*) count FROM activity_registrations WHERE user_id='user-lead' AND checked_in_at IS NOT NULL").get() as { count: number }).count).toBeGreaterThanOrEqual(1);
+      expect((sqlite.prepare("SELECT COUNT(*) count FROM audit_logs WHERE target_user_id='user-lead'").get() as { count: number }).count).toBeGreaterThanOrEqual(3);
+      const profile = sqlite.prepare("SELECT guild_title,skills,profile_visibility FROM users WHERE id='user-member'").get() as { guild_title: string; skills: string; profile_visibility: string };
+      expect(profile.guild_title).toBe('幻装见习生');
+      expect(JSON.parse(profile.skills)).toContain('角色塑造');
+      expect(profile.profile_visibility).toBe('MEMBERS');
+    });
+  });
 });
 
 describe.sequential('Adventurer Guild API', () => {
@@ -305,13 +324,13 @@ describe.sequential('Adventurer Guild API', () => {
   it('provides a paged and department-scoped work review queue', async () => {
     const adminAll = await app.inject({ method: 'GET', url: '/api/admin/works?page=1&pageSize=1', headers: { cookie: adminCookie } });
     expect(adminAll.statusCode).toBe(200);
-    expect(adminAll.json().data).toMatchObject({ page: 1, pageSize: 1, total: 2 });
+    expect(adminAll.json().data).toMatchObject({ page: 1, pageSize: 1, total: 4 });
     expect(adminAll.json().data.items).toHaveLength(1);
 
     const adminPending = await app.inject({ method: 'GET', url: '/api/admin/works?status=PENDING', headers: { cookie: adminCookie } });
     expect(adminPending.json().data.items.map((work: { id: string }) => work.id)).toEqual(['work-tech-pending']);
     const leadAll = await app.inject({ method: 'GET', url: '/api/admin/works', headers: { cookie: leadCookie } });
-    expect(leadAll.json().data).toMatchObject({ page: 1, pageSize: 20, total: 1 });
+    expect(leadAll.json().data).toMatchObject({ page: 1, pageSize: 20, total: 3 });
     expect(leadAll.json().data.items.every((work: { departmentId: string }) => work.departmentId === 'dept-cos')).toBe(true);
     const leadPending = await app.inject({ method: 'GET', url: '/api/admin/works?status=PENDING', headers: { cookie: leadCookie } });
     expect(leadPending.json().data.total).toBe(0);
@@ -450,5 +469,67 @@ describe.sequential('Adventurer Guild API', () => {
     expect(contributions.statusCode).toBe(200);
     expect(contributions.json().data.points).toBe(member.points);
     expect(contributions.json().data.events).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'TASK_CONFIRMED', points: 5 })]));
+  });
+
+  it('publishes privacy-aware member homepages and an authenticated directory', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/member/directory' })).statusCode).toBe(401);
+    const updated = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: {
+      displayName: '白羽见习者', bio: '负责幻装协作与活动记录', guildTitle: '幻装见习生', college: '艺术设计学院', grade: '2025级',
+      skills: ['角色塑造', '道具整理'], interests: ['动画', '摄影'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS',
+    } });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().data.profile).toMatchObject({ displayName: '白羽见习者', guildTitle: '幻装见习生', skills: ['角色塑造', '道具整理'] });
+    const directory = await app.inject({ method: 'GET', url: '/api/member/directory?q=白羽', headers: { cookie: leadCookie } });
+    expect(directory.statusCode).toBe(200);
+    expect(directory.json().data.items).toEqual([expect.objectContaining({ id: 'user-member', guildTitle: '幻装见习生', departmentName: 'COS部' })]);
+    const homepage = await app.inject({ method: 'GET', url: '/api/member/profiles/user-member', headers: { cookie: leadCookie } });
+    expect(homepage.statusCode).toBe(200);
+    expect(homepage.json().data.profile).toMatchObject({ displayName: '白羽见习者', skills: ['角色塑造', '道具整理'] });
+    expect(homepage.json().data.stats).toMatchObject({ publishedWorks: expect.any(Number), attendedActivities: expect.any(Number), contributionPoints: expect.any(Number) });
+
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { profileVisibility: 'PRIVATE' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/member/profiles/user-member', headers: { cookie: leadCookie } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/member/profiles/user-member', headers: { cookie: adminCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { profileVisibility: 'MEMBERS' } })).statusCode).toBe(200);
+  });
+
+  it('closes direct and department chat with unread, reply, edit, delete, and ownership rules', async () => {
+    const list = await app.inject({ method: 'GET', url: '/api/member/conversations', headers: { cookie: memberCookie } });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().data.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'conversation-dept-cos', type: 'DEPARTMENT' }),
+      expect.objectContaining({ id: 'conversation-demo-direct', type: 'DIRECT', unreadCount: expect.any(Number) }),
+    ]));
+
+    const direct = await app.inject({ method: 'POST', url: '/api/member/conversations/direct', headers: { cookie: memberCookie }, payload: { userId: 'user-lead' } });
+    const duplicate = await app.inject({ method: 'POST', url: '/api/member/conversations/direct', headers: { cookie: memberCookie }, payload: { userId: 'user-lead' } });
+    expect(direct.statusCode).toBe(200);
+    expect(duplicate.json().data.conversation.id).toBe(direct.json().data.conversation.id);
+    expect((await app.inject({ method: 'GET', url: '/api/member/conversations/conversation-demo-direct/messages', headers: { cookie: adminCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/api/member/conversations/conversation-demo-direct/messages', headers: { cookie: memberCookie }, payload: { content: '   ' } })).statusCode).toBe(400);
+
+    const sent = await app.inject({ method: 'POST', url: '/api/member/conversations/conversation-demo-direct/messages', headers: { cookie: memberCookie }, payload: {
+      content: '尺寸表已上传，请查收。', replyToId: 'message-direct-02',
+    } });
+    expect(sent.statusCode).toBe(201);
+    const messageId = sent.json().data.message.id as string;
+    const leadList = await app.inject({ method: 'GET', url: '/api/member/conversations', headers: { cookie: leadCookie } });
+    expect(leadList.json().data.items.find((item: { id: string }) => item.id === 'conversation-demo-direct').unreadCount).toBeGreaterThan(0);
+    const history = await app.inject({ method: 'GET', url: '/api/member/conversations/conversation-demo-direct/messages?pageSize=2', headers: { cookie: leadCookie } });
+    expect(history.statusCode).toBe(200);
+    expect(history.json().data.items).toHaveLength(2);
+    expect(history.json().data.hasMore).toBe(true);
+    expect((await app.inject({ method: 'POST', url: '/api/member/conversations/conversation-demo-direct/read', headers: { cookie: leadCookie } })).statusCode).toBe(200);
+    const cleared = await app.inject({ method: 'GET', url: '/api/member/conversations', headers: { cookie: leadCookie } });
+    expect(cleared.json().data.items.find((item: { id: string }) => item.id === 'conversation-demo-direct').unreadCount).toBe(0);
+
+    expect((await app.inject({ method: 'PATCH', url: `/api/member/messages/${messageId}`, headers: { cookie: leadCookie }, payload: { content: '越权修改' } })).statusCode).toBe(403);
+    const edited = await app.inject({ method: 'PATCH', url: `/api/member/messages/${messageId}`, headers: { cookie: memberCookie }, payload: { content: '尺寸表与清单均已上传。' } });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json().data.message).toMatchObject({ content: '尺寸表与清单均已上传。', editedAt: expect.any(String) });
+    expect((await app.inject({ method: 'DELETE', url: `/api/member/messages/${messageId}`, headers: { cookie: leadCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'DELETE', url: `/api/member/messages/${messageId}`, headers: { cookie: memberCookie } })).statusCode).toBe(200);
+    const afterDelete = await app.inject({ method: 'GET', url: '/api/member/conversations/conversation-demo-direct/messages?pageSize=20', headers: { cookie: memberCookie } });
+    expect(afterDelete.json().data.items.find((item: { id: string }) => item.id === messageId).content).toBe('消息已撤回');
   });
 });

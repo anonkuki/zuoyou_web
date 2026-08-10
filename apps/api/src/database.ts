@@ -49,13 +49,40 @@ function ensureHomeShowcaseData(sqlite: Database.Database, timestamp: string): v
   })();
 }
 
+function ensureSocialShowcaseData(sqlite: Database.Database, timestamp: string): void {
+  const profile = sqlite.prepare(`UPDATE users SET guild_title=?,college=?,grade=?,skills=?,interests=?,avatar_color=?,profile_visibility='MEMBERS',last_seen_at=?,updated_at=? WHERE id=?`);
+  profile.run('星门总管', '社团联合事务中心', '运营组', '["活动统筹","成员服务","文档管理"]', '["像素艺术","社团建设"]', '#b26b3f', timestamp, timestamp, 'user-admin');
+  profile.run('首席幻装师', '数字媒体学院', '2023级', '["服装制作","舞台妆造","摄影协作"]', '["角色设计","舞台演出","漫展"]', '#c75f88', timestamp, timestamp, 'user-lead');
+  profile.run('幻装见习生', '艺术设计学院', '2025级', '["角色塑造","道具整理","活动协作"]', '["动画","COSPLAY","摄影"]', '#5279a8', timestamp, timestamp, 'user-member');
+
+  const insertConversation = sqlite.prepare('INSERT OR IGNORE INTO conversations(id,type,direct_key,department_id,title,created_at,updated_at) VALUES (?,?,?,?,?,?,?)');
+  for (const [departmentId, , name] of departments) insertConversation.run(`conversation-${departmentId}`, 'DEPARTMENT', null, departmentId, `${name}协作频道`, timestamp, timestamp);
+  insertConversation.run('conversation-demo-direct', 'DIRECT', 'user-lead:user-member', null, '', timestamp, timestamp);
+
+  const insertParticipant = sqlite.prepare('INSERT OR IGNORE INTO conversation_participants(conversation_id,user_id,last_read_at,muted,joined_at) VALUES (?,?,?,?,?)');
+  sqlite.prepare(`SELECT id,department_id FROM users WHERE is_active=1 AND department_id IS NOT NULL`).all().forEach((row) => {
+    const member = row as { id: string; department_id: string };
+    insertParticipant.run(`conversation-${member.department_id}`, member.id, timestamp, 0, timestamp);
+  });
+  insertParticipant.run('conversation-demo-direct', 'user-lead', timestamp, 0, timestamp);
+  insertParticipant.run('conversation-demo-direct', 'user-member', '2026-08-10T08:00:00.000Z', 0, timestamp);
+
+  const insertMessage = sqlite.prepare('INSERT OR IGNORE INTO messages(id,conversation_id,sender_id,content,reply_to_id,created_at) VALUES (?,?,?,?,?,?)');
+  insertMessage.run('message-cos-01', 'conversation-dept-cos', 'user-lead', '欢迎来到 COS 部协作频道，近期道具清单请在任务区确认。', null, '2026-08-10T08:10:00.000Z');
+  insertMessage.run('message-cos-02', 'conversation-dept-cos', 'user-member', '收到，我会在今晚完成分类标记。', 'message-cos-01', '2026-08-10T08:18:00.000Z');
+  insertMessage.run('message-direct-01', 'conversation-demo-direct', 'user-member', '学姐，夏日幻装工坊的服装尺寸表已经整理好了。', null, '2026-08-10T09:00:00.000Z');
+  insertMessage.run('message-direct-02', 'conversation-demo-direct', 'user-lead', '辛苦啦！发到内部文件后我来复核，注意不要包含个人联系方式。', 'message-direct-01', '2026-08-10T09:04:00.000Z');
+  insertMessage.run('message-tech-01', 'conversation-dept-tech', 'user-tech-01', '魔导机关展的交互装置进入联调阶段。', null, '2026-08-10T10:00:00.000Z');
+  insertMessage.run('message-publicity-01', 'conversation-dept-publicity', 'user-fiction-006', '本周活动海报排期已更新，请负责人确认发布时间。', null, '2026-08-10T11:00:00.000Z');
+}
+
 export async function openDatabase(databasePath: string): Promise<DatabaseContext> {
   await mkdir(dirname(databasePath), { recursive: true });
   const sqlite = new Database(databasePath);
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');
@@ -83,7 +110,11 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
       const seedProfile = sqlite.prepare("SELECT value FROM site_settings WHERE key='seedProfile'").get() as { value: string } | undefined;
       if (demoAccount || seedProfile?.value === 'development') throw new Error('Refusing production startup: development demo credentials detected in existing database');
     }
-    if (!options.production) ensureHomeShowcaseData(sqlite, new Date().toISOString());
+    if (!options.production) {
+      const timestamp = new Date().toISOString();
+      ensureHomeShowcaseData(sqlite, timestamp);
+      ensureSocialShowcaseData(sqlite, timestamp);
+    }
     return;
   }
   const now = new Date().toISOString();
@@ -97,9 +128,9 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   for (const [id, slug, name, title] of departments) insertDepartment.run(id, slug, name, title, `${name}的公会驻地与专业协作小组`, now, now);
 
   const insertUser = sqlite.prepare('INSERT INTO users(id,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
-  insertUser.run('user-admin', 'admin', adminHash, '星门总管', options.production ? 'initial-admin@local.invalid' : 'admin@guild.example', 'ADMIN', null, '负责公会运营与秩序', 1, now, now);
-  insertUser.run('user-lead', options.production ? null : 'cos.lead', leadHash, '绯月幻装师', 'cos.lead@guild.example', 'DEPARTMENT_LEAD', 'dept-cos', '负责幻装与舞台呈现', 1, now, now);
-  insertUser.run('user-member', options.production ? null : 'cos.member', memberHash, '白羽见习者', 'cos.member@guild.example', 'MEMBER', 'dept-cos', '热爱角色塑造与活动协作', 1, now, now);
+  insertUser.run('user-admin', 'admin', adminHash, '星门总管', options.production ? 'initial-admin@local.invalid' : 'admin@guild.example', 'ADMIN', null, '负责公会运营与秩序', 1, '2018-05-01T00:00:00.000Z', now);
+  insertUser.run('user-lead', options.production ? null : 'cos.lead', leadHash, '绯月幻装师', 'cos.lead@guild.example', 'DEPARTMENT_LEAD', 'dept-cos', '负责幻装与舞台呈现', 1, '2023-05-01T00:00:00.000Z', now);
+  insertUser.run('user-member', options.production ? null : 'cos.member', memberHash, '白羽见习者', 'cos.member@guild.example', 'MEMBER', 'dept-cos', '热爱角色塑造与活动协作', 1, '2025-09-01T00:00:00.000Z', now);
 
   const departmentIds = departments.map(([id]) => id);
   const leaders: Record<string, string> = { 'dept-cos': 'user-lead' };
@@ -119,7 +150,10 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   insertActivity.run('activity-live', 'dept-cos', '星灯巡游', '在场签到演练', 'IN_PROGRESS', 20, 'STAR42', null, '2026-08-02T10:00:00.000Z', now, now);
   insertActivity.run('activity-preparing', 'dept-tech', '魔导机关展', '活动筹备中', 'PREPARING', 30, null, null, '2026-09-01T10:00:00.000Z', now, now);
   insertActivity.run('activity-ended', 'dept-music', '月下轻音会', '等待成果归档', 'ENDED', 50, 'MOON88', null, '2026-07-20T10:00:00.000Z', now, now);
-  sqlite.prepare('INSERT INTO activity_registrations(id,activity_id,user_id,registered_at) VALUES (?,?,?,?)').run('registration-live-member', 'activity-live', 'user-member', now);
+  sqlite.prepare('INSERT INTO activity_registrations(id,activity_id,user_id,registered_at) VALUES (?,?,?,?)')
+    .run('registration-live-member', 'activity-live', 'user-member', now);
+  const insertShowcaseRegistration = sqlite.prepare('INSERT INTO activity_registrations(id,activity_id,user_id,registered_at,checked_in_at) VALUES (?,?,?,?,?)');
+  insertShowcaseRegistration.run('registration-lead-ended', 'activity-ended', 'user-lead', '2026-07-10T08:00:00.000Z', '2026-07-20T10:01:00.000Z');
 
   const insertChronicle = sqlite.prepare('INSERT INTO chronicles(id,title,content,occurred_at,published,created_at,updated_at) VALUES (?,?,?,?,?,?,?)');
   insertChronicle.run('chronicle-1', '冒险者协会成立', '六个专业部门在星门大厅签署协作章程。', '2023-05-01T00:00:00.000Z', 1, now, now);
@@ -128,6 +162,14 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   const insertWork = sqlite.prepare('INSERT INTO works(id,user_id,department_id,title,description,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)');
   insertWork.run('work-tech-pending', 'user-tech-01', 'dept-tech', '便携魔导灯原型', '虚构的互动装置设计', 'PENDING', now, now);
   insertWork.run('work-public-1', 'user-member', 'dept-cos', '银翼幻装记录', '已公开的活动作品', 'PUBLISHED', now, now);
+  insertWork.run('work-lead-stage', 'user-lead', 'dept-cos', '星灯巡游幻装视觉册', '收录巡游角色造型、舞台站位与幕后协作过程。', 'PUBLISHED', '2026-08-03T08:00:00.000Z', '2026-08-03T08:00:00.000Z');
+  insertWork.run('work-lead-workshop', 'user-lead', 'dept-cos', '夏日工坊造型手记', '面向新成员的服装测量、道具安全与妆造协作记录。', 'PUBLISHED', '2026-07-28T08:00:00.000Z', '2026-07-28T08:00:00.000Z');
+
+  const insertShowcaseContribution = sqlite.prepare('INSERT INTO audit_logs(id,actor_id,target_user_id,action,entity_type,entity_id,details,created_at) VALUES (?,?,?,?,?,?,?,?)');
+  insertShowcaseContribution.run('audit-lead-work-stage', 'user-admin', 'user-lead', 'WORK_PUBLISHED', 'WORK', 'work-lead-stage', '作品发布贡献', '2026-08-03T08:00:00.000Z');
+  insertShowcaseContribution.run('audit-lead-work-workshop', 'user-admin', 'user-lead', 'WORK_PUBLISHED', 'WORK', 'work-lead-workshop', '作品发布贡献', '2026-07-28T08:00:00.000Z');
+  insertShowcaseContribution.run('audit-lead-checkin-ended', 'user-lead', 'user-lead', 'ACTIVITY_CHECK_IN', 'ACTIVITY', 'activity-ended', '活动签到贡献', '2026-07-20T10:01:00.000Z');
+  insertShowcaseContribution.run('audit-member-work', 'user-admin', 'user-member', 'WORK_PUBLISHED', 'WORK', 'work-public-1', '作品发布贡献', now);
 
   const insertFile = sqlite.prepare('INSERT INTO files(id,owner_id,department_id,name,storage_key,mime_type,size,visibility,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)');
   insertFile.run('file-public', 'user-admin', null, '公会手册.pdf', 'public/guild-guide.pdf', 'application/pdf', 1024, 'PUBLIC', now, now);
@@ -148,4 +190,5 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   insertSetting.run('recruitmentOpen', 'true', now);
   insertSetting.run('seedProfile', options.production ? 'production' : 'development', now);
   ensureHomeShowcaseData(sqlite, now);
+  if (!options.production) ensureSocialShowcaseData(sqlite, now);
 }

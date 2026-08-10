@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 import {
-  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, homeDataSchema, pageQuerySchema, successResponse,
+  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, directConversationInputSchema, homeDataSchema, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, successResponse,
   type ActivityStatus, type Role,
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
@@ -19,6 +19,7 @@ import { canTransitionActivity } from './activity.js';
 import { openDatabase, seedDatabase } from './database.js';
 import { canAccessDepartment, canAccessFile } from './policies.js';
 import { decryptSecret, encryptSecret, hashPassword, sha256, verifyPassword } from './security.js';
+import { GuildSocialRepository, SocialError, safeTags } from './social.js';
 
 export interface AppOptions {
   databasePath: string;
@@ -39,6 +40,14 @@ interface UserRow {
   role: Role;
   department_id: string | null;
   bio: string;
+  guild_title: string;
+  college: string;
+  grade: string;
+  skills: string;
+  interests: string;
+  avatar_color: string;
+  profile_visibility: 'MEMBERS' | 'PRIVATE';
+  last_seen_at: string | null;
   is_active: number;
 }
 
@@ -50,6 +59,14 @@ interface Principal {
   role: Role;
   departmentId: string | null;
   bio: string;
+  guildTitle: string;
+  college: string;
+  grade: string;
+  skills: string[];
+  interests: string[];
+  avatarColor: string;
+  profileVisibility: 'MEMBERS' | 'PRIVATE';
+  lastSeenAt: string | null;
 }
 
 class HttpError extends Error {
@@ -62,7 +79,8 @@ const now = () => new Date().toISOString();
 const newId = (prefix: string) => `${prefix}_${randomUUID()}`;
 const cleanUser = (user: UserRow): Principal => ({
   id: user.id, username: user.username, displayName: user.display_name, email: user.email,
-  role: user.role, departmentId: user.department_id, bio: user.bio,
+  role: user.role, departmentId: user.department_id, bio: user.bio, guildTitle: user.guild_title, college: user.college, grade: user.grade,
+  skills: safeTags(user.skills), interests: safeTags(user.interests), avatarColor: user.avatar_color, profileVisibility: user.profile_visibility, lastSeenAt: user.last_seen_at,
 });
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -100,12 +118,16 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   }
 
   const app = Fastify({ logger: false });
+  const social = new GuildSocialRepository(sqlite, newId, now);
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   await app.register(multipart, { limits: { files: 1, fields: 8, fileSize: 200 * 1024 * 1024 } });
   if (options.webRoot) await app.register(fastifyStatic, { root: resolve(options.webRoot), wildcard: false });
   app.addHook('onClose', async () => { sqlite.close(); });
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof SocialError) {
+      return reply.status(error.statusCode).send({ ok: false, error: { code: error.code, message: error.message } });
+    }
     if (error instanceof HttpError) {
       return reply.status(error.statusCode).send({ ok: false, error: { code: error.code, message: error.message, details: error.details } });
     }
@@ -129,7 +151,9 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     if (!token) return null;
     const row = sqlite.prepare(`SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id
       WHERE s.id=? AND s.expires_at>? AND u.is_active=1`).get(sha256(token), now()) as UserRow | undefined;
-    return row ? cleanUser(row) : null;
+    if (!row) return null;
+    social.touch(row.id);
+    return cleanUser({ ...row, last_seen_at: now() });
   }
 
   function requireMember(request: FastifyRequest, reply: FastifyReply): Principal | null {
@@ -305,13 +329,67 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
   app.get('/api/member/profile', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
-    return successResponse({ profile: principal });
+    return successResponse({ profile: social.getMemberHomepage(principal, principal.id).profile });
   });
   app.patch('/api/member/profile', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
-    const body = parse(z.object({ displayName: z.string().trim().min(2).max(60).optional(), bio: z.string().max(500).optional() }).refine((value) => Object.keys(value).length > 0), request.body);
-    sqlite.prepare('UPDATE users SET display_name=COALESCE(?,display_name),bio=COALESCE(?,bio),updated_at=? WHERE id=?').run(body.displayName ?? null, body.bio ?? null, now(), principal.id);
-    return successResponse({ updated: true });
+    const body = parse(memberProfileUpdateSchema, request.body);
+    const profile = social.updateProfile(principal.id, body);
+    return successResponse({ updated: true, profile });
+  });
+
+  app.get('/api/member/directory', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const paging = getPaging(request.query);
+    const { q = '' } = parse(z.object({ q: z.string().trim().max(60).default('') }), request.query);
+    return successResponse(social.listDirectory(principal, q, paging.page, paging.pageSize));
+  });
+
+  app.get('/api/member/profiles/:id', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    return successResponse(social.getMemberHomepage(principal, (request.params as { id: string }).id));
+  });
+
+  app.get('/api/member/conversations', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    return successResponse({ items: social.listConversations(principal) });
+  });
+
+  app.post('/api/member/conversations/direct', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const { userId } = parse(directConversationInputSchema, request.body);
+    return successResponse({ conversation: social.createDirect(principal, userId) });
+  });
+
+  app.get('/api/member/conversations/:id/messages', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const query = parse(z.object({ before: z.iso.datetime().optional(), pageSize: z.coerce.number().int().min(1).max(100).default(40) }), request.query);
+    return successResponse(social.listMessages(principal, (request.params as { id: string }).id, query.before, query.pageSize));
+  });
+
+  app.post('/api/member/conversations/:id/messages', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const body = parse(messageCreateSchema, request.body);
+    const message = social.sendMessage(principal, (request.params as { id: string }).id, body.content, body.replyToId);
+    return reply.status(201).send(successResponse({ message }));
+  });
+
+  app.post('/api/member/conversations/:id/read', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    social.markRead(principal, (request.params as { id: string }).id);
+    return successResponse({ read: true });
+  });
+
+  app.patch('/api/member/messages/:id', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const { content } = parse(messageUpdateSchema, request.body);
+    return successResponse({ message: social.editMessage(principal, (request.params as { id: string }).id, content) });
+  });
+
+  app.delete('/api/member/messages/:id', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    social.deleteMessage(principal, (request.params as { id: string }).id);
+    return successResponse({ deleted: true });
   });
 
   app.post('/api/member/activities/:id/register', async (request, reply) => {

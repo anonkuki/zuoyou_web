@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 const utcText = (name: string) => text(name).notNull();
 
@@ -10,8 +10,26 @@ export const departments = sqliteTable('departments', {
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(), username: text('username').unique(), passwordHash: text('password_hash'), displayName: text('display_name').notNull(),
   email: text('email').notNull().unique(), role: text('role').notNull(), departmentId: text('department_id').references(() => departments.id),
-  bio: text('bio').notNull().default(''), isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
+  bio: text('bio').notNull().default(''), guildTitle: text('guild_title').notNull().default(''), college: text('college').notNull().default(''), grade: text('grade').notNull().default(''),
+  skills: text('skills').notNull().default('[]'), interests: text('interests').notNull().default('[]'), avatarColor: text('avatar_color').notNull().default('#2f6f64'),
+  profileVisibility: text('profile_visibility').notNull().default('MEMBERS'), lastSeenAt: text('last_seen_at'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
+
+export const conversations = sqliteTable('conversations', {
+  id: text('id').primaryKey(), type: text('type').notNull(), directKey: text('direct_key').unique(), departmentId: text('department_id').references(() => departments.id),
+  title: text('title').notNull().default(''), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
+}, (table) => [index('conversation_department_idx').on(table.departmentId, table.type)]);
+
+export const conversationParticipants = sqliteTable('conversation_participants', {
+  conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }), lastReadAt: text('last_read_at'), muted: integer('muted', { mode: 'boolean' }).notNull().default(false), joinedAt: utcText('joined_at'),
+}, (table) => [primaryKey({ columns: [table.conversationId, table.userId] }), index('conversation_participant_user_idx').on(table.userId, table.conversationId)]);
+
+export const messages = sqliteTable('messages', {
+  id: text('id').primaryKey(), conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }), senderId: text('sender_id').notNull().references(() => users.id),
+  content: text('content').notNull(), replyToId: text('reply_to_id'), editedAt: text('edited_at'), deletedAt: text('deleted_at'), createdAt: utcText('created_at'),
+}, (table) => [index('message_conversation_time_idx').on(table.conversationId, table.createdAt, table.id)]);
 
 export const chronicles = sqliteTable('chronicles', {
   id: text('id').primaryKey(), title: text('title').notNull(), content: text('content').notNull(), occurredAt: utcText('occurred_at'), published: integer('published', { mode: 'boolean' }).notNull().default(true), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
@@ -78,4 +96,4 @@ export const auditLogs = sqliteTable('audit_logs', {
   id: text('id').primaryKey(), actorId: text('actor_id').references(() => users.id), targetUserId: text('target_user_id').references(() => users.id), action: text('action').notNull(), entityType: text('entity_type').notNull(), entityId: text('entity_id').notNull(), details: text('details'), createdAt: utcText('created_at'),
 }, (table) => [uniqueIndex('contribution_event_unique').on(table.action, table.entityType, table.entityId, table.targetUserId)]);
 
-export const schema = { departments, users, chronicles, activities, activityRegistrations, activityResults, applications, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, auditLogs };
+export const schema = { departments, users, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, auditLogs };

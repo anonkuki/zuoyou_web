@@ -257,4 +257,77 @@ describe('Adventurer Guild app', () => {
     await user.click(screen.getByRole('button', { name: '下架 招新公告' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/announcements/notice-1', expect.objectContaining({ method: 'PATCH' })));
   });
+
+  it('discovers members and opens a complete member homepage', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      const user = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '活动协作', guildTitle: '幻装见习生', college: '艺术设计学院', grade: '2025级', skills: ['角色塑造'], interests: ['动画'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path.startsWith('/api/member/directory')) return new Response(JSON.stringify({ ok: true, data: { items: [user, { ...user, id: 'user-lead', displayName: '绯月幻装师', guildTitle: '首席幻装师', role: 'DEPARTMENT_LEAD', avatarColor: '#c75f88' }], page: 1, pageSize: 24, total: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profiles/user-lead') return new Response(JSON.stringify({ ok: true, data: { profile: { ...user, id: 'user-lead', displayName: '绯月幻装师', guildTitle: '首席幻装师', role: 'DEPARTMENT_LEAD', departmentName: 'COS部', departmentTitle: '幻术师', avatarColor: '#c75f88', joinedAt: '2023-05-01T00:00:00.000Z', presence: 'ONLINE' }, stats: { publishedWorks: 4, attendedActivities: 12, contributionPoints: 86 }, works: [{ id: 'work-1', title: '星辉幻装录', description: '舞台作品', createdAt: '2026-08-01T00:00:00.000Z' }], activities: [{ id: 'activity-1', title: '夏日幻装工坊', startsAt: '2026-08-10T00:00:00.000Z' }] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/conversations/direct' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { conversation: { id: 'direct-new' } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/portal/members');
+    expect(await screen.findByRole('heading', { name: '成员名录' })).toBeInTheDocument();
+    expect(await screen.findByText('首席幻装师')).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: '查看 绯月幻装师 的主页' }));
+    expect(await screen.findByRole('heading', { name: '绯月幻装师' })).toBeInTheDocument();
+    expect(screen.getByText('86')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '星辉幻装录' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '发起私聊' })).toBeEnabled();
+  });
+
+  it('edits a rich personal homepage and persists structured fields', async () => {
+    const profile = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', departmentName: 'COS部', bio: '活动协作', guildTitle: '幻装见习生', college: '艺术设计学院', grade: '2025级', skills: ['角色塑造'], interests: ['动画'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profile' && !init?.method) return new Response(JSON.stringify({ ok: true, data: { profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profile' && init?.method === 'PATCH') return new Response(JSON.stringify({ ok: true, data: { updated: true, profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/portal/profile');
+    expect(await screen.findByRole('heading', { name: '编辑个人主页' })).toBeInTheDocument();
+    await user.clear(screen.getByLabelText('公会头衔'));
+    await user.type(screen.getByLabelText('公会头衔'), '银翼记录官');
+    await user.clear(screen.getByLabelText('技能标签'));
+    await user.type(screen.getByLabelText('技能标签'), '摄影, 后期, 活动协作');
+    await user.selectOptions(screen.getByLabelText('主页可见范围'), 'PRIVATE');
+    await user.click(screen.getByRole('button', { name: '保存个人主页' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/profile', expect.objectContaining({ method: 'PATCH' })));
+    const patchCall = fetchMock.mock.calls.find(([path, init]) => path === '/api/member/profile' && init?.method === 'PATCH');
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({ guildTitle: '银翼记录官', skills: ['摄影', '后期', '活动协作'], profileVisibility: 'PRIVATE' });
+  });
+
+  it('operates an unread-aware chat workspace with reply and send feedback', async () => {
+    const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '幻装见习生', college: '', grade: '', skills: [], interests: [], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const conversations = [{ id: 'conversation-demo-direct', type: 'DIRECT', title: '绯月幻装师', counterpart: { id: 'user-lead', displayName: '绯月幻装师', avatarColor: '#c75f88', presence: 'ONLINE' }, lastMessage: '辛苦啦！', lastMessageAt: '2026-08-10T09:04:00.000Z', unreadCount: 2 }];
+    const messages = [{ id: 'message-1', conversationId: 'conversation-demo-direct', senderId: 'user-lead', sender: { displayName: '绯月幻装师', avatarColor: '#c75f88' }, content: '辛苦啦！注意保护个人信息。', replyTo: null, editedAt: null, deletedAt: null, createdAt: '2026-08-10T09:04:00.000Z' }];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/conversations') return new Response(JSON.stringify({ ok: true, data: { items: conversations } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path.startsWith('/api/member/conversations/conversation-demo-direct/messages') && init?.method !== 'POST') return new Response(JSON.stringify({ ok: true, data: { items: messages, hasMore: false, nextBefore: null } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path.endsWith('/read')) return new Response(JSON.stringify({ ok: true, data: { read: true } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path.endsWith('/messages') && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { message: { ...messages[0], id: 'message-new', senderId: 'user-member', content: '收到，我会处理。' } } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/portal/chat');
+    expect(await screen.findByRole('heading', { name: '公会通讯' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('2 条未读消息')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /绯月幻装师/ }));
+    expect(await screen.findByText('辛苦啦！注意保护个人信息。')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '回复该消息' }));
+    expect(screen.getByRole('button', { name: '取消回复' })).toBeInTheDocument();
+    await user.type(screen.getByLabelText('输入消息'), '收到，我会处理。');
+    await user.click(screen.getByRole('button', { name: '发送消息' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/conversations/conversation-demo-direct/messages', expect.objectContaining({ method: 'POST' })));
+  });
 });

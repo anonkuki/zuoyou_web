@@ -10,6 +10,7 @@ const app = await createApp({
   seed: process.env.SEED_DATABASE !== 'false',
   adminPassword: process.env.ADMIN_PASSWORD,
   production,
+  secureCookies: production && process.env.COOKIE_SECURE !== 'false',
   webRoot: process.env.WEB_ROOT ?? (production ? bundledWebRoot : undefined),
 });
 

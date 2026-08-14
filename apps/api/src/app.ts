@@ -28,6 +28,7 @@ export interface AppOptions {
   seed?: boolean;
   adminPassword?: string;
   production?: boolean;
+  secureCookies?: boolean;
   webRoot?: string;
 }
 
@@ -322,7 +323,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
     sqlite.prepare('INSERT INTO sessions(id,user_id,expires_at,created_at) VALUES (?,?,?,?)').run(sha256(token), user.id, expiresAt, now());
-    reply.setCookie('guild_session', token, { httpOnly: true, sameSite: 'strict', secure: options.production ?? false, path: '/', expires: new Date(expiresAt) });
+    reply.setCookie('guild_session', token, { httpOnly: true, sameSite: 'strict', secure: options.secureCookies ?? options.production ?? false, path: '/', expires: new Date(expiresAt) });
     audit(sqlite, user.id, 'LOGIN', 'session', sha256(token));
     return successResponse({ user: cleanUser(user) });
   });

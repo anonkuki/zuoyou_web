@@ -266,6 +266,23 @@ describe.sequential('Adventurer Guild API', () => {
     }
   });
 
+  it('allows an explicit insecure cookie override for an HTTP IP preview', async () => {
+    const productionRoot = await mkdtemp('D:/Temp/guild-api-http-preview-');
+    const productionApp = await createApp({
+      databasePath: `${productionRoot}/guild.sqlite`, uploadRoot: `${productionRoot}/uploads`, seed: true,
+      sessionSecret: 'production-http-preview-secret-long', adminPassword: 'ProductionAdmin!2026', production: true,
+      secureCookies: false,
+    });
+    try {
+      const response = await productionApp.inject({ method: 'POST', url: '/api/auth/login', payload: { username: 'admin', password: 'ProductionAdmin!2026' } });
+      expect(response.statusCode).toBe(200);
+      expect(String(response.headers['set-cookie'])).not.toContain('Secure');
+    } finally {
+      await productionApp.close();
+      await rm(productionRoot, { recursive: true, force: true });
+    }
+  });
+
   it('completes recruitment approval, status lookup, one-time activation and login', async () => {
     const submitted = await app.inject({ method: 'POST', url: '/api/public/applications', payload: {
       displayName: '星砂旅人', email: 'starsand@example.test', college: '计算机学院 2026级', departmentId: 'dept-tech', reason: '希望参与魔导装置维护',

@@ -4,16 +4,20 @@ import { api } from '../../api';
 import { AdventureCard } from './AdventureCard';
 import { GuildHero } from './GuildHero';
 import { NoticeBoard } from './NoticeBoard';
+import { MascotGuide, type SceneSpeaker } from './MascotGuide';
+import { useState } from 'react';
 
 export function HomePage() {
+  const [speaker, setSpeaker] = useState<SceneSpeaker | null>(null);
   const home = useQuery({ queryKey: ['public-home'], queryFn: () => api<HomeData>('/api/public/home') });
   return <main className="reference-home">
-    <GuildHero stats={home.data?.stats} loading={home.isLoading}/>
+    <GuildHero stats={home.data?.stats} loading={home.isLoading} onSelectSpeaker={setSpeaker} selectedSpeaker={speaker?.name}/>
+    <MascotGuide speaker={speaker} onClearSpeaker={() => setSpeaker(null)}/>
     <section className="home-entry-zone" id="guild-passages">
       <header className="entry-zone-heading">
-        <small>ADVENTURER'S GUIDE</small>
-        <h2>从这里，走进我们的故事</h2>
-        <p>查阅公会编年史、认识六大职业部门，或翻开最近一次冒险的记录。</p>
+        <small>WELCOME TO ZOUYOU</small>
+        <h2>慢慢逛，总会找到喜欢的角落</h2>
+        <p>从社团往事、六个部门到最近的活动记录，先挑一处感兴趣的看看吧。</p>
       </header>
       <div className="entry-zone-content">
         <div className="entry-card-grid"><AdventureCard variant="history"/><AdventureCard variant="departments"/><AdventureCard variant="activities"/></div>

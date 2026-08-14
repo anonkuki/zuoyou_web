@@ -1,7 +1,7 @@
 import { useRef, type CSSProperties } from 'react';
-import { GuildCrest } from './GuildCrest';
 import { GuildAtmosphereCanvas } from './GuildAtmosphereCanvas';
 import { useGuildSceneParallax } from './useGuildSceneParallax';
+import type { SceneSpeaker } from './MascotGuide';
 
 const SCENE_ROOT = '/assets/background/golden-valley';
 const ARCH_ROOT = '/assets/architecture/guild';
@@ -19,10 +19,10 @@ const parallaxLayers = [
 ] as const;
 
 const adventurers = [
-  { file: 'rose-adventurer.png', name: '红发冒险者', className: 'party-member party-rose' },
-  { file: 'guild-steward.png', name: '公会执事', className: 'party-member party-steward' },
-  { file: 'green-mage.png', name: '绿发精灵法师', className: 'party-member party-mage' },
-  { file: 'silver-ranger.png', name: '银发游侠', className: 'party-member party-ranger' },
+  { file: 'rose-adventurer.png', name: '阿澄', role: 'COS部 · 服装与角色', line: '下午要整理衣装间，想来搭把手吗？', className: 'party-member party-rose' },
+  { file: 'guild-steward.png', name: '小祈', role: '外宣部 · 活动记录', line: '相机已经充好电了，今天也别忘了留下合照。', className: 'party-member party-steward' },
+  { file: 'green-mage.png', name: '青禾', role: '原创部 · 绘画创作', line: '窗边光线正好，我在画下一期社刊的封面。', className: 'party-member party-mage' },
+  { file: 'silver-ranger.png', name: '银铃', role: '轻音部 · 乐队排练', line: '排练室还有空位，路过的话就来听一首吧。', className: 'party-member party-ranger' },
 ] as const;
 
 const departmentProps = [
@@ -44,7 +44,7 @@ function GuildBuilding() {
       <span className="lodge-cast-shadow" />
       <ArchitectureImage file="guild-lodge-cutout.png" className="guild-lodge-cutout" piece="cohesive-lodge" />
 
-      <div className="lodge-banner" data-architecture-piece><GuildCrest /></div>
+      <div className="lodge-banner" data-architecture-piece><img className="lodge-official-mark" src="/assets/brand/zuoyou-logo-pixel.png" alt="公会旗帜上的佐佑标志" draggable={false}/></div>
       <div className="lodge-sign" data-architecture-piece>
         <ArchitectureImage file="blank-sign.png" className="lodge-sign-board" />
         <span>公会大厅</span>
@@ -55,7 +55,7 @@ function GuildBuilding() {
   );
 }
 
-export function LuminousGuildScene() {
+export function LuminousGuildScene({ onSelectSpeaker, selectedSpeaker }: { onSelectSpeaker?: (speaker: SceneSpeaker) => void; selectedSpeaker?: string | null }) {
   const sceneRef = useRef<HTMLDivElement>(null);
   useGuildSceneParallax(sceneRef);
 
@@ -111,11 +111,14 @@ export function LuminousGuildScene() {
         ))}</div>
       </div>
 
-      <div className="licensed-party" data-open-asset-layer="adventurer-party" data-license="CC0 · Eldiran" data-facing="visitor">
+      <div className="licensed-party" data-open-asset-layer="adventurer-party" data-license="CC0 · Eldiran" data-facing="visitor" aria-label="大厅前的社团成员">
         {adventurers.map((adventurer) => (
-          <img key={adventurer.name} src={`${CHARACTER_ROOT}/${adventurer.file}`} className={adventurer.className} alt={adventurer.name} draggable={false} />
+          <button key={adventurer.name} className={`party-character-button${selectedSpeaker === adventurer.name ? ' is-speaking' : ''}`} aria-label={`和${adventurer.name}交谈`} onClick={() => onSelectSpeaker?.({ name: adventurer.name, role: adventurer.role, line: adventurer.line, portrait: `${CHARACTER_ROOT}/${adventurer.file}` })}>
+            <img src={`${CHARACTER_ROOT}/${adventurer.file}`} className={adventurer.className} alt={`${adventurer.name}，${adventurer.role}`} draggable={false} />
+            <span className="party-nameplate"><strong>{adventurer.name}</strong><small>{adventurer.role.split(' · ')[0]}</small></span>
+          </button>
         ))}
-        <span className="party-welcome">欢迎来到佐佑！</span>
+        <span className="party-welcome">点点大家，听听今天在忙什么</span>
       </div>
 
       <div className="hero-atmosphere valley-atmosphere" data-atmosphere="cinematic-depth" aria-hidden="true">

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { ArrowRight, BookOpen, CalendarDays, Camera, Castle, Check, ChevronRight, Compass, Crown, FileQuestion, Flame, Map, Music, Palette, Scroll, Shield, Sparkles, Users, WandSparkles, Wrench } from 'lucide-react';
 import { api, json, type PageData } from './api';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero, RuneIcon, StatusBadge } from './components';
+import type { Announcement } from '@guild/contracts';
 
 export interface Department {
   id: string;
@@ -143,6 +144,45 @@ export function ActivityDetailPage() {
   if(query.isLoading)return <main><LoadingPanel/></main>; if(query.error||!query.data)return <main><ErrorPanel error={query.error}/></main>;
   const a=query.data.activity;
   return <main><PageHero eyebrow="QUEST DETAIL" title={a.title} description={a.description}><StatusBadge status={a.status}/></PageHero><section className="shell detail-columns"><article className="parchment-panel"><h2>活动卷宗</h2><div className="info-list"><span>活动时间<strong>{formatDate(a.starts_at)}</strong></span><span>活动地点<strong>{a.location}</strong></span><span>人数上限<strong>{a.capacity} 人</strong></span><span>当前阶段<strong>{a.status}</strong></span></div></article><article className="dark-panel"><h2>成员行动</h2><p>登录成员账号后可报名、取消报名，并在活动进行时输入签到码。</p><Link className="guild-button" to="/portal/activities">进入成员活动中心</Link></article></section></main>;
+}
+
+const announcementCategory = {
+  RECRUITMENT: '招新信息',
+  ACTIVITY: '活动公告',
+  NOTICE: '社团通知',
+} as const;
+
+export function AnnouncementsPage() {
+  const query = useQuery({
+    queryKey: ['announcements'],
+    queryFn: () => api<PageData<Announcement>>('/api/public/announcements?page=1&pageSize=20'),
+  });
+  return <main><PageHero eyebrow="GUILD BULLETIN" title="大厅告示板" description="招新、活动与社团近况都在这里留有完整内容。" />
+    <section className="shell announcement-archive">{query.isLoading ? <LoadingPanel /> : query.error ? <ErrorPanel error={query.error} /> : !query.data?.items.length ? <EmptyPanel label="目前没有公开公告" /> : <div className="announcement-archive-list">{query.data.items.map((item, index) => <motion.article key={item.id} className="announcement-paper" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * .05 }}>
+      <div><span>{announcementCategory[item.category]}</span><time dateTime={item.publishedAt}>{formatDate(item.publishedAt)}</time></div>
+      <h2>{item.title}</h2><p>{item.summary}</p>
+      <Link to={`/announcements/${item.id}`}>阅读完整公告 <ArrowRight /></Link>
+    </motion.article>)}</div>}</section>
+  </main>;
+}
+
+export function AnnouncementDetailPage() {
+  const { id = '' } = useParams();
+  const query = useQuery({
+    queryKey: ['announcement', id],
+    queryFn: () => api<{ announcement: Announcement }>(`/api/public/announcements/${id}`),
+    enabled: Boolean(id),
+  });
+  if (query.isLoading) return <main><LoadingPanel /></main>;
+  if (query.error || !query.data) return <main><ErrorPanel error={query.error} /></main>;
+  const item = query.data.announcement;
+  return <main><PageHero eyebrow="BULLETIN DETAIL" title={item.title} description={announcementCategory[item.category]} />
+    <section className="shell announcement-detail-shell"><article className="announcement-detail-paper">
+      <header><span>{announcementCategory[item.category]}</span><time dateTime={item.publishedAt}>{formatDate(item.publishedAt)}</time></header>
+      <p>{item.summary}</p>
+      <div className="announcement-detail-actions"><Link to="/announcements">返回全部公告</Link><Link className="guild-button primary" to={item.href}>查看相关页面 <ArrowRight /></Link></div>
+    </article></section>
+  </main>;
 }
 
 export function WorksPage() {

@@ -69,6 +69,17 @@ interface Principal {
   lastSeenAt: string | null;
 }
 
+interface AnnouncementRow {
+  id: string;
+  title: string;
+  summary: string;
+  category: 'RECRUITMENT' | 'ACTIVITY' | 'NOTICE';
+  href: string;
+  pinned: number;
+  published: number;
+  published_at: string;
+}
+
 class HttpError extends Error {
   constructor(public statusCode: number, public code: string, message: string, public details?: unknown) {
     super(message);
@@ -77,6 +88,16 @@ class HttpError extends Error {
 
 const now = () => new Date().toISOString();
 const newId = (prefix: string) => `${prefix}_${randomUUID()}`;
+const publicAnnouncement = (row: AnnouncementRow) => ({
+  id: row.id,
+  title: row.title,
+  summary: row.summary,
+  category: row.category,
+  href: row.href,
+  pinned: Boolean(row.pinned),
+  published: Boolean(row.published),
+  publishedAt: row.published_at,
+});
 const cleanUser = (user: UserRow): Principal => ({
   id: user.id, username: user.username, displayName: user.display_name, email: user.email,
   role: user.role, departmentId: user.department_id, bio: user.bio, guildTitle: user.guild_title, college: user.college, grade: user.grade,
@@ -201,10 +222,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const memberCount = (sqlite.prepare('SELECT COUNT(*) count FROM users WHERE is_active=1').get() as { count: number }).count;
     const completedActivityCount = (sqlite.prepare("SELECT COUNT(*) count FROM activities WHERE status IN ('ENDED','ARCHIVED')").get() as { count: number }).count;
     const rows = sqlite.prepare(`SELECT id,title,summary,category,href,pinned,published,published_at
-      FROM announcements WHERE published=1 ORDER BY pinned DESC,published_at DESC,id LIMIT 6`).all() as Array<{
-        id: string; title: string; summary: string; category: 'RECRUITMENT' | 'ACTIVITY' | 'NOTICE'; href: string;
-        pinned: number; published: number; published_at: string;
-      }>;
+      FROM announcements WHERE published=1 ORDER BY pinned DESC,published_at DESC,id LIMIT 6`).all() as AnnouncementRow[];
     const data = homeDataSchema.parse({
       stats: {
         guildLevel: Math.min(999, Math.max(1, numericSetting('guildLevel', 1))),
@@ -217,10 +235,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
         honorCount: numericSetting('honorCount', 0),
         foundedYear: Math.min(2200, Math.max(1900, numericSetting('foundedYear', new Date().getUTCFullYear()))),
       },
-      announcements: rows.map((row) => ({
-        id: row.id, title: row.title, summary: row.summary, category: row.category, href: row.href,
-        pinned: Boolean(row.pinned), published: Boolean(row.published), publishedAt: row.published_at,
-      })),
+      announcements: rows.map(publicAnnouncement),
     });
     return successResponse(data);
   });
@@ -231,6 +246,23 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const activityCount = (sqlite.prepare("SELECT COUNT(*) count FROM activities WHERE status != 'ARCHIVED'").get() as { count: number }).count;
     const workCount = (sqlite.prepare("SELECT COUNT(*) count FROM works WHERE status='PUBLISHED'").get() as { count: number }).count;
     return successResponse({ memberCount, departmentCount, activityCount, workCount });
+  });
+
+  app.get('/api/public/announcements', async (request) => {
+    const paging = getPaging(request.query);
+    const rows = sqlite.prepare(`SELECT id,title,summary,category,href,pinned,published,published_at
+      FROM announcements WHERE published=1 ORDER BY pinned DESC,published_at DESC,id LIMIT ? OFFSET ?`)
+      .all(paging.pageSize, paging.offset) as AnnouncementRow[];
+    const total = (sqlite.prepare('SELECT COUNT(*) count FROM announcements WHERE published=1').get() as { count: number }).count;
+    return successResponse(pageData(rows.map(publicAnnouncement), total, paging.page, paging.pageSize));
+  });
+
+  app.get('/api/public/announcements/:id', async (request) => {
+    const { id } = request.params as { id: string };
+    const row = sqlite.prepare(`SELECT id,title,summary,category,href,pinned,published,published_at
+      FROM announcements WHERE id=? AND published=1`).get(id) as AnnouncementRow | undefined;
+    if (!row) throw new HttpError(404, 'NOT_FOUND', '公告不存在或尚未发布');
+    return successResponse({ announcement: publicAnnouncement(row) });
   });
 
   app.get('/api/public/departments', async () => successResponse({ items: sqlite.prepare(`SELECT d.*, COUNT(u.id) memberCount FROM departments d LEFT JOIN users u ON u.department_id=d.id GROUP BY d.id ORDER BY d.rowid`).all() }));

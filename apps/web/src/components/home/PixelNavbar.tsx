@@ -2,7 +2,6 @@ import { Menu, Search, UserRound, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../../auth';
-import { GuildCrest } from './GuildCrest';
 
 const navigation = [
   ['/', '首页'],
@@ -29,7 +28,7 @@ export function PixelNavbar() {
   return <>
     <header className="pixel-navbar">
       <Link className="pixel-brand" to="/" aria-label="佐佑动漫社首页">
-        <GuildCrest className="brand-shield" />
+        <span className="official-brand-mark"><img src="/assets/brand/zuoyou-logo-pixel.png" alt="佐佑动漫社标志" draggable={false}/></span>
         <span><strong>佐佑动漫社</strong><small>Zouyou Anime Guild</small></span>
       </Link>
       <nav className={menuOpen ? 'open' : ''} aria-label="主导航">
@@ -45,7 +44,7 @@ export function PixelNavbar() {
       <button className="search-backdrop" aria-label="关闭搜索" onClick={() => setSearchOpen(false)}/>
       <section className="guild-search-panel">
         <div><Search/><input autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索公会档案……" aria-label="搜索关键词"/><button onClick={() => setSearchOpen(false)} aria-label="关闭"><X/></button></div>
-        <small>QUICK SEARCH · 公会卷宗索引</small>
+        <small>QUICK SEARCH · 站内索引</small>
         <nav aria-label="搜索结果">{results.map(([to, label]) => <Link key={to} to={to} onClick={() => setSearchOpen(false)}>{label}<span>›</span></Link>)}</nav>
       </section>
     </div>}

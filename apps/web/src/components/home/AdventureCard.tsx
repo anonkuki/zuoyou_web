@@ -5,9 +5,9 @@ import { Link } from 'react-router-dom';
 type CardVariant = 'history' | 'departments' | 'activities';
 
 const cardMeta: Record<CardVariant, { title: string; subtitle: string; eyebrow: string; stamp: string; button: string; to: string; storyFormat: string; Icon: LucideIcon }> = {
-  history: { title: '公会历史', subtitle: '从 2018 年的第一张招新海报，到如今并肩前行的我们。', eyebrow: 'CHAPTER · 2018—2026', stamp: '编年史', button: '翻开编年史', to: '/chronicle', storyFormat: 'chronicle', Icon: BookOpen },
-  departments: { title: '职业大厅', subtitle: '六种专长，一座真正属于动漫人的公会大厅。', eyebrow: 'SIX GUILD CLASSES', stamp: '六职业', button: '选择你的职业', to: '/departments', storyFormat: 'guild-roster', Icon: Castle },
-  activities: { title: '冒险档案', subtitle: '漫展、Live、外拍与创作，把每次相聚收进档案。', eyebrow: 'LATEST FIELD NOTES', stamp: '新记录', button: '查看最新档案', to: '/activities', storyFormat: 'field-report', Icon: Camera },
+  history: { title: '社团往事', subtitle: '从第一张招新海报开始，看看佐佑一路走来的小故事。', eyebrow: 'OUR STORY · 2018—2026', stamp: '旧相册', button: '从头看看', to: '/chronicle', storyFormat: 'chronicle', Icon: BookOpen },
+  departments: { title: '六个部门', subtitle: '画画、舞台、音乐、技术……总有一处适合你的兴趣。', eyebrow: 'SIX CLUB ROOMS', stamp: '逛部门', button: '认识大家', to: '/departments', storyFormat: 'guild-roster', Icon: Castle },
+  activities: { title: '最近在忙', subtitle: '漫展、Live、外拍与创作，每次相聚都有好好记录。', eyebrow: 'RECENT DAYS', stamp: '新记录', button: '看看近况', to: '/activities', storyFormat: 'field-report', Icon: Camera },
 };
 
 function CardArtwork({ variant }: { variant: CardVariant }) {
@@ -21,6 +21,6 @@ export function AdventureCard({ variant }: { variant: CardVariant }) {
   return <motion.article className={`adventure-entry-card ${variant}`} data-portal-art={variant} data-story-format={meta.storyFormat} whileHover={{y:-7}} whileTap={{scale:.985}} transition={{type:'spring',stiffness:260,damping:20}}>
     <div className="adventure-card-heading"><meta.Icon/><div><small>{meta.eyebrow}</small><h2>{meta.title}</h2><p>{meta.subtitle}</p></div><span>{meta.stamp}</span></div>
     <CardArtwork variant={variant}/>
-    <Link to={meta.to}>{meta.button}<ArrowRight/></Link>
+    <Link to={meta.to} aria-label={`查看${meta.title}`} data-card-link="full"><span className="adventure-card-cta">{meta.button}<ArrowRight/></span></Link>
   </motion.article>;
 }

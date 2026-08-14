@@ -157,6 +157,25 @@ describe.sequential('Adventurer Guild API', () => {
     expect(home.json().data.announcements.every((item: { published: boolean }) => item.published)).toBe(true);
   });
 
+  it('serves a public announcement archive and individual published details', async () => {
+    const archive = await app.inject({ method: 'GET', url: '/api/public/announcements?page=1&pageSize=20' });
+    expect(archive.statusCode).toBe(200);
+    expect(archive.json().data.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'announcement-recruitment-2026', title: '2026 秋季招新现已开启', published: true }),
+    ]));
+
+    const detail = await app.inject({ method: 'GET', url: '/api/public/announcements/announcement-recruitment-2026' });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().data.announcement).toMatchObject({
+      id: 'announcement-recruitment-2026',
+      summary: '六大部门联合招募，欢迎新的冒险者加入公会。',
+      href: '/join',
+    });
+
+    const missing = await app.inject({ method: 'GET', url: '/api/public/announcements/not-published' });
+    expect(missing.statusCode).toBe(404);
+  });
+
   it('closes the admin announcement publish and unpublish workflow', async () => {
     const payload = {
       title: '六部门联合成果展开放预约',

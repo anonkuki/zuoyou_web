@@ -3,10 +3,10 @@ import type { GuildHomeStats } from '@guild/contracts';
 
 export function GuildStats({ stats, loading = false }: { stats?: GuildHomeStats; loading?: boolean }) {
   const items = [
-    { label: '公会等级', value: stats ? `Lv.${stats.guildLevel}` : '—', icon: ScrollText, level: true },
+    { label: '社团成长值', value: stats ? `Lv.${stats.guildLevel}` : '—', icon: ScrollText, level: true },
     { label: '成员数量', value: stats ? String(stats.memberCount) : '—', icon: Users, level: false },
     { label: '完成活动', value: stats ? String(stats.completedActivityCount) : '—', icon: CalendarCheck, level: false },
-    { label: '获得荣誉', value: stats ? String(stats.honorCount) : '—', icon: Award, level: false },
+    { label: '荣誉记录', value: stats ? String(stats.honorCount) : '—', icon: Award, level: false },
     { label: '成立时间', value: stats ? `${stats.foundedYear}年` : '—', icon: Flag, level: false },
   ] as const;
   const progress = stats ? Math.min(100, Math.round(stats.levelProgress.current / stats.levelProgress.target * 100)) : 0;

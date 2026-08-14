@@ -34,12 +34,15 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
     await page.setViewportSize(size);
     await page.goto('/');
     await expect(page.getByRole('heading', { name: '佐佑动漫社' })).toBeVisible();
+    await expect(page.getByRole('img', { name: '佐佑动漫社标志' })).toBeVisible();
+    await expect(page.getByRole('img', { name: '佐佑动漫社看板娘佑子' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '佑子的公会向导' })).toBeVisible();
     const atmosphere = page.getByTestId('guild-atmosphere-canvas');
     await expect(atmosphere).toHaveAttribute('data-renderer', 'three');
     await expect(atmosphere.locator('canvas')).toBeVisible();
     await expect(atmosphere).toHaveAttribute('data-quality', size.width === 390 ? 'mobile' : 'cinematic');
     await expect(page.getByLabel('分层像素幻想公会大厅场景')).toBeVisible();
-    await expect(page.getByText('82', { exact: true })).toBeVisible();
+    await expect(page.locator('.guild-hud article').filter({ hasText: '成员数量' }).locator('strong')).toHaveText(/^\d+$/);
     const pageHeight = await page.locator('body').evaluate(body => body.scrollHeight);
     const portalCards = page.locator('[data-portal-art]');
     await expect(portalCards).toHaveCount(3);
@@ -50,6 +53,11 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
     if (size.width === 1440) {
       expect(pageHeight).toBeLessThanOrEqual(1800);
       expect(Math.min(...portalRatios)).toBeGreaterThanOrEqual(.75);
+      await page.getByRole('button', { name: '和阿澄交谈' }).click();
+      await expect(page.getByText('下午要整理衣装间，想来搭把手吗？')).toBeVisible();
+      await expect(page.getByText('COS部 · 服装与角色')).toBeVisible();
+      await page.getByRole('button', { name: '回到佑子向导' }).click();
+      await expect(page.getByText('我是看板娘佑子。第一次来佐佑的话，就从大厅慢慢逛起吧。')).toBeVisible();
     }
     if (size.width === 390) {
       expect(pageHeight).toBeLessThanOrEqual(2000);
@@ -88,6 +96,34 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
     }
   }
   expect(consoleErrors).toEqual([]);
+});
+
+test('首页故事卡与公告进入各自的真实内容页', async ({ page }) => {
+  await page.goto('/');
+  const departmentCard = page.locator('.adventure-entry-card.departments');
+  await departmentCard.scrollIntoViewIfNeeded();
+  const departmentBox = await departmentCard.boundingBox();
+  expect(departmentBox).not.toBeNull();
+  await page.mouse.click(departmentBox!.x + departmentBox!.width / 2, departmentBox!.y + departmentBox!.height / 2);
+  await expect(page).toHaveURL(/\/departments$/);
+  await page.goto('/');
+  const activityCard = page.locator('.adventure-entry-card.activities');
+  await activityCard.scrollIntoViewIfNeeded();
+  const activityBox = await activityCard.boundingBox();
+  expect(activityBox).not.toBeNull();
+  await page.mouse.click(activityBox!.x + activityBox!.width / 2, activityBox!.y + activityBox!.height / 2);
+  await expect(page).toHaveURL(/\/activities$/);
+  await page.goto('/');
+  await page.getByRole('link', { name: /2026 秋季招新现已开启/ }).click();
+  await expect(page).toHaveURL(/\/announcements\/announcement-recruitment-2026$/);
+  await expect(page.getByRole('heading', { name: '2026 秋季招新现已开启' })).toBeVisible();
+  await expect(page.getByText('六大部门联合招募，欢迎新的冒险者加入公会。')).toBeVisible();
+  await page.screenshot({ path: `${qaRoot}/announcement-detail-1440x900.png`, fullPage: true });
+  await page.getByRole('link', { name: '返回全部公告' }).click();
+  await expect(page).toHaveURL(/\/announcements$/);
+  await expect(page.getByRole('heading', { name: '大厅告示板' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '阅读完整公告' }).first()).toBeVisible();
+  await page.screenshot({ path: `${qaRoot}/announcements-1440x900.png`, fullPage: true });
 });
 
 test('首页主要景深层会随指针产生可辨认的差速位移', async ({ page }) => {

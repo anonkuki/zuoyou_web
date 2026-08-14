@@ -18,6 +18,8 @@ const payloads: Record<string, unknown> = {
   '/api/public/departments': { items: [{ id: 'dept-cos', slug: 'cos', name: 'COS部', title: '幻术师', description: '角色造型与舞台呈现', memberCount: 15 }] },
   '/api/public/chronicles?page=1&pageSize=20': { items: [{ id: 'c1', title: '公会启程', content: '新的篇章', occurred_at: '2023-05-01T00:00:00.000Z' }], page: 1, pageSize: 20, total: 1 },
   '/api/public/activities?page=1&pageSize=20': { items: [{ id: 'a1', title: '校园祭协作任务', description: '六部联合活动', status: 'REGISTRATION', capacity: 80, starts_at: '2026-08-10T10:00:00.000Z' }], page: 1, pageSize: 20, total: 1 },
+  '/api/public/announcements?page=1&pageSize=20': { items: [{ id: 'notice-1', title: '2026 秋季招新现已开启', summary: '六部门联合招募', category: 'RECRUITMENT', href: '/join', pinned: true, published: true, publishedAt: '2026-08-08T00:00:00.000Z' }], page: 1, pageSize: 20, total: 1 },
+  '/api/public/announcements/notice-1': { announcement: { id: 'notice-1', title: '2026 秋季招新现已开启', summary: '六部门联合招募', category: 'RECRUITMENT', href: '/join', pinned: true, published: true, publishedAt: '2026-08-08T00:00:00.000Z' } },
   '/api/public/works?page=1&pageSize=20': { items: [{ id: 'w1', title: '星辉舞台记录', description: '社团作品', status: 'PUBLISHED', department_id: 'dept-cos' }], page: 1, pageSize: 20, total: 1 },
 };
 
@@ -55,7 +57,7 @@ describe('Adventurer Guild app', () => {
     expect(await screen.findByRole('heading', { name: /佐佑动漫社/ })).toBeInTheDocument();
     expect(screen.getByTestId('layered-guild-scene')).toBeInTheDocument();
     expect(await screen.findByText('82')).toBeInTheDocument();
-    expect(screen.getByText('我们是来自不同世界的冒险者，')).toBeInTheDocument();
+    expect(screen.getByText('有人负责舞台，有人守着画板，')).toBeInTheDocument();
     expect(screen.getByText('2026 秋季招新现已开启')).toBeInTheDocument();
     expect(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('link', { name: '首页' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '搜索' })).toBeInTheDocument();
@@ -77,7 +79,7 @@ describe('Adventurer Guild app', () => {
     ]));
     assetLayers.forEach((layer) => expect(layer).toHaveAttribute('data-license'));
     const party = scene.querySelector('[data-open-asset-layer="adventurer-party"]') as HTMLElement;
-    expect(within(party).getAllByRole('img', { name: /冒险者|公会执事|精灵|法师|游侠/ })).toHaveLength(4);
+    expect(within(party).getAllByRole('img', { name: /COS部|外宣部|原创部|轻音部/ })).toHaveLength(4);
     expect(scene.querySelector('[data-architecture-piece="cohesive-lodge"]')).toBeInTheDocument();
     expect(scene.querySelectorAll('[data-architecture-piece]').length).toBeGreaterThanOrEqual(6);
     expect(scene.querySelector('[data-lighting="golden-hour"]')).toBeInTheDocument();
@@ -105,15 +107,12 @@ describe('Adventurer Guild app', () => {
     expect(document.querySelector('.guild-hero-copy')).not.toHaveStyle({ opacity: '0' });
   });
 
-  it('uses one coherent guild crest system and a single primary focal point', async () => {
+  it('uses the official club branding and a single primary focal point', async () => {
     renderAt('/');
     await screen.findByTestId('layered-guild-scene');
-    const crests = screen.getAllByTestId('guild-crest');
-    expect(crests).toHaveLength(2);
-    crests.forEach((crest) => {
-      expect(crest.tagName.toLowerCase()).toBe('svg');
-      expect(crest.querySelectorAll('[data-crest-layer]').length).toBeGreaterThanOrEqual(5);
-    });
+    expect(screen.getByRole('img', { name: '佐佑动漫社标志' })).toHaveAttribute('src', '/assets/brand/zuoyou-logo-pixel.png');
+    expect(screen.getByRole('img', { name: '公会旗帜上的佐佑标志' })).toHaveAttribute('src', '/assets/brand/zuoyou-logo-pixel.png');
+    expect(screen.getByRole('img', { name: '佐佑动漫社看板娘佑子' })).toHaveAttribute('src', '/assets/brand/youzi-mascot.png');
     expect(document.querySelectorAll('[data-visual-priority="primary"]')).toHaveLength(1);
   });
 
@@ -164,6 +163,27 @@ describe('Adventurer Guild app', () => {
     expect(document.querySelector('.notice-board')).toHaveAttribute('data-surface', 'wooden-quest-board');
     const avatars = document.querySelectorAll('.footer-avatar[data-facing="visitor"]');
     expect(avatars).toHaveLength(4);
+  });
+
+  it('opens every homepage story card through a full-card link', async () => {
+    renderAt('/');
+    const departments = await screen.findByRole('link', { name: '查看六个部门' });
+    const activities = screen.getByRole('link', { name: '查看最近在忙' });
+    expect(departments).toHaveAttribute('href', '/departments');
+    expect(activities).toHaveAttribute('href', '/activities');
+    expect(departments).toHaveAttribute('data-card-link', 'full');
+    expect(activities).toHaveAttribute('data-card-link', 'full');
+  });
+
+  it('opens a homepage notice as its own public announcement detail', async () => {
+    renderAt('/');
+    const notice = await screen.findByRole('link', { name: /2026 秋季招新现已开启/ });
+    expect(notice).toHaveAttribute('href', '/announcements/notice-1');
+    cleanup();
+    renderAt('/announcements/notice-1');
+    expect(await screen.findByRole('heading', { name: '2026 秋季招新现已开启' })).toBeInTheDocument();
+    expect(screen.getByText('六部门联合招募')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '查看相关页面' })).toHaveAttribute('href', '/join');
   });
 
   it('navigates to every public module with real links', async () => {

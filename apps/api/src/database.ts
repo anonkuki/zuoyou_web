@@ -49,14 +49,22 @@ function ensureHomeShowcaseData(sqlite: Database.Database, timestamp: string): v
   })();
 }
 
+function ensureDepartmentConversations(sqlite: Database.Database, timestamp: string): void {
+  const insertConversation = sqlite.prepare('INSERT OR IGNORE INTO conversations(id,type,direct_key,department_id,title,created_at,updated_at) VALUES (?,?,?,?,?,?,?)');
+  for (const [departmentId, , name] of departments) {
+    const existing = sqlite.prepare("SELECT 1 FROM conversations WHERE type='DEPARTMENT' AND department_id=? LIMIT 1").get(departmentId);
+    if (!existing) insertConversation.run(`conversation-${departmentId}`, 'DEPARTMENT', null, departmentId, `${name}协作频道`, timestamp, timestamp);
+  }
+}
+
 function ensureSocialShowcaseData(sqlite: Database.Database, timestamp: string): void {
   const profile = sqlite.prepare(`UPDATE users SET guild_title=?,college=?,grade=?,skills=?,interests=?,avatar_color=?,profile_visibility='MEMBERS',last_seen_at=?,updated_at=? WHERE id=?`);
   profile.run('星门总管', '社团联合事务中心', '运营组', '["活动统筹","成员服务","文档管理"]', '["像素艺术","社团建设"]', '#b26b3f', timestamp, timestamp, 'user-admin');
   profile.run('首席幻装师', '数字媒体学院', '2023级', '["服装制作","舞台妆造","摄影协作"]', '["角色设计","舞台演出","漫展"]', '#c75f88', timestamp, timestamp, 'user-lead');
   profile.run('幻装见习生', '艺术设计学院', '2025级', '["角色塑造","道具整理","活动协作"]', '["动画","COSPLAY","摄影"]', '#5279a8', timestamp, timestamp, 'user-member');
 
+  ensureDepartmentConversations(sqlite, timestamp);
   const insertConversation = sqlite.prepare('INSERT OR IGNORE INTO conversations(id,type,direct_key,department_id,title,created_at,updated_at) VALUES (?,?,?,?,?,?,?)');
-  for (const [departmentId, , name] of departments) insertConversation.run(`conversation-${departmentId}`, 'DEPARTMENT', null, departmentId, `${name}协作频道`, timestamp, timestamp);
   insertConversation.run('conversation-demo-direct', 'DIRECT', 'user-lead:user-member', null, '', timestamp, timestamp);
 
   const insertParticipant = sqlite.prepare('INSERT OR IGNORE INTO conversation_participants(conversation_id,user_id,last_read_at,muted,joined_at) VALUES (?,?,?,?,?)');
@@ -82,7 +90,7 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');
@@ -114,6 +122,8 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
       const timestamp = new Date().toISOString();
       ensureHomeShowcaseData(sqlite, timestamp);
       ensureSocialShowcaseData(sqlite, timestamp);
+    } else {
+      ensureDepartmentConversations(sqlite, new Date().toISOString());
     }
     return;
   }
@@ -195,4 +205,5 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   insertSetting.run('seedProfile', options.production ? 'production' : 'development', now);
   ensureHomeShowcaseData(sqlite, now);
   if (!options.production) ensureSocialShowcaseData(sqlite, now);
+  else ensureDepartmentConversations(sqlite, now);
 }

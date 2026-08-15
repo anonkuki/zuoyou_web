@@ -63,6 +63,23 @@ describe('production seed safety', () => {
     }
   });
 
+  it('creates the six real department chat channels for a production database', async () => {
+    const root = await mkdtemp('D:/Temp/guild-production-channels-');
+    const { sqlite } = await openDatabase(`${root}/guild.sqlite`);
+    try {
+      await seedDatabase(sqlite, { production: true, adminPassword: 'ProductionAdmin!2026' });
+      const channels = sqlite.prepare("SELECT department_id,title FROM conversations WHERE type='DEPARTMENT' ORDER BY department_id").all();
+      expect(channels).toHaveLength(6);
+      expect(channels).toEqual(expect.arrayContaining([
+        { department_id: 'dept-tech', title: '技术部协作频道' },
+        { department_id: 'dept-original', title: '原创部协作频道' },
+      ]));
+    } finally {
+      sqlite.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('backfills homepage mock data when an existing development database is upgraded', async () => {
     await withDevelopmentSeed(async (sqlite) => {
       sqlite.exec("DELETE FROM announcements; DELETE FROM site_settings WHERE key IN ('guildLevel','guildLevelCurrent','guildLevelTarget','honorCount','foundedYear'); DELETE FROM activities WHERE id LIKE 'activity-archive-%';");

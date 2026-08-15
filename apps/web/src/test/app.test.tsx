@@ -15,7 +15,11 @@ const payloads: Record<string, unknown> = {
     ],
   },
   '/api/public/summary': { memberCount: 82, departmentCount: 6, activityCount: 4, workCount: 1 },
-  '/api/public/departments': { items: [{ id: 'dept-cos', slug: 'cos', name: 'COS部', title: '幻术师', description: '角色造型与舞台呈现', memberCount: 15 }] },
+  '/api/public/departments': { items: [
+    { id: 'dept-cos', slug: 'cos', name: 'COS部', title: '幻术师', description: '角色造型与舞台呈现', memberCount: 15 },
+    { id: 'dept-tech', slug: 'tech', name: '技术部', title: '魔导工程师', description: '摄影、直播与技术支持', memberCount: 14 },
+    { id: 'dept-original', slug: 'original', name: '原创部', title: '绘卷术士', description: '绘画与原创企划', memberCount: 13 },
+  ] },
   '/api/public/chronicles?page=1&pageSize=20': { items: [{ id: 'c1', title: '公会启程', content: '新的篇章', occurred_at: '2023-05-01T00:00:00.000Z' }], page: 1, pageSize: 20, total: 1 },
   '/api/public/activities?page=1&pageSize=20': { items: [{ id: 'a1', title: '校园祭协作任务', description: '六部联合活动', status: 'REGISTRATION', capacity: 80, starts_at: '2026-08-10T10:00:00.000Z' }], page: 1, pageSize: 20, total: 1 },
   '/api/public/announcements?page=1&pageSize=20': { items: [{ id: 'notice-1', title: '2026 秋季招新现已开启', summary: '六部门联合招募', category: 'RECRUITMENT', href: '/join', pinned: true, published: true, publishedAt: '2026-08-08T00:00:00.000Z' }], page: 1, pageSize: 20, total: 1 },
@@ -203,13 +207,27 @@ describe('Adventurer Guild app', () => {
     expect(within(screen.getByRole('navigation', { name: '搜索结果' })).getByRole('link', { name: /职业大厅/ })).toHaveAttribute('href', '/departments');
   });
 
-  it('shows application form controls instead of placeholder buttons', async () => {
+  it('starts with a grounded member application and supports multiple department interests', async () => {
     const user = userEvent.setup();
     renderAt('/join');
-    expect(screen.getByRole('heading', { name: '加入公会' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '继续填写资料' }));
+    expect(screen.getByRole('heading', { name: '加入佐佑动漫社' })).toBeInTheDocument();
+    expect(screen.queryByText('选择意向职业')).not.toBeInTheDocument();
+    expect(screen.queryByText('冒险者资料')).not.toBeInTheDocument();
     expect(screen.getByLabelText('称呼')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '提交加入申请' })).toBeEnabled();
+    await user.type(screen.getByLabelText('称呼'), '星砂同学');
+    await user.type(screen.getByLabelText('学院与年级'), '计算机学院 2026级');
+    await user.type(screen.getByLabelText('联系邮箱'), 'starsand@example.test');
+    await user.type(screen.getByLabelText('自我介绍与加入理由'), '希望认识同好并参与社团活动');
+    await user.click(screen.getByRole('button', { name: '选择意向部门' }));
+    expect(screen.getByRole('heading', { name: '选择感兴趣的部门' })).toBeInTheDocument();
+    const tech = screen.getByRole('checkbox', { name: /技术部/ });
+    const original = screen.getByRole('checkbox', { name: /原创部/ });
+    await user.click(tech);
+    await user.click(original);
+    expect(tech).toBeChecked();
+    expect(original).toBeChecked();
+    expect(screen.getByText('已选择 2 个部门')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '提交社员申请' })).toBeEnabled();
   });
 
   it('frames every secondary public route with the authored guild visual system', async () => {

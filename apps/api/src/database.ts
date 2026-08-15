@@ -12,12 +12,12 @@ export interface DatabaseContext {
 }
 
 const departments = [
-  ['dept-cos', 'cos', 'COS部', '幻术师'],
-  ['dept-tech', 'tech', '技术部', '魔导工程师'],
-  ['dept-music', 'music', '轻音部', '吟游诗人'],
-  ['dept-original', 'original', '原创部', '绘卷术士'],
-  ['dept-dance', 'dance', '舞装部', '舞刃使'],
-  ['dept-publicity', 'publicity', '外宣部', '传令官'],
+  ['dept-cos', 'cos', 'COS部', '幻术师', '角色造型、服装道具与舞台呈现'],
+  ['dept-tech', 'tech', '技术部', '魔导工程师', '摄影摄像、直播与活动技术支持'],
+  ['dept-music', 'music', '轻音部', '吟游诗人', '乐队排练、歌曲编排与现场演出'],
+  ['dept-original', 'original', '原创部', '绘卷术士', '绘画、设定创作与社团原创企划'],
+  ['dept-dance', 'dance', '舞装部', '舞刃使', '宅舞排练、舞台编排与演出'],
+  ['dept-publicity', 'publicity', '外宣部', '传令官', '海报文案、新媒体运营与活动宣传'],
 ] as const;
 
 const archiveThemes = [
@@ -42,7 +42,7 @@ function ensureHomeShowcaseData(sqlite: Database.Database, timestamp: string): v
     }
 
     const insertAnnouncement = sqlite.prepare('INSERT OR IGNORE INTO announcements(id,title,summary,category,href,pinned,published,published_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)');
-    insertAnnouncement.run('announcement-recruitment-2026', '2026 秋季招新现已开启', '六大部门联合招募，欢迎新的冒险者加入公会。', 'RECRUITMENT', '/join', 1, 1, '2026-08-08T00:00:00.000Z', timestamp, timestamp);
+    insertAnnouncement.run('announcement-recruitment-2026', '2026 秋季招新现已开启', '社员申请现已开放，可同时选择多个感兴趣的部门。', 'RECRUITMENT', '/join', 1, 1, '2026-08-08T00:00:00.000Z', timestamp, timestamp);
     insertAnnouncement.run('announcement-exhibition-2026', '六部门夏日联合成果展', '幻装、技术、轻音、原创、舞装与外宣作品集中展示。', 'ACTIVITY', '/activities', 1, 1, '2026-08-06T00:00:00.000Z', timestamp, timestamp);
     insertAnnouncement.run('announcement-music-2026', '月下轻音会活动报名', '轻音部专场开放成员报名。', 'ACTIVITY', '/activities', 0, 1, '2026-08-03T00:00:00.000Z', timestamp, timestamp);
     insertAnnouncement.run('announcement-review-2025', '2025 社团年度回顾已收录', '年度活动足迹与六部门故事已经写入公会编年史。', 'NOTICE', '/chronicle', 0, 1, '2026-07-28T00:00:00.000Z', timestamp, timestamp);
@@ -82,7 +82,7 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');
@@ -125,7 +125,7 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
     : await Promise.all([hashPassword('DemoLead!2026'), hashPassword('DemoMember!2026')]);
 
   const insertDepartment = sqlite.prepare('INSERT INTO departments(id,slug,name,title,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?)');
-  for (const [id, slug, name, title] of departments) insertDepartment.run(id, slug, name, title, `${name}的公会驻地与专业协作小组`, now, now);
+  for (const [id, slug, name, title, description] of departments) insertDepartment.run(id, slug, name, title, description, now, now);
 
   const insertUser = sqlite.prepare('INSERT INTO users(id,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
   insertUser.run('user-admin', 'admin', adminHash, '星门总管', options.production ? 'initial-admin@local.invalid' : 'admin@guild.example', 'ADMIN', null, '负责公会运营与秩序', 1, '2018-05-01T00:00:00.000Z', now);
@@ -142,6 +142,8 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
     if (firstForDepartment) leaders[departmentId] = id;
     insertUser.run(id, null, null, `星序旅人${String(index).padStart(3, '0')}`, `fiction${index}@guild.example`, role, departmentId, `虚构成员档案 ${index}`, 1, now, now);
   }
+  sqlite.prepare(`INSERT OR IGNORE INTO user_departments(user_id,department_id,is_primary,joined_at)
+    SELECT id,department_id,1,created_at FROM users WHERE department_id IS NOT NULL`).run();
   const setLeader = sqlite.prepare('UPDATE departments SET leader_id = ?, updated_at = ? WHERE id = ?');
   for (const [departmentId, userId] of Object.entries(leaders)) setLeader.run(userId, now, departmentId);
 
@@ -184,7 +186,9 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   sqlite.prepare('INSERT INTO department_tasks(id,department_id,assignee_id,title,description,due_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
     .run('task-cos-1', 'dept-cos', 'user-member', '整理幻装道具清单', '完成分类与状态标记', '2026-08-20T00:00:00.000Z', now, now);
   sqlite.prepare('INSERT INTO applications(id,status_token_hash,display_name,email,department_id,reason,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run('application-history', 'historical-token-hash', '云岚旅人', 'cloud@example.test', 'dept-publicity', '参与公会传播', 'REJECTED', now, now);
+    .run('application-history', 'historical-token-hash', '云岚同学', 'cloud@example.test', 'dept-publicity', '希望参与社团宣传工作', 'REJECTED', now, now);
+  sqlite.prepare('INSERT INTO application_departments(application_id,department_id,preference_order) VALUES (?,?,?)')
+    .run('application-history', 'dept-publicity', 0);
   const insertSetting = sqlite.prepare('INSERT INTO site_settings(key,value,updated_at) VALUES (?,?,?)');
   insertSetting.run('siteName', '星辉冒险者协会', now);
   insertSetting.run('recruitmentOpen', 'true', now);

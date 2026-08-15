@@ -16,6 +16,13 @@ export const users = sqliteTable('users', {
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
 
+export const userDepartments = sqliteTable('user_departments', {
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  departmentId: text('department_id').notNull().references(() => departments.id),
+  isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
+  joinedAt: utcText('joined_at'),
+}, (table) => [primaryKey({ columns: [table.userId, table.departmentId] }), index('user_department_membership_idx').on(table.departmentId, table.userId)]);
+
 export const conversations = sqliteTable('conversations', {
   id: text('id').primaryKey(), type: text('type').notNull(), directKey: text('direct_key').unique(), departmentId: text('department_id').references(() => departments.id),
   title: text('title').notNull().default(''), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
@@ -53,6 +60,12 @@ export const applications = sqliteTable('applications', {
   id: text('id').primaryKey(), statusTokenHash: text('status_token_hash').notNull().unique(), displayName: text('display_name').notNull(), email: text('email').notNull(), departmentId: text('department_id').notNull().references(() => departments.id),
   college: text('college').notNull().default('未填写'), reason: text('reason').notNull(), status: text('status').notNull(), userId: text('user_id').references(() => users.id), activationCodeEncrypted: text('activation_code_encrypted'), rejectionReason: text('rejection_reason'), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
+
+export const applicationDepartments = sqliteTable('application_departments', {
+  applicationId: text('application_id').notNull().references(() => applications.id, { onDelete: 'cascade' }),
+  departmentId: text('department_id').notNull().references(() => departments.id),
+  preferenceOrder: integer('preference_order').notNull().default(0),
+}, (table) => [primaryKey({ columns: [table.applicationId, table.departmentId] }), index('application_department_order_idx').on(table.applicationId, table.preferenceOrder)]);
 
 export const activationTokens = sqliteTable('activation_tokens', {
   id: text('id').primaryKey(), userId: text('user_id').notNull().references(() => users.id), tokenHash: text('token_hash').notNull().unique(), expiresAt: utcText('expires_at'), usedAt: text('used_at'), createdAt: utcText('created_at'),
@@ -96,4 +109,4 @@ export const auditLogs = sqliteTable('audit_logs', {
   id: text('id').primaryKey(), actorId: text('actor_id').references(() => users.id), targetUserId: text('target_user_id').references(() => users.id), action: text('action').notNull(), entityType: text('entity_type').notNull(), entityId: text('entity_id').notNull(), details: text('details'), createdAt: utcText('created_at'),
 }, (table) => [uniqueIndex('contribution_event_unique').on(table.action, table.entityType, table.entityId, table.targetUserId)]);
 
-export const schema = { departments, users, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, auditLogs };
+export const schema = { departments, users, userDepartments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, auditLogs };

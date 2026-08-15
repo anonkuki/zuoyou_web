@@ -85,7 +85,7 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   for (const [path, heading] of [
-    ['/chronicle', '公会编年史'], ['/departments', '职业大厅'], ['/activities', '冒险档案馆'], ['/works', '作品图鉴'], ['/join', '加入公会'],
+    ['/chronicle', '公会编年史'], ['/departments', '职业大厅'], ['/activities', '冒险档案馆'], ['/works', '作品图鉴'], ['/join', '加入佐佑动漫社'],
   ] as const) {
     await page.goto(path);
     await expect(page.getByRole('heading', { name: heading })).toBeVisible();
@@ -117,7 +117,7 @@ test('首页故事卡与公告进入各自的真实内容页', async ({ page }) 
   await page.getByRole('link', { name: /2026 秋季招新现已开启/ }).click();
   await expect(page).toHaveURL(/\/announcements\/announcement-recruitment-2026$/);
   await expect(page.getByRole('heading', { name: '2026 秋季招新现已开启' })).toBeVisible();
-  await expect(page.getByText('六大部门联合招募，欢迎新的冒险者加入公会。')).toBeVisible();
+  await expect(page.getByText('社员申请现已开放，可同时选择多个感兴趣的部门。')).toBeVisible();
   await page.screenshot({ path: `${qaRoot}/announcement-detail-1440x900.png`, fullPage: true });
   await page.getByRole('link', { name: '返回全部公告' }).click();
   await expect(page).toHaveURL(/\/announcements$/);
@@ -206,16 +206,19 @@ test('非首页页面使用统一精修视觉系统', async ({ page }) => {
 test('招新申请到激活登录形成完整闭环', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   const suffix = Date.now().toString().slice(-8);
-  const displayName = `验收旅人${suffix}`;
+  const displayName = `验收同学${suffix}`;
   const username = `qa.${suffix}`;
   await page.goto('/join');
-  await page.getByRole('button', { name: '继续填写资料' }).click();
   await page.getByLabel('称呼').fill(displayName);
   await page.getByLabel('学院与年级').fill('数字媒体学院 2026级');
   await page.getByLabel('联系邮箱').fill(`qa.${suffix}@example.test`);
   await page.getByLabel('自我介绍与加入理由').fill('希望参与佐佑动漫社真实活动协作与作品创作。');
-  await page.getByRole('button', { name: '提交加入申请' }).click();
-  await expect(page.getByText('档案已进入审核队列')).toBeVisible();
+  await page.getByRole('button', { name: '选择意向部门' }).click();
+  await page.getByLabel('技术部').check();
+  await page.getByLabel('原创部').check();
+  await expect(page.getByText('已选择 2 个部门')).toBeVisible();
+  await page.getByRole('button', { name: '提交社员申请' }).click();
+  await expect(page.getByText('申请已经提交，请等待社团管理员审核。')).toBeVisible();
   const statusUrl = page.url();
 
   await loginDemo(page, '管理员');
@@ -224,12 +227,14 @@ test('招新申请到激活登录形成完整闭环', async ({ page }) => {
   await page.goto('/admin/recruitment');
   const application = page.locator('article').filter({ hasText: displayName });
   await expect(application).toHaveCount(1);
+  await expect(application.getByText('技术部', { exact: true })).toBeVisible();
+  await expect(application.getByText('原创部', { exact: true })).toBeVisible();
   await application.getByRole('button', { name: '通过并复制激活码' }).click();
   await expect(application.getByText('已通过')).toBeVisible();
 
   await page.goto(statusUrl);
   await expect(page.getByText('申请已通过')).toBeVisible();
-  await page.getByRole('link', { name: '激活成员身份' }).click();
+  await page.getByRole('link', { name: '激活社员账号' }).click();
   await page.getByLabel('新用户名').fill(username);
   await page.getByLabel('新密码').fill('GuildQa!2026');
   await page.getByRole('button', { name: '建立成员档案' }).click();

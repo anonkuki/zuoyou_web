@@ -5,6 +5,7 @@ export interface SocialPrincipal {
   id: string;
   role: Role;
   departmentId: string | null;
+  departmentIds: string[];
 }
 
 export class SocialError extends Error {
@@ -108,7 +109,8 @@ export class GuildSocialRepository {
     const joinedAt = this.timestamp();
     const rows = principal.role === 'ADMIN'
       ? this.sqlite.prepare("SELECT id FROM conversations WHERE type='DEPARTMENT'").all()
-      : principal.departmentId ? this.sqlite.prepare("SELECT id FROM conversations WHERE type='DEPARTMENT' AND department_id=?").all(principal.departmentId) : [];
+      : this.sqlite.prepare(`SELECT c.id FROM conversations c JOIN user_departments ud ON ud.department_id=c.department_id
+          WHERE c.type='DEPARTMENT' AND ud.user_id=?`).all(principal.id);
     const insert = this.sqlite.prepare('INSERT OR IGNORE INTO conversation_participants(conversation_id,user_id,last_read_at,muted,joined_at) VALUES (?,?,NULL,0,?)');
     for (const row of rows as Array<{ id: string }>) insert.run(row.id, principal.id, joinedAt);
   }

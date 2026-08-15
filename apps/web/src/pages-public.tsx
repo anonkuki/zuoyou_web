@@ -75,7 +75,7 @@ export function HomePage() {
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: .2 }}>欢迎来到冒险者公会</motion.p>
           <motion.div className="hero-actions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: .3 }}>
             <Link className="guild-button primary" to="/departments">探索公会 <ArrowRight /></Link>
-            <Link className="guild-button ghost" to="/join">加入公会</Link>
+            <Link className="guild-button ghost" to="/join">加入我们</Link>
           </motion.div>
         </div>
         <div className="scroll-rune">SCROLL TO ENTER <ChevronRight /></div>
@@ -191,16 +191,42 @@ export function WorksPage() {
 }
 
 export function JoinPage() {
-  const navigate=useNavigate(); const [step,setStep]=useState(1); const [form,setForm]=useState({displayName:'',email:'',college:'',departmentId:'dept-cos',reason:''});
+  const navigate=useNavigate();
+  const [step,setStep]=useState(1);
+  const [form,setForm]=useState({displayName:'',email:'',college:'',departmentIds:[] as string[],reason:''});
   const departments=useQuery({queryKey:['departments'],queryFn:()=>api<{items:Department[]}>('/api/public/departments')});
   const mutation=useMutation({mutationFn:()=>api<{id:string;statusToken:string;status:string}>('/api/public/applications',json('POST',form)),onSuccess:data=>{localStorage.setItem('guild_application_token',data.statusToken);navigate(`/application/${data.statusToken}`);}});
   const submit=(e:FormEvent)=>{e.preventDefault();if(step===1){setStep(2);return;}mutation.mutate();};
-  return <main><PageHero eyebrow="RECRUITMENT BOARD" title="加入公会" description="选择你的协作方向，向佐佑递交一份真实的社团申请。"/><section className="shell join-shell"><div className="join-steps"><span className="done">1 选择职业</span><i/><span className={step===2?'done':''}>2 填写资料</span><i/><span>3 等待审核</span></div><form className="parchment-form" onSubmit={submit}>{step===1?<><h2>选择意向职业</h2><div className="class-options">{departments.data?.items.map(d=><label className={form.departmentId===d.id?'selected':''} key={d.id}><input type="radio" name="department" value={d.id} checked={form.departmentId===d.id} onChange={()=>setForm({...form,departmentId:d.id})}/><strong>{d.title}</strong><span>{d.name}</span></label>)}</div><button className="guild-button primary" type="submit">继续填写资料</button></>:<><h2>冒险者资料</h2><label>称呼<input required minLength={2} value={form.displayName} onChange={e=>setForm({...form,displayName:e.target.value})}/></label><label>学院与年级<input required minLength={2} value={form.college} onChange={e=>setForm({...form,college:e.target.value})}/></label><label>联系邮箱<input required type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label><label>自我介绍与加入理由<textarea required minLength={5} rows={6} value={form.reason} onChange={e=>setForm({...form,reason:e.target.value})}/></label>{mutation.error&&<p className="form-error">{mutation.error.message}</p>}<div className="form-actions"><button type="button" onClick={()=>setStep(1)} className="text-button">返回选择</button><button className="guild-button primary" disabled={mutation.isPending} type="submit">{mutation.isPending?'正在递交…':'提交加入申请'}</button></div></>}</form></section></main>;
+  const toggleDepartment=(id:string)=>setForm((current)=>({...current,departmentIds:current.departmentIds.includes(id)?current.departmentIds.filter(value=>value!==id):[...current.departmentIds,id]}));
+  return <main><PageHero eyebrow="MEMBERSHIP APPLICATION" title="加入佐佑动漫社" description="先填写社员申请，再选择你感兴趣的部门。部门可以多选，加入后也可以根据实际参与情况调整。"/>
+    <section className="shell join-shell">
+      <div className="join-steps"><span className="done">1 社员申请</span><i/><span className={step===2?'done':''}>2 意向部门</span><i/><span>3 审核结果</span></div>
+      <form className="parchment-form" onSubmit={submit}>
+        {step===1?<>
+          <header className="form-intro"><span>MEMBER APPLICATION</span><h2>填写社员申请</h2><p>请留下基本信息和加入理由。资料仅用于社团招新审核与后续联系。</p></header>
+          <label>称呼<input required minLength={2} value={form.displayName} onChange={e=>setForm({...form,displayName:e.target.value})}/></label>
+          <label>学院与年级<input required minLength={2} value={form.college} onChange={e=>setForm({...form,college:e.target.value})}/></label>
+          <label>联系邮箱<input required type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label>
+          <label>自我介绍与加入理由<textarea required minLength={5} rows={6} value={form.reason} onChange={e=>setForm({...form,reason:e.target.value})}/></label>
+          <button className="guild-button primary" type="submit">选择意向部门</button>
+        </>:<>
+          <header className="form-intro"><span>DEPARTMENT INTERESTS</span><h2>选择感兴趣的部门</h2><p>可多选。这只是参与意向，不影响社员申请；通过后可再与各部门负责人沟通。</p></header>
+          {departments.isLoading?<LoadingPanel label="正在读取部门信息"/>:departments.error?<ErrorPanel error={departments.error}/>:<div className="class-options department-checklist">{departments.data?.items.map(d=>{
+            const selected=form.departmentIds.includes(d.id);
+            return <label className={selected?'selected':''} key={d.id}><input type="checkbox" name="departments" value={d.id} checked={selected} onChange={()=>toggleDepartment(d.id)}/><strong>{d.name}</strong><span>{d.description}</span>{selected&&<small>已选择</small>}</label>;
+          })}</div>}
+          <p className="selection-summary" aria-live="polite">{form.departmentIds.length?`已选择 ${form.departmentIds.length} 个部门`:'请至少选择一个感兴趣的部门'}</p>
+          {mutation.error&&<p className="form-error">{mutation.error.message}</p>}
+          <div className="form-actions"><button type="button" onClick={()=>setStep(1)} className="text-button">返回修改资料</button><button className="guild-button primary" disabled={mutation.isPending||!form.departmentIds.length} type="submit">{mutation.isPending?'正在提交…':'提交社员申请'}</button></div>
+        </>}
+      </form>
+    </section>
+  </main>;
 }
 
 export function ApplicationStatusPage() {
   const {token=''}=useParams(); const query=useQuery({queryKey:['application',token],queryFn:()=>api<{id:string;status:string;rejectionReason?:string;activationCode?:string}>(`/api/public/applications/status/${token}`),enabled:Boolean(token)});
-  return <main><PageHero eyebrow="APPLICATION TRACKER" title="申请进度" description="凭此私密链接查看审核结果与账号激活信息。"/><section className="shell narrow">{query.isLoading?<LoadingPanel/>:query.error?<ErrorPanel error={query.error}/>:<article className="parchment-panel status-card"><StatusBadge status={query.data!.status}/><h2>申请编号 {query.data!.id}</h2>{query.data!.status==='PENDING'&&<p>档案已进入审核队列，请耐心等待管理员处理。</p>}{query.data!.rejectionReason&&<p>审核意见：{query.data!.rejectionReason}</p>}{query.data!.activationCode&&<><p>申请已通过，请使用一次性激活码建立成员账号。</p><code>{query.data!.activationCode}</code><Link className="guild-button primary" to={`/activate?token=${encodeURIComponent(query.data!.activationCode)}`}>激活成员身份</Link></>}</article>}</section></main>;
+  return <main><PageHero eyebrow="APPLICATION STATUS" title="社员申请进度" description="通过提交申请后生成的私密链接查看审核结果。"/><section className="shell narrow">{query.isLoading?<LoadingPanel/>:query.error?<ErrorPanel error={query.error}/>:<article className="parchment-panel status-card"><StatusBadge status={query.data!.status}/><h2>申请编号 {query.data!.id}</h2>{query.data!.status==='PENDING'&&<p>申请已经提交，请等待社团管理员审核。</p>}{query.data!.rejectionReason&&<p>审核意见：{query.data!.rejectionReason}</p>}{query.data!.activationCode&&<><p>申请已通过，请使用一次性激活码创建社员账号。</p><code>{query.data!.activationCode}</code><Link className="guild-button primary" to={`/activate?token=${encodeURIComponent(query.data!.activationCode)}`}>激活社员账号</Link></>}</article>}</section></main>;
 }
 
 export function NotFoundPage(){return <main><section className="not-found"><FileQuestion/><span className="eyebrow">404 · LOST SCROLL</span><h1>这份卷宗不在公会档案里</h1><p>可能是路径错误，或档案已经被移入其他区域。</p><Link className="guild-button" to="/">返回公会大厅</Link></section></main>}

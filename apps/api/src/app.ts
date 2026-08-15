@@ -59,6 +59,7 @@ interface Principal {
   email: string;
   role: Role;
   departmentId: string | null;
+  departmentIds: string[];
   bio: string;
   guildTitle: string;
   college: string;
@@ -99,9 +100,9 @@ const publicAnnouncement = (row: AnnouncementRow) => ({
   published: Boolean(row.published),
   publishedAt: row.published_at,
 });
-const cleanUser = (user: UserRow): Principal => ({
+const cleanUser = (user: UserRow, departmentIds: string[] = user.department_id ? [user.department_id] : []): Principal => ({
   id: user.id, username: user.username, displayName: user.display_name, email: user.email,
-  role: user.role, departmentId: user.department_id, bio: user.bio, guildTitle: user.guild_title, college: user.college, grade: user.grade,
+  role: user.role, departmentId: user.department_id, departmentIds, bio: user.bio, guildTitle: user.guild_title, college: user.college, grade: user.grade,
   skills: safeTags(user.skills), interests: safeTags(user.interests), avatarColor: user.avatar_color, profileVisibility: user.profile_visibility, lastSeenAt: user.last_seen_at,
 });
 
@@ -141,6 +142,11 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
   const app = Fastify({ logger: false });
   const social = new GuildSocialRepository(sqlite, newId, now);
+  const departmentIdsFor = (userId: string, primaryDepartmentId: string | null): string[] => {
+    const rows = sqlite.prepare('SELECT department_id FROM user_departments WHERE user_id=? ORDER BY is_primary DESC,rowid').all(userId) as Array<{ department_id: string }>;
+    return rows.length ? rows.map((row) => row.department_id) : primaryDepartmentId ? [primaryDepartmentId] : [];
+  };
+  const principalFrom = (user: UserRow): Principal => cleanUser(user, departmentIdsFor(user.id, user.department_id));
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   await app.register(multipart, { limits: { files: 1, fields: 8, fileSize: 200 * 1024 * 1024 } });
@@ -175,7 +181,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       WHERE s.id=? AND s.expires_at>? AND u.is_active=1`).get(sha256(token), now()) as UserRow | undefined;
     if (!row) return null;
     social.touch(row.id);
-    return cleanUser({ ...row, last_seen_at: now() });
+    return principalFrom({ ...row, last_seen_at: now() });
   }
 
   function requireMember(request: FastifyRequest, reply: FastifyReply): Principal | null {
@@ -297,16 +303,26 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
 
-  const applicationSchema = z.object({ displayName: z.string().trim().min(2).max(60), email: z.email(), college: z.string().trim().min(2).max(100).default('未填写'), departmentId: z.string().min(1), reason: z.string().trim().min(5).max(1000) });
+  const applicationSchema = z.object({
+    displayName: z.string().trim().min(2).max(60), email: z.email(), college: z.string().trim().min(2).max(100).default('未填写'),
+    departmentIds: z.array(z.string().min(1)).min(1).max(6).optional(), departmentId: z.string().min(1).optional(), reason: z.string().trim().min(5).max(1000),
+  }).refine((body) => Boolean(body.departmentIds?.length || body.departmentId), { message: '请至少选择一个感兴趣的部门', path: ['departmentIds'] });
   app.post('/api/public/applications', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
     const body = parse(applicationSchema, request.body);
-    if (!sqlite.prepare('SELECT 1 FROM departments WHERE id=?').get(body.departmentId)) throw new HttpError(400, 'VALIDATION_ERROR', '目标部门不存在');
+    const departmentIds = body.departmentIds ?? [body.departmentId!];
+    if (new Set(departmentIds).size !== departmentIds.length) throw new HttpError(400, 'VALIDATION_ERROR', '请勿重复选择同一部门');
+    const departmentExists = sqlite.prepare('SELECT 1 FROM departments WHERE id=?');
+    if (departmentIds.some((departmentId) => !departmentExists.get(departmentId))) throw new HttpError(400, 'VALIDATION_ERROR', '所选部门不存在');
     if (sqlite.prepare("SELECT 1 FROM applications WHERE email=? AND status='PENDING'").get(body.email)) throw new HttpError(409, 'CONFLICT', '该邮箱已有待审申请');
     const id = newId('application');
     const statusToken = randomBytes(32).toString('base64url');
-    sqlite.prepare('INSERT INTO applications(id,status_token_hash,display_name,email,college,department_id,reason,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
-      .run(id, sha256(statusToken), body.displayName, body.email, body.college, body.departmentId, body.reason, 'PENDING', now(), now());
-    audit(sqlite, null, 'APPLICATION_SUBMITTED', 'application', id);
+    sqlite.transaction(() => {
+      sqlite.prepare('INSERT INTO applications(id,status_token_hash,display_name,email,college,department_id,reason,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+        .run(id, sha256(statusToken), body.displayName, body.email, body.college, departmentIds[0], body.reason, 'PENDING', now(), now());
+      const insertDepartment = sqlite.prepare('INSERT INTO application_departments(application_id,department_id,preference_order) VALUES (?,?,?)');
+      departmentIds.forEach((departmentId, index) => insertDepartment.run(id, departmentId, index));
+      audit(sqlite, null, 'APPLICATION_SUBMITTED', 'application', id, null, { departmentIds });
+    })();
     return reply.status(201).send(successResponse({ id, statusToken, status: 'PENDING' }));
   });
   app.get('/api/public/applications/status/:token', async (request) => {
@@ -325,7 +341,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     sqlite.prepare('INSERT INTO sessions(id,user_id,expires_at,created_at) VALUES (?,?,?,?)').run(sha256(token), user.id, expiresAt, now());
     reply.setCookie('guild_session', token, { httpOnly: true, sameSite: 'strict', secure: options.secureCookies ?? options.production ?? false, path: '/', expires: new Date(expiresAt) });
     audit(sqlite, user.id, 'LOGIN', 'session', sha256(token));
-    return successResponse({ user: cleanUser(user) });
+    return successResponse({ user: principalFrom(user) });
   });
   app.post('/api/auth/logout', async (request, reply) => {
     const token = request.cookies.guild_session;
@@ -851,13 +867,31 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ status, checkInCode: checkInCode ?? undefined });
   });
 
-  app.get('/api/admin/applications', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; const paging = getPaging(request.query); const items = sqlite.prepare('SELECT id,display_name,email,college,department_id,reason,status,rejection_reason,created_at FROM applications ORDER BY created_at DESC LIMIT ? OFFSET ?').all(paging.pageSize, paging.offset); const total = (sqlite.prepare('SELECT COUNT(*) count FROM applications').get() as { count: number }).count; return successResponse(pageData(items, total, paging.page, paging.pageSize)); });
+  app.get('/api/admin/applications', async (request, reply) => {
+    const principal = requireAdmin(request, reply); if (!principal) return;
+    const paging = getPaging(request.query);
+    const rows = sqlite.prepare('SELECT id,display_name,email,college,department_id,reason,status,rejection_reason,created_at FROM applications ORDER BY created_at DESC LIMIT ? OFFSET ?').all(paging.pageSize, paging.offset) as Array<Record<string, unknown> & { id: string; department_id: string }>;
+    const selectedDepartments = sqlite.prepare(`SELECT ad.department_id,d.name FROM application_departments ad JOIN departments d ON d.id=ad.department_id
+      WHERE ad.application_id=? ORDER BY ad.preference_order,ad.rowid`);
+    const items = rows.map((row) => {
+      const selected = selectedDepartments.all(row.id) as Array<{ department_id: string; name: string }>;
+      const fallback = selected.length ? selected : [{ department_id: row.department_id, name: row.department_id }];
+      return { ...row, departmentIds: fallback.map((department) => department.department_id), departmentNames: fallback.map((department) => department.name) };
+    });
+    const total = (sqlite.prepare('SELECT COUNT(*) count FROM applications').get() as { count: number }).count;
+    return successResponse(pageData(items, total, paging.page, paging.pageSize));
+  });
   async function approveApplication(id: string, actor: Principal): Promise<string> {
     const application = sqlite.prepare('SELECT * FROM applications WHERE id=?').get(id) as { display_name: string; email: string; department_id: string; status: string } | undefined;
     if (!application) throw new HttpError(404, 'NOT_FOUND', '申请不存在'); if (application.status !== 'PENDING') throw new HttpError(409, 'INVALID_STATE', '申请已处理');
     const userId = newId('user'); const { rawToken, record } = createActivationToken(userId);
+    const selected = sqlite.prepare('SELECT department_id FROM application_departments WHERE application_id=? ORDER BY preference_order,rowid').all(id) as Array<{ department_id: string }>;
+    const departmentIds = selected.length ? selected.map((department) => department.department_id) : [application.department_id];
     sqlite.transaction(() => {
-      sqlite.prepare('INSERT INTO users(id,display_name,email,role,department_id,bio,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(userId, application.display_name, application.email, 'MEMBER', application.department_id, '', 0, now(), now());
+      const createdAt = now();
+      sqlite.prepare('INSERT INTO users(id,display_name,email,role,department_id,bio,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(userId, application.display_name, application.email, 'MEMBER', departmentIds[0], '', 0, createdAt, createdAt);
+      const insertMembership = sqlite.prepare('INSERT INTO user_departments(user_id,department_id,is_primary,joined_at) VALUES (?,?,?,?)');
+      departmentIds.forEach((departmentId, index) => insertMembership.run(userId, departmentId, index === 0 ? 1 : 0, createdAt));
       sqlite.prepare('INSERT INTO activation_tokens(id,user_id,token_hash,expires_at,used_at,created_at) VALUES (?,?,?,?,?,?)').run(newId('activation'), userId, record.tokenHash, record.expiresAt, null, now());
       sqlite.prepare("UPDATE applications SET status='APPROVED',user_id=?,activation_code_encrypted=?,updated_at=? WHERE id=?").run(userId, encryptSecret(rawToken, options.sessionSecret), now(), id);
       audit(sqlite, actor.id, 'APPLICATION_APPROVED', 'application', id, userId);

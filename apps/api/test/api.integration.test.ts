@@ -91,6 +91,15 @@ describe('production seed safety', () => {
       expect(profile.profile_visibility).toBe('MEMBERS');
     });
   });
+
+  it('migrates and backfills multi-department membership records', async () => {
+    await withDevelopmentSeed(async (sqlite) => {
+      const applicationDepartments = sqlite.prepare("SELECT department_id FROM application_departments WHERE application_id='application-history'").all() as Array<{ department_id: string }>;
+      const memberDepartments = sqlite.prepare("SELECT department_id,is_primary FROM user_departments WHERE user_id='user-member'").all() as Array<{ department_id: string; is_primary: number }>;
+      expect(applicationDepartments).toEqual([{ department_id: 'dept-publicity' }]);
+      expect(memberDepartments).toEqual([{ department_id: 'dept-cos', is_primary: 1 }]);
+    });
+  });
 });
 
 describe.sequential('Adventurer Guild API', () => {
@@ -136,6 +145,10 @@ describe.sequential('Adventurer Guild API', () => {
       ['COS部', '幻术师'], ['技术部', '魔导工程师'], ['轻音部', '吟游诗人'],
       ['原创部', '绘卷术士'], ['舞装部', '舞刃使'], ['外宣部', '传令官'],
     ]);
+    expect(departments.json().data.items.map((item: { description: string }) => item.description)).toEqual([
+      '角色造型、服装道具与舞台呈现', '摄影摄像、直播与活动技术支持', '乐队排练、歌曲编排与现场演出',
+      '绘画、设定创作与社团原创企划', '宅舞排练、舞台编排与演出', '海报文案、新媒体运营与活动宣传',
+    ]);
     const activities = await app.inject({ method: 'GET', url: '/api/public/activities' });
     expect(activities.json().data.items.every((activity: Record<string, unknown>) => !('check_in_code' in activity) && !('checkInCode' in activity))).toBe(true);
   });
@@ -168,7 +181,7 @@ describe.sequential('Adventurer Guild API', () => {
     expect(detail.statusCode).toBe(200);
     expect(detail.json().data.announcement).toMatchObject({
       id: 'announcement-recruitment-2026',
-      summary: '六大部门联合招募，欢迎新的冒险者加入公会。',
+      summary: '社员申请现已开放，可同时选择多个感兴趣的部门。',
       href: '/join',
     });
 
@@ -285,14 +298,28 @@ describe.sequential('Adventurer Guild API', () => {
 
   it('completes recruitment approval, status lookup, one-time activation and login', async () => {
     const submitted = await app.inject({ method: 'POST', url: '/api/public/applications', payload: {
-      displayName: '星砂旅人', email: 'starsand@example.test', college: '计算机学院 2026级', departmentId: 'dept-tech', reason: '希望参与魔导装置维护',
+      displayName: '星砂同学', email: 'starsand@example.test', college: '计算机学院 2026级', departmentIds: ['dept-tech', 'dept-original'], reason: '希望认识同好并参与社团活动',
     } });
     expect(submitted.statusCode).toBe(201);
     const { id, statusToken } = submitted.json().data;
     expect(statusToken.length).toBeGreaterThan(30);
 
+    const applications = await app.inject({ method: 'GET', url: '/api/admin/applications?page=1&pageSize=100', headers: { cookie: adminCookie } });
+    expect(applications.json().data.items.find((item: { id: string }) => item.id === id)).toMatchObject({
+      departmentIds: ['dept-tech', 'dept-original'],
+      departmentNames: ['技术部', '原创部'],
+    });
+
     const approved = await app.inject({ method: 'POST', url: `/api/admin/applications/${id}/approve`, headers: { cookie: adminCookie } });
     expect(approved.statusCode).toBe(200);
+    const database = await openDatabase(`${root}/guild.sqlite`);
+    const approvedDepartments = database.sqlite.prepare(`SELECT ud.department_id,ud.is_primary FROM user_departments ud
+      JOIN applications a ON a.user_id=ud.user_id WHERE a.id=? ORDER BY ud.is_primary DESC,ud.rowid`).all(id);
+    database.sqlite.close();
+    expect(approvedDepartments).toEqual([
+      { department_id: 'dept-tech', is_primary: 1 },
+      { department_id: 'dept-original', is_primary: 0 },
+    ]);
     const status = await app.inject({ method: 'GET', url: `/api/public/applications/status/${statusToken}` });
     expect(status.json().data).toMatchObject({ status: 'APPROVED' });
     const activationCode = status.json().data.activationCode;

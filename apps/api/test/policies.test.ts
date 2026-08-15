@@ -57,5 +57,11 @@ describe('file visibility', () => {
     expect(canAccessFile({ role: 'ADMIN', departmentId: null }, { visibility: 'ADMINS', departmentId: null, deletedAt: null })).toBe(true);
     expect(canAccessFile({ role: 'ADMIN', departmentId: null }, { visibility: 'PUBLIC', departmentId: null, deletedAt: '2026-01-01' })).toBe(false);
   });
-});
 
+  it('allows access for every department a member has joined', () => {
+    const multiDepartmentMember = { role: 'MEMBER' as const, departmentId: 'dept-a', departmentIds: ['dept-a', 'dept-b'] };
+    expect(canAccessFile(multiDepartmentMember, { visibility: 'DEPARTMENT', departmentId: 'dept-a', deletedAt: null })).toBe(true);
+    expect(canAccessFile(multiDepartmentMember, { visibility: 'DEPARTMENT', departmentId: 'dept-b', deletedAt: null })).toBe(true);
+    expect(canAccessFile(multiDepartmentMember, { visibility: 'DEPARTMENT', departmentId: 'dept-c', deletedAt: null })).toBe(false);
+  });
+});

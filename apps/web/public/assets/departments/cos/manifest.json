@@ -1,0 +1,56 @@
+[
+  {
+    "anilistId": 132405,
+    "query": "My Dress-Up Darling",
+    "title": "その着せ替え人形は恋をする",
+    "romaji": "Sono Bisque Doll wa Koi wo Suru",
+    "year": 2022,
+    "cover": "assets/departments/cos/01-cover.jpg",
+    "banner": "assets/departments/cos/01-banner.jpg"
+  },
+  {
+    "anilistId": 158559,
+    "query": "2.5 Dimensional Seduction",
+    "title": "2.5次元の誘惑",
+    "romaji": "2.5 Jigen no Ririsa",
+    "year": 2024,
+    "cover": "assets/departments/cos/02-cover.jpg",
+    "banner": "assets/departments/cos/02-banner.jpg"
+  },
+  {
+    "anilistId": 21686,
+    "query": "Kiss Him, Not Me",
+    "title": "私がモテてどうすんだ",
+    "romaji": "Watashi ga Motete Dousunda",
+    "year": 2016,
+    "cover": "assets/departments/cos/03-cover.jpg",
+    "banner": "assets/departments/cos/03-banner.jpg"
+  },
+  {
+    "anilistId": 99578,
+    "query": "Wotakoi: Love is Hard for Otaku",
+    "title": "ヲタクに恋は難しい",
+    "romaji": "Wotaku ni Koi wa Muzukashii",
+    "year": 2018,
+    "cover": "assets/departments/cos/04-cover.jpg",
+    "banner": "assets/departments/cos/04-banner.jpg"
+  },
+  {
+    "anilistId": 21804,
+    "query": "The Disastrous Life of Saiki K.",
+    "title": "斉木楠雄のΨ難",
+    "romaji": "Saiki Kusuo no Ψ-nan",
+    "year": 2016,
+    "cover": "assets/departments/cos/05-cover.jpg",
+    "banner": "assets/departments/cos/05-banner.jpg"
+  },
+  {
+    "anilistId": 105334,
+    "query": "Fruits Basket",
+    "title": "フルーツバスケット 1st Season",
+    "romaji": "Fruits Basket: 1st Season",
+    "year": 2019,
+    "cover": "assets/departments/cos/06-cover.jpg",
+    "banner": "assets/departments/cos/06-banner.jpg"
+  }
+]

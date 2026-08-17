@@ -368,4 +368,118 @@ describe('Adventurer Guild app', () => {
     await user.click(screen.getByRole('button', { name: '发送消息' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/conversations/conversation-demo-direct/messages', expect.objectContaining({ method: 'POST' })));
   });
+
+  it('lists tavern posts and publishes a new one', async () => {
+    const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: ['cosplay'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const posts = [
+      { id: 'post-welcome', title: '欢迎来到冒险者酒馆', content: '社团公开交流区。', pinned: true, commentCount: 3, author: { id: 'user-admin', displayName: '星门总管', avatarColor: '#b26b3f' }, createdAt: '2026-08-01T08:00:00.000Z', updatedAt: '2026-08-01T08:00:00.000Z' },
+      { id: 'post-photo', title: '招募摄影搭档拍正片', content: '周末去江边外拍。', pinned: false, commentCount: 1, author: { id: 'user-member', displayName: '白羽见习者', avatarColor: '#5279a8' }, createdAt: '2026-08-07T10:00:00.000Z', updatedAt: '2026-08-07T10:00:00.000Z' },
+    ];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path.startsWith('/api/member/posts?')) return new Response(JSON.stringify({ ok: true, data: { items: posts, page: 1, pageSize: 50, total: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/posts' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { post: { ...posts[1], id: 'post-new' } } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/portal/tavern');
+    expect(await screen.findByRole('heading', { name: '冒险者酒馆' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '欢迎来到冒险者酒馆' })).toBeInTheDocument();
+    expect(screen.getByText('置顶')).toBeInTheDocument();
+    expect(screen.getByText('3 条评论')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '发布新帖' }));
+    await user.type(screen.getByLabelText('帖子标题'), '周末道具修补互助');
+    await user.type(screen.getByLabelText('帖子内容'), '周六下午在活动室修补巡游道具。');
+    await user.click(screen.getByRole('button', { name: '发布到酒馆' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/posts', expect.objectContaining({ method: 'POST' })));
+    const call = fetchMock.mock.calls.find(([path, init]) => path === '/api/member/posts' && (init as RequestInit)?.method === 'POST');
+    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ title: '周末道具修补互助' });
+  });
+
+  it('shows resonance matches with shared attributes and guides unset members', async () => {
+    const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: ['cosplay', 'photography'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const match = { myAttributes: ['cosplay', 'photography'], items: [
+      { score: 62, sharedAttributes: ['cosplay', 'photography'], sharedTags: ['漫展'], profile: { id: 'user-lead', displayName: '绯月幻装师', avatarColor: '#c75f88', guildTitle: '首席幻装师', departmentName: 'COS部', bio: '舞台呈现', presence: 'ONLINE' } },
+    ] };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/match') return new Response(JSON.stringify({ ok: true, data: match }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderAt('/portal/match');
+    expect(await screen.findByRole('heading', { name: '共鸣图鉴' })).toBeInTheDocument();
+    expect(await screen.findByText('绯月幻装师')).toBeInTheDocument();
+    expect(screen.getByText('62%')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: '与 绯月幻装师 的共鸣指数 62%' })).toBeInTheDocument();
+    expect(screen.getAllByText('COS').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: '查看主页' })).toHaveAttribute('href', '/portal/members/user-lead');
+    expect(screen.getByRole('button', { name: '发起私聊' })).toBeEnabled();
+  });
+
+  it('guides members without attributes to the profile editor', async () => {
+    const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: [], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/match') return new Response(JSON.stringify({ ok: true, data: { myAttributes: [], items: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderAt('/portal/match');
+    expect(await screen.findByRole('heading', { name: '先为自己选择冒险属性' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /去设置我的属性/ })).toHaveAttribute('href', '/portal/profile');
+  });
+
+  it('toggles attributes in the profile editor and persists them', async () => {
+    const profile = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', departmentName: 'COS部', bio: '活动协作', guildTitle: '幻装见习生', college: '艺术设计学院', grade: '2025级', skills: ['角色塑造'], interests: ['动画'], attributes: ['cosplay'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profile' && !init?.method) return new Response(JSON.stringify({ ok: true, data: { profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profile' && init?.method === 'PATCH') return new Response(JSON.stringify({ ok: true, data: { updated: true, profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/portal/profile');
+    expect(await screen.findByRole('heading', { name: '我的属性' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'COS' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: '摄影' }));
+    expect(screen.getByText('已选择 2/8')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '保存个人主页' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/profile', expect.objectContaining({ method: 'PATCH' })));
+    const patchCall = fetchMock.mock.calls.find(([path, init]) => path === '/api/member/profile' && (init as RequestInit)?.method === 'PATCH');
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({ attributes: ['cosplay', 'photography'] });
+  });
+
+  it('renders the pixel plaza lobby with seven areas and online counts', async () => {
+    const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: ['cosplay'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const areas = [
+      { id: 'hall', name: '公会大厅广场', color: '#c99a45', departmentSlug: null, online: 3 },
+      { id: 'publicity', name: '外宣部据点', color: '#e0342f', departmentSlug: 'publicity', online: 0 },
+      { id: 'tech', name: '技术部工房', color: '#ff9f43', departmentSlug: 'tech', online: 1 },
+      { id: 'original', name: '原创部画室', color: '#f7a8b8', departmentSlug: 'original', online: 0 },
+      { id: 'dance', name: '舞装部舞台', color: '#ff4d8d', departmentSlug: 'dance', online: 0 },
+      { id: 'cos', name: 'COS部幻装间', color: '#d6336c', departmentSlug: 'cos', online: 2 },
+      { id: 'music', name: '轻音部琴房', color: '#f5c96b', departmentSlug: 'music', online: 0 },
+    ];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/world/areas') return new Response(JSON.stringify({ ok: true, data: { items: areas } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderAt('/portal/world');
+    expect(await screen.findByRole('heading', { name: '像素广场' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '公会大厅广场' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'COS部幻装间' })).toBeInTheDocument();
+    expect(screen.getByText('3 人在线')).toBeInTheDocument();
+    expect(screen.getAllByText('暂时无人')).toHaveLength(4);
+    expect(screen.getByRole('link', { name: '进入COS部幻装间' })).toHaveAttribute('href', '/portal/world/cos');
+  });
 });

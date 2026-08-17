@@ -25,3 +25,152 @@
 @media(min-width:761px){.message-actions{top:-2px;right:0;transform:translateY(-100%)}.chat-message.own .message-actions{right:auto;left:0}}
 @media(max-width:1280px){.console .chat-workspace>.chat-context{display:none}}
 @media(max-width:760px){.console .chat-workspace>.conversation-rail.mobile-hidden{display:none}}
+
+/* Adventurer tavern (member posts) */
+.tavern-page section.shell{padding-top:44px;padding-bottom:110px}
+.tavern-create{margin-bottom:26px}
+.tavern-post-list{display:grid;gap:20px}
+.tavern-post-card{display:block;padding:24px 26px;background:linear-gradient(150deg,rgba(255,247,218,.97),rgba(240,222,182,.93))}
+.tavern-post-head{display:flex;align-items:center;gap:12px}
+.tavern-post-head>div{display:grid;gap:2px}
+.tavern-post-head strong{font-size:.9rem;color:#4e2f1d}
+.tavern-post-head time{font-size:.66rem;color:#8e7350}
+.tavern-pin{display:inline-flex;align-items:center;gap:4px;margin-left:auto;padding:4px 9px;border:1px solid #c99a45;background:#f7e7bd;color:#8a5a17;font-size:.66rem;font-weight:700}
+.tavern-pin svg{width:12px}
+.tavern-post-title{display:block;margin-top:13px;color:inherit;text-decoration:none}
+.tavern-post-title h2{margin:0;font:500 1.5rem "Songti SC",serif;color:#3d2716}
+.tavern-post-title:hover h2{color:#8a5a17}
+.tavern-post-excerpt{margin:9px 0 0;color:#6d543c;font-size:.85rem;line-height:1.7}
+.tavern-post-foot{display:flex;align-items:center;gap:14px;margin-top:15px;padding-top:13px;border-top:1px dashed #c5a673}
+.tavern-post-foot a,.tavern-post-foot button{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;color:#7a5a36;font-size:.74rem;cursor:pointer}
+.tavern-post-foot svg{width:14px}
+.tavern-post-foot button.danger{color:#a03c2c}
+.tavern-detail{max-width:860px}
+.tavern-back{display:inline-flex;align-items:center;gap:6px;margin-bottom:20px;color:#7a5a36;font-size:.78rem}
+.tavern-back svg{width:15px}
+.tavern-post-card.detail h1{margin:16px 0 4px;font:500 2.1rem "Songti SC",serif;color:#33200f}
+.tavern-post-content{margin-top:14px;color:#5d4630;line-height:1.9;font-size:.92rem}
+.tavern-post-content p{margin:0 0 12px}
+.tavern-comments{margin-top:30px}
+.tavern-comments>h2{margin:0 0 16px;font:500 1.4rem "Songti SC",serif;color:#4e2f1d}
+.tavern-comments article{display:flex;align-items:flex-start;gap:12px;padding:15px 17px;margin-bottom:11px;border:1px solid #c5a673;background:rgba(255,246,219,.8)}
+.tavern-comments article>div{flex:1}
+.tavern-comments article strong{display:flex;align-items:baseline;gap:9px;font-size:.82rem;color:#4e2f1d}
+.tavern-comments article time{color:#97805f;font-size:.64rem;font-weight:400}
+.tavern-comments article p{margin:5px 0 0;color:#5d4630;font-size:.85rem;line-height:1.7}
+.tavern-comments article>button{border:0;background:transparent;color:#a03c2c;cursor:pointer}
+.tavern-comments article>button svg{width:15px}
+.tavern-comments form{display:flex;gap:11px;margin-top:18px}
+.tavern-comments form label{flex:1}
+.tavern-comments form input{width:100%;border:1px solid #b99761;background:rgba(255,250,232,.85);padding:11px 13px}
+.tavern-comments form .guild-button{display:inline-flex;align-items:center;gap:7px}
+.tavern-comments form .guild-button svg{width:14px}
+
+/* Attribute pool picker */
+.attribute-hint{margin:-12px 0 15px;color:#8e6b45;font-size:.74rem}
+.attribute-pool{display:flex;flex-wrap:wrap;gap:9px}
+.attribute-pool button{padding:8px 14px;border:1px solid #b99761;background:rgba(255,250,232,.72);color:#6e4c31;font-size:.78rem;cursor:pointer;transition:.15s}
+.attribute-pool button:hover{border-color:#8a5a17;transform:translateY(-1px)}
+.attribute-pool button.active{border-color:#1d544e;background:#1d544e;color:#f3e3ba;box-shadow:2px 3px 0 rgba(29,84,78,.25)}
+.social-tags.attribute span{border-color:rgba(201,154,69,.55);background:rgba(247,231,189,.5);color:#8a5a17}
+
+/* Resonance match */
+.match-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.match-card{position:relative;display:block;padding:23px 24px;background:linear-gradient(150deg,rgba(255,247,218,.97),rgba(240,222,182,.93))}
+.match-rank{position:absolute;top:-11px;right:16px;padding:3px 9px;background:#1d544e;color:#f3e3ba;font:400 .58rem "Press Start 2P",monospace}
+.match-top{display:flex;align-items:center;gap:13px}
+.match-top>div{flex:1;min-width:0}
+.match-top small{font-size:.66rem;color:#8e6b45}
+.match-top h3{margin:3px 0 2px;font:500 1.35rem "Songti SC",serif;color:#3d2716}
+.match-top strong{font-size:.72rem;color:#8a5a17}
+.match-score{font:400 1.05rem "Press Start 2P",monospace;color:#1d544e}
+.match-bar{height:9px;margin:15px 0 4px;border:1px solid #a88759;background:rgba(255,250,232,.8)}
+.match-bar i{display:block;height:100%;background:repeating-linear-gradient(90deg,#1d544e 0 8px,#2a6e63 8px 16px)}
+.match-shared{margin-top:12px}
+.match-shared>small{display:block;margin-bottom:6px;font-size:.62rem;color:#97805f}
+.match-actions{display:flex;gap:12px;margin-top:16px;padding-top:13px;border-top:1px dashed #c5a673}
+.match-actions a,.match-actions button{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;color:#1d544e;font-size:.76rem;font-weight:700;cursor:pointer}
+.match-actions svg{width:14px}
+.match-empty{display:grid;justify-items:center;gap:10px;max-width:620px;margin:0 auto;padding:44px 34px;text-align:center;background:linear-gradient(150deg,rgba(255,247,218,.97),rgba(240,222,182,.93))}
+.match-empty h2{margin:8px 0 0;font:500 1.7rem "Songti SC",serif;color:#3d2716}
+.match-empty p{margin:0;color:#6d543c;font-size:.86rem;line-height:1.8}
+.match-empty .guild-button{display:inline-flex;align-items:center;gap:7px;margin-top:10px}
+.match-empty .guild-button svg{width:15px}
+
+/* Portal home announcements & public announcement body */
+.portal-announcements h2{display:flex;align-items:center;gap:9px}
+.portal-announcements h2 svg{width:18px}
+.portal-announcements .quest-row{text-decoration:none;color:inherit}
+.announcement-detail-content{margin-top:18px;color:#5d4630;line-height:1.9;font-size:.94rem}
+.announcement-detail-content p{margin:0 0 13px}
+
+@media(max-width:1100px){.match-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:760px){.match-grid{grid-template-columns:1fr}.tavern-comments form{flex-direction:column}}
+
+/* Pixel world plaza */
+.world-lobby section.shell{padding-top:44px;padding-bottom:110px}
+.world-area-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.world-area-link{display:block;color:inherit;text-decoration:none;transition:transform .18s}
+.world-area-link:hover{transform:translateY(-5px)}
+.world-area-card{display:block;padding:0;overflow:hidden;background:linear-gradient(150deg,rgba(255,247,218,.97),rgba(240,222,182,.93))}
+.world-area-scene{--area-color:#c99a45;position:relative;height:150px;overflow:hidden;background:linear-gradient(180deg,#7fb2d9,#cfe3c8)}
+.world-area-scene>img{position:absolute;inset:auto 0 0;width:100%;height:100%;object-fit:cover;image-rendering:pixelated}
+.world-area-scene::after{content:"";position:absolute;inset:0;background:color-mix(in srgb,var(--area-color) 26%,transparent);mix-blend-mode:multiply}
+.world-area-scene .pixel-sprite{position:absolute;right:18px;bottom:8px;width:64px;height:64px;z-index:2}
+.world-area-scene .pixel-sprite img{width:100%;height:100%;object-fit:contain}
+.world-area-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px}
+.world-area-meta h2{margin:0;font:500 1.3rem "Songti SC",serif;color:#3d2716}
+.world-area-meta span{display:inline-flex;align-items:center;gap:6px;color:#8e7350;font-size:.72rem}
+.world-area-meta span.online{color:#25744b;font-weight:700}
+.world-area-meta svg{width:14px}
+
+/* Pixel world area scene */
+.world-area-page{--area-color:#c99a45;min-height:calc(100vh - 76px);background:#1a2b26;padding-bottom:60px}
+.world-area-titlebar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px max(24px,calc((100vw - 1120px)/2));background:linear-gradient(90deg,#132420,#1d332c);border-bottom:3px solid var(--area-color)}
+.world-area-titlebar>a{display:inline-flex;align-items:center;gap:6px;color:#d8c79b;font-size:.78rem}
+.world-area-titlebar>a svg{width:15px}
+.world-area-titlebar>div{text-align:center}
+.world-area-titlebar>div>span{font:400 .42rem "Press Start 2P",monospace;color:var(--area-color)}
+.world-area-titlebar h1{margin:5px 0 0;font:500 1.7rem "Songti SC",serif;color:#f5e7bd}
+.world-online{display:inline-flex;align-items:center;gap:7px;color:#9fd3b6;font-size:.76rem}
+.world-online svg{width:15px}
+.world-stage-shell{position:relative;width:min(1120px,calc(100% - 32px));margin:22px auto 0}
+.world-stage{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border:4px solid #0d1b17;box-shadow:0 0 0 3px var(--area-color),0 18px 45px rgba(0,0,0,.45);background:linear-gradient(180deg,#87b7dd 0%,#b9d9a8 55%,#94c07f 100%)}
+.world-backdrop{position:absolute;inset:0}
+.world-backdrop .layer{position:absolute;bottom:0;left:0;width:100%;image-rendering:pixelated;pointer-events:none}
+.world-backdrop .mountains{height:64%;object-fit:cover;opacity:.85}
+.world-backdrop .forest-far{height:52%;object-fit:cover;opacity:.8}
+.world-backdrop .forest-mid{height:44%;object-fit:cover;opacity:.75}
+.world-backdrop .lodge{left:37.5%;bottom:auto;top:4%;width:24%;height:auto}
+.world-tint{position:absolute;inset:0;background:color-mix(in srgb,var(--area-color) 16%,transparent);mix-blend-mode:overlay;pointer-events:none}
+.world-tree{position:absolute;image-rendering:pixelated;pointer-events:none}
+.world-sprite{--avatar-color:#5279a8;position:absolute;z-index:3;width:6.5%;transform:translate(-50%,-88%);display:grid;justify-items:center;pointer-events:none}
+.world-sprite img{width:100%;image-rendering:pixelated;filter:drop-shadow(0 4px 3px rgba(10,20,15,.4))}
+.world-sprite[data-dir$="left"] img{transform:scaleX(-1)}
+.world-sprite b{margin-top:2px;padding:2px 7px;border:2px solid var(--avatar-color);background:rgba(13,24,20,.85);color:#f3e7c3;font-size:.62rem;font-weight:700;white-space:nowrap}
+.world-sprite.self b{background:var(--avatar-color);color:#fff8e2}
+.world-bubble{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);max-width:180px;padding:6px 10px;border:2px solid #0d1b17;background:#fff6d8;color:#3d2716;font-size:.68rem;line-height:1.45;white-space:normal;box-shadow:3px 3px 0 rgba(13,27,23,.4)}
+.world-bubble::after{content:"";position:absolute;top:100%;left:50%;width:8px;height:8px;margin-left:-4px;background:#fff6d8;border-right:2px solid #0d1b17;border-bottom:2px solid #0d1b17;transform:rotate(45deg);margin-top:-4px}
+.world-dpad{display:none;position:absolute;left:14px;bottom:14px;z-index:5;grid-template-columns:1fr;justify-items:center;gap:6px}
+.world-dpad div{display:flex;gap:6px}
+.world-dpad button{width:46px;height:46px;border:3px solid #0d1b17;background:rgba(255,246,216,.9);color:#3d2716;font-size:1rem;box-shadow:2px 3px 0 rgba(13,27,23,.5);touch-action:none}
+.world-dpad button:active{transform:translate(1px,2px);box-shadow:none}
+.world-chat{width:min(1120px,calc(100% - 32px));margin:20px auto 0;padding:20px 24px;border:3px solid #0d1b17;background:linear-gradient(160deg,#f7ecd2,#ecd9ae);box-shadow:6px 7px 0 rgba(0,0,0,.3)}
+.world-chat h2{display:flex;align-items:center;gap:9px;margin:0 0 13px;font:500 1.15rem "Songti SC",serif;color:#3d2716}
+.world-chat h2 svg{width:17px}
+.world-chat-log{max-height:190px;overflow-y:auto;display:grid;gap:7px;padding:4px 2px 10px}
+.world-chat-log p{display:flex;align-items:baseline;gap:9px;margin:0;font-size:.82rem}
+.world-chat-log p b{flex:0 0 auto;font-weight:700}
+.world-chat-log p span{color:#5d4630;word-break:break-all}
+.world-chat-log p button{margin-left:auto;border:0;background:transparent;color:#a03c2c;cursor:pointer}
+.world-chat-log p button svg{width:13px}
+.world-chat-empty{color:#97805f}
+.world-chat form{display:flex;gap:11px;margin-top:12px}
+.world-chat form label{flex:1}
+.world-chat form input{width:100%;padding:10px 13px;border:2px solid #8a6a3f;background:rgba(255,252,240,.9)}
+.world-chat form .guild-button{display:inline-flex;align-items:center;gap:7px}
+.world-chat form .guild-button svg{width:14px}
+
+@media(max-width:1100px){.world-area-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:760px){.world-area-grid{grid-template-columns:1fr}.world-dpad{display:grid}.world-sprite b{font-size:.55rem}.world-chat form{flex-direction:column}}
+@media(prefers-reduced-motion:reduce){.world-area-link{transition:none}}

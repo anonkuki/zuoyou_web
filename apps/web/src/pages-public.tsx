@@ -2,9 +2,11 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, BookOpen, CalendarDays, Camera, Castle, Check, ChevronRight, Compass, Crown, FileQuestion, Flame, Map, Music, Palette, Scroll, Shield, Sparkles, Users, WandSparkles, Wrench } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, Camera, Castle, ChevronRight, Crown, FileQuestion, Flame, Map, Scroll, Shield, Sparkles, Users } from 'lucide-react';
 import { api, json, type PageData } from './api';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero, RuneIcon, StatusBadge } from './components';
+import { DepartmentsHub } from './components/departments/DepartmentsHub';
+import { DeptShowcasePage } from './components/departments/DeptShowcasePage';
 import type { Announcement } from '@guild/contracts';
 
 export interface Department {
@@ -21,15 +23,6 @@ interface Summary { memberCount: number; departmentCount: number; activityCount:
 interface Chronicle { id: string; title: string; content: string; occurred_at: string }
 export interface Activity { id: string; department_id: string; title: string; description: string; location: string; status: string; capacity: number; result_summary?: string; starts_at: string }
 interface Work { id: string; title: string; description: string; status: string; department_id: string }
-
-const deptMeta: Record<string, { icon: typeof WandSparkles; motto: string; color: string; duties: string[] }> = {
-  cos: { icon: WandSparkles, motto: '以形塑魂，让角色走入现实', color: '#e78ab5', duties: ['妆造与服装', '角色演绎', '漫展协作'] },
-  tech: { icon: Wrench, motto: '把灵感锻造成可运行的作品', color: '#62c9d8', duties: ['摄影摄像', '后期制作', '技术支持'] },
-  music: { icon: Music, motto: '让旋律成为共同的冒险记忆', color: '#e8c55b', duties: ['乐队排练', '舞台演出', '音乐交流'] },
-  original: { icon: Palette, motto: '在空白绘卷上创造新的世界', color: '#96c47a', duties: ['绘画创作', '文字设定', '原创交流'] },
-  dance: { icon: Sparkles, motto: '用每一步点亮舞台', color: '#b69ae8', duties: ['宅舞排练', 'WOTA艺', '舞台编排'] },
-  publicity: { icon: Compass, motto: '把公会的故事传到更远处', color: '#ec8b53', duties: ['活动宣传', '新媒体运营', '内容策划'] },
-};
 
 function PixelGuildScene() {
   return (
@@ -113,10 +106,7 @@ export function ChroniclePage() {
 export function DepartmentsPage() {
   const query = useQuery({ queryKey: ['departments'], queryFn: () => api<{ items: Department[] }>('/api/public/departments') });
   return <main><PageHero eyebrow="CLASS HALL" title="职业大厅" description="RPG 职业是视觉称号，背后是六个真实协作部门。" />
-    <section className="shell department-grid">{query.isLoading ? <LoadingPanel /> : query.error ? <ErrorPanel error={query.error} /> : query.data?.items.map((department, index) => {
-      const meta = deptMeta[department.slug] ?? { icon: Shield, motto: department.description, color: '#c89b3c', duties: [] }; const Icon = meta.icon;
-      return <motion.article className="department-card" style={{ '--dept-color': meta.color } as React.CSSProperties} key={department.id} initial={{ opacity: 0, y: 25 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * .06 }}><div className="class-emblem"><Icon /></div><small>{department.title}</small><h2>{department.name}</h2><p>{meta.motto}</p><div className="duty-tags">{meta.duties.map(d => <span key={d}>{d}</span>)}</div><div className="department-foot"><span><Users/> {department.memberCount ?? 0} 位成员</span><Link to={`/departments/${department.slug}`}>进入驻地 <ArrowRight/></Link></div></motion.article>;
-    })}</section>
+    {query.isLoading ? <section className="shell department-grid"><LoadingPanel /></section> : query.error ? <section className="shell department-grid"><ErrorPanel error={query.error} /></section> : <DepartmentsHub items={query.data?.items ?? []} />}
   </main>;
 }
 
@@ -125,8 +115,7 @@ export function DepartmentDetailPage() {
   const query = useQuery({ queryKey: ['department', slug], queryFn: () => api<{ department: Department }>(`/api/public/departments/${slug}`) });
   if (query.isLoading) return <main><LoadingPanel /></main>;
   if (query.error || !query.data) return <main><ErrorPanel error={query.error} /></main>;
-  const department = query.data.department; const meta = deptMeta[slug] ?? { icon: Shield, motto: department.description, color: '#c89b3c', duties: [] }; const Icon = meta.icon;
-  return <main><section className="department-detail-hero" style={{ '--dept-color': meta.color } as React.CSSProperties}><div className="shell"><RuneIcon><Icon /></RuneIcon><span className="eyebrow">{department.title} · CLASS PROFILE</span><h1>{department.name}</h1><p>{meta.motto}</p></div></section><section className="shell detail-columns"><article className="parchment-panel"><h2>部门职责</h2>{meta.duties.map((d, i) => <div className="quest-row" key={d}><Check/><span>职责 {i + 1}</span><strong>{d}</strong></div>)}</article><article className="dark-panel"><h2>驻地说明</h2><p>{department.description}</p><Link className="guild-button" to="/join">选择该职业申请加入</Link></article></section></main>;
+  return <DeptShowcasePage department={query.data.department} />;
 }
 
 export function ActivitiesPage() {
@@ -180,6 +169,7 @@ export function AnnouncementDetailPage() {
     <section className="shell announcement-detail-shell"><article className="announcement-detail-paper">
       <header><span>{announcementCategory[item.category]}</span><time dateTime={item.publishedAt}>{formatDate(item.publishedAt)}</time></header>
       <p>{item.summary}</p>
+      {item.content&&<div className="announcement-detail-content">{item.content.split(/\n{2,}/).map((paragraph,index)=><p key={index}>{paragraph.split('\n').map((line,lineIndex)=><span key={lineIndex}>{lineIndex>0&&<br/>}{line}</span>)}</p>)}</div>}
       <div className="announcement-detail-actions"><Link to="/announcements">返回全部公告</Link><Link className="guild-button primary" to={item.href}>查看相关页面 <ArrowRight /></Link></div>
     </article></section>
   </main>;

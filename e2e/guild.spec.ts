@@ -90,7 +90,7 @@ test('游客端所有页面可访问且三种尺寸视觉完整', async ({ page 
     await page.goto(path);
     await expect(page.getByRole('heading', { name: heading })).toBeVisible();
     if (path === '/departments') {
-      const lastDepartmentCard = page.getByRole('heading', { name: '外宣部' }).locator('..');
+      const lastDepartmentCard = page.locator('article').filter({ has: page.locator('a[href="/departments/publicity"]') });
       await expect(lastDepartmentCard).toHaveCSS('opacity', '1');
       await page.screenshot({ path: `${qaRoot}/departments-1440x900.png`, fullPage: true });
     }
@@ -239,8 +239,8 @@ test('招新申请到激活登录形成完整闭环', async ({ page }) => {
   await page.getByLabel('新密码').fill('GuildQa!2026');
   await page.getByRole('button', { name: '建立成员档案' }).click();
   await expect(page.getByRole('heading', { name: '成员身份验证' })).toBeVisible();
-  await page.getByLabel('用户名').fill(username);
-  await page.getByLabel('密码').fill('GuildQa!2026');
+  await page.getByLabel('用户名', { exact: true }).fill(username);
+  await page.getByLabel('密码', { exact: true }).fill('GuildQa!2026');
   await page.getByRole('button', { name: '登录公会' }).click();
   await expect(page.getByRole('heading', { name: `欢迎回来，${displayName}` })).toBeVisible();
 });

@@ -51,6 +51,7 @@ export interface User {
   grade: string;
   skills: string[];
   interests: string[];
+  attributes?: string[];
   avatarColor: string;
   profileVisibility: 'MEMBERS' | 'PRIVATE';
   lastSeenAt?: string | null;

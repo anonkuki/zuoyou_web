@@ -613,3 +613,261 @@ describe.sequential('Adventurer Guild API', () => {
     expect(afterDelete.json().data.items.find((item: { id: string }) => item.id === messageId).content).toBe('消息已撤回');
   });
 });
+
+describe.sequential('Guild tavern, resonance match and announcement content', () => {
+  let app: FastifyInstance;
+  let root: string;
+  let adminCookie: string;
+  let leadCookie: string;
+  let memberCookie: string;
+
+  beforeAll(async () => {
+    root = await mkdtemp(tempRoot);
+    app = await createApp({
+      databasePath: `${root}/guild.sqlite`,
+      uploadRoot: `${root}/uploads`,
+      seed: true,
+      sessionSecret: 'integration-test-secret-that-is-long',
+    });
+    adminCookie = await login(app, 'admin', 'DemoAdmin!2026');
+    leadCookie = await login(app, 'cos.lead', 'DemoLead!2026');
+    memberCookie = await login(app, 'cos.member', 'DemoMember!2026');
+  });
+
+  afterAll(async () => {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('migrates announcements content, user attributes and tavern seed data', async () => {
+    const announcements = await app.inject({ method: 'GET', url: '/api/public/announcements?page=1&pageSize=20' });
+    expect(announcements.statusCode).toBe(200);
+    const posts = await app.inject({ method: 'GET', url: '/api/member/posts?page=1&pageSize=20', headers: { cookie: memberCookie } });
+    expect(posts.statusCode).toBe(200);
+    expect(posts.json().data.total).toBeGreaterThanOrEqual(7);
+    expect(posts.json().data.items[0]).toMatchObject({ id: 'post-welcome', pinned: true });
+    expect(posts.json().data.items[0].author.displayName).toBe('星门总管');
+  });
+
+  it('stores and serves announcement body content', async () => {
+    const payload = {
+      title: '星辉祭筹备说明',
+      summary: '舞台、摊位与外宣的完整筹备安排。',
+      content: '第一阶段：各部门提交节目单。\n第二阶段：联合彩排与物料清点。',
+      category: 'NOTICE',
+      href: '/chronicle',
+      pinned: false,
+      published: true,
+      publishedAt: '2026-08-09T08:00:00.000Z',
+    };
+    const created = await app.inject({ method: 'POST', url: '/api/admin/announcements', headers: { cookie: adminCookie }, payload });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().data.id as string;
+    const detail = await app.inject({ method: 'GET', url: `/api/public/announcements/${id}` });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().data.announcement.content).toBe(payload.content);
+
+    const patched = await app.inject({ method: 'PATCH', url: `/api/admin/announcements/${id}`, headers: { cookie: adminCookie }, payload: { content: '更新后的正文。' } });
+    expect(patched.statusCode).toBe(200);
+    const afterPatch = await app.inject({ method: 'GET', url: `/api/public/announcements/${id}` });
+    expect(afterPatch.json().data.announcement.content).toBe('更新后的正文。');
+    expect(afterPatch.json().data.announcement.title).toBe(payload.title);
+  });
+
+  it('lets members post, comment and delete their own tavern content', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/member/posts' })).statusCode).toBe(401);
+
+    const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: {
+      title: '周末道具修补互助',
+      content: '周六下午在活动室修补巡游道具，需要帮忙的同学可以过来。',
+    } });
+    expect(created.statusCode).toBe(201);
+    const postId = created.json().data.post.id as string;
+    expect(created.json().data.post.author.displayName).toBe('白羽见习者');
+
+    expect((await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: { title: '短', content: '内容不足五个字吗' } })).statusCode).toBe(400);
+
+    const list = await app.inject({ method: 'GET', url: '/api/member/posts?page=1&pageSize=50', headers: { cookie: memberCookie } });
+    const item = list.json().data.items.find((post: { id: string }) => post.id === postId);
+    expect(item).toMatchObject({ title: '周末道具修补互助', commentCount: 0, pinned: false });
+
+    const comment = await app.inject({ method: 'POST', url: `/api/member/posts/${postId}/comments`, headers: { cookie: leadCookie }, payload: { content: '我带热熔胶枪过去。' } });
+    expect(comment.statusCode).toBe(201);
+    const detail = await app.inject({ method: 'GET', url: `/api/member/posts/${postId}`, headers: { cookie: memberCookie } });
+    expect(detail.json().data.post.commentCount).toBe(1);
+    expect(detail.json().data.comments[0]).toMatchObject({ content: '我带热熔胶枪过去。' });
+    const commentId = detail.json().data.comments[0].id as string;
+
+    expect((await app.inject({ method: 'DELETE', url: `/api/member/posts/${postId}`, headers: { cookie: leadCookie } })).statusCode).toBe(200);
+    const afterDelete = await app.inject({ method: 'GET', url: `/api/member/posts/${postId}`, headers: { cookie: memberCookie } });
+    expect(afterDelete.statusCode).toBe(404);
+    const audit = await app.inject({ method: 'GET', url: '/api/admin/audit-log?page=1&pageSize=100', headers: { cookie: adminCookie } });
+    expect(audit.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'POST_DELETED', entity_id: postId, target_user_id: 'user-member' })]));
+
+    expect((await app.inject({ method: 'DELETE', url: `/api/member/comments/${commentId}`, headers: { cookie: leadCookie } })).statusCode).toBe(200);
+  });
+
+  it('forbids members from deleting or pinning others posts while leads can moderate', async () => {
+    expect((await app.inject({ method: 'DELETE', url: '/api/member/posts/post-cos-progress', headers: { cookie: memberCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/posts/post-cos-progress/pin', headers: { cookie: memberCookie }, payload: { pinned: true } })).statusCode).toBe(403);
+
+    const pinned = await app.inject({ method: 'PATCH', url: '/api/member/posts/post-cos-progress/pin', headers: { cookie: leadCookie }, payload: { pinned: true } });
+    expect(pinned.statusCode).toBe(200);
+    expect(pinned.json().data.post.pinned).toBe(true);
+    const list = await app.inject({ method: 'GET', url: '/api/member/posts?page=1&pageSize=50', headers: { cookie: memberCookie } });
+    const ids = list.json().data.items.map((post: { id: string }) => post.id);
+    expect(ids.indexOf('post-cos-progress')).toBeLessThan(ids.indexOf('post-photo-recruit'));
+
+    const audit = await app.inject({ method: 'GET', url: '/api/admin/audit-log?page=1&pageSize=100', headers: { cookie: adminCookie } });
+    expect(audit.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'POST_PINNED', entity_id: 'post-cos-progress' })]));
+  });
+
+  it('round-trips profile attributes and ranks resonance matches', async () => {
+    const invalid = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { attributes: ['not-in-pool'] } });
+    expect(invalid.statusCode).toBe(400);
+
+    const updated = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { attributes: ['cosplay', 'photography', 'trpg'] } });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().data.profile.attributes).toEqual(['cosplay', 'photography', 'trpg']);
+
+    const match = await app.inject({ method: 'GET', url: '/api/member/match', headers: { cookie: memberCookie } });
+    expect(match.statusCode).toBe(200);
+    expect(match.json().data.myAttributes).toEqual(['cosplay', 'photography', 'trpg']);
+    const items = match.json().data.items as Array<{ score: number; sharedAttributes: string[]; profile: { id: string; displayName: string } }>;
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.length).toBeLessThanOrEqual(12);
+    expect(items.every((item) => item.score > 0 && item.score <= 100 && item.profile.id !== 'user-member')).toBe(true);
+    const lead = items.find((item) => item.profile.id === 'user-lead');
+    expect(lead).toBeDefined();
+    expect(lead!.sharedAttributes).toEqual(expect.arrayContaining(['cosplay', 'photography']));
+    expect(items[0].score).toBeGreaterThanOrEqual(items[items.length - 1].score);
+  });
+});
+
+describe.sequential('Pixel world plaza', () => {
+  let app: FastifyInstance;
+  let root: string;
+  let adminCookie: string;
+  let leadCookie: string;
+  let memberCookie: string;
+
+  beforeAll(async () => {
+    root = await mkdtemp(tempRoot);
+    app = await createApp({
+      databasePath: `${root}/guild.sqlite`,
+      uploadRoot: `${root}/uploads`,
+      seed: true,
+      sessionSecret: 'integration-test-secret-that-is-long',
+    });
+    adminCookie = await login(app, 'admin', 'DemoAdmin!2026');
+    leadCookie = await login(app, 'cos.lead', 'DemoLead!2026');
+    memberCookie = await login(app, 'cos.member', 'DemoMember!2026');
+  });
+
+  afterAll(async () => {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('lists the guild hall plus six department areas with online counts', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/member/world/areas' })).statusCode).toBe(401);
+    const response = await app.inject({ method: 'GET', url: '/api/member/world/areas', headers: { cookie: memberCookie } });
+    expect(response.statusCode).toBe(200);
+    const items = response.json().data.items as Array<{ id: string; name: string; color: string; online: number }>;
+    expect(items.map((area) => area.id)).toEqual(['hall', 'publicity', 'tech', 'original', 'dance', 'cos', 'music']);
+    expect(items[0]).toMatchObject({ name: '公会大厅广场', online: 0 });
+    expect(items.every((area) => /^#[0-9a-f]{6}$/i.test(area.color))).toBe(true);
+  });
+
+  it('validates movement bounds and tracks presence per area', async () => {
+    const outOfBounds = await app.inject({ method: 'POST', url: '/api/member/world/move', headers: { cookie: memberCookie }, payload: { areaId: 'hall', x: 1200, y: 100, dir: 'right' } });
+    expect(outOfBounds.statusCode).toBe(400);
+    const unknownArea = await app.inject({ method: 'POST', url: '/api/member/world/move', headers: { cookie: memberCookie }, payload: { areaId: 'dungeon', x: 100, y: 100, dir: 'down' } });
+    expect(unknownArea.statusCode).toBe(400);
+
+    const moved = await app.inject({ method: 'POST', url: '/api/member/world/move', headers: { cookie: memberCookie }, payload: { areaId: 'hall', x: 320, y: 240, dir: 'up-right' } });
+    expect(moved.statusCode).toBe(200);
+    await app.inject({ method: 'POST', url: '/api/member/world/move', headers: { cookie: leadCookie }, payload: { areaId: 'hall', x: 640, y: 300, dir: 'left' } });
+
+    const state = await app.inject({ method: 'GET', url: '/api/member/world/areas/hall/state', headers: { cookie: memberCookie } });
+    expect(state.statusCode).toBe(200);
+    const members = state.json().data.members as Array<{ userId: string; x: number; y: number; dir: string; sprite: string; self: boolean }>;
+    expect(members).toHaveLength(2);
+    expect(members.find((member) => member.userId === 'user-member')).toMatchObject({ x: 320, y: 240, dir: 'up-right', self: true });
+    expect(members.every((member) => typeof member.sprite === 'string' && member.sprite.length > 0)).toBe(true);
+    expect(state.json().data.area.id).toBe('hall');
+
+    const areas = await app.inject({ method: 'GET', url: '/api/member/world/areas', headers: { cookie: memberCookie } });
+    expect(areas.json().data.items.find((area: { id: string }) => area.id === 'hall').online).toBe(2);
+
+    const movedToCos = await app.inject({ method: 'POST', url: '/api/member/world/move', headers: { cookie: leadCookie }, payload: { areaId: 'cos', x: 100, y: 100, dir: 'down' } });
+    expect(movedToCos.statusCode).toBe(200);
+    const hallAfter = await app.inject({ method: 'GET', url: '/api/member/world/areas/hall/state', headers: { cookie: memberCookie } });
+    expect(hallAfter.json().data.members).toHaveLength(1);
+
+    const left = await app.inject({ method: 'POST', url: '/api/member/world/move', headers: { cookie: memberCookie }, payload: { areaId: 'hall', x: 320, y: 240, dir: 'down', leaving: true } });
+    expect(left.statusCode).toBe(200);
+    const hallEmpty = await app.inject({ method: 'GET', url: '/api/member/world/areas/hall/state', headers: { cookie: memberCookie } });
+    expect(hallEmpty.json().data.members).toHaveLength(0);
+  });
+
+  it('serves seeded area messages and supports incremental chat', async () => {
+    const initial = await app.inject({ method: 'GET', url: '/api/member/world/areas/hall/state', headers: { cookie: memberCookie } });
+    const seeded = initial.json().data.messages as Array<{ id: string; content: string }>;
+    expect(seeded.length).toBeGreaterThanOrEqual(2);
+    expect(seeded.map((message) => message.content)).toContain('欢迎来到公会大厅广场，用方向键四处走走吧。');
+
+    const posted = await app.inject({ method: 'POST', url: '/api/member/world/areas/hall/messages', headers: { cookie: memberCookie }, payload: { content: '广场喷泉旁边集合拍照！' } });
+    expect(posted.statusCode).toBe(201);
+    const messageId = posted.json().data.message.id as string;
+
+    const tooLong = await app.inject({ method: 'POST', url: '/api/member/world/areas/hall/messages', headers: { cookie: memberCookie }, payload: { content: '字'.repeat(201) } });
+    expect(tooLong.statusCode).toBe(400);
+
+    const incremental = await app.inject({ method: 'GET', url: `/api/member/world/areas/hall/state?after=${seeded[seeded.length - 1].id}`, headers: { cookie: leadCookie } });
+    const newMessages = incremental.json().data.messages as Array<{ id: string; content: string }>;
+    expect(newMessages).toHaveLength(1);
+    expect(newMessages[0]).toMatchObject({ id: messageId, content: '广场喷泉旁边集合拍照！' });
+
+    expect((await app.inject({ method: 'DELETE', url: `/api/member/world/messages/${messageId}`, headers: { cookie: leadCookie } })).statusCode).toBe(403);
+    const adminDelete = await app.inject({ method: 'DELETE', url: `/api/member/world/messages/${messageId}`, headers: { cookie: adminCookie } });
+    expect(adminDelete.statusCode).toBe(200);
+    const afterDelete = await app.inject({ method: 'GET', url: '/api/member/world/areas/hall/state', headers: { cookie: memberCookie } });
+    expect((afterDelete.json().data.messages as Array<{ id: string }>).some((message) => message.id === messageId)).toBe(false);
+    const audit = await app.inject({ method: 'GET', url: '/api/admin/audit-log?page=1&pageSize=100', headers: { cookie: adminCookie } });
+    expect(audit.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'AREA_MESSAGE_DELETED', entity_id: messageId, target_user_id: 'user-member' })]));
+  });
+
+  it('lets a member delete their own area message', async () => {
+    const posted = await app.inject({ method: 'POST', url: '/api/member/world/areas/cos/messages', headers: { cookie: memberCookie }, payload: { content: '幻装间临时占用十分钟。' } });
+    const messageId = posted.json().data.message.id as string;
+    const removed = await app.inject({ method: 'DELETE', url: `/api/member/world/messages/${messageId}`, headers: { cookie: memberCookie } });
+    expect(removed.statusCode).toBe(200);
+    const state = await app.inject({ method: 'GET', url: '/api/member/world/areas/cos/state', headers: { cookie: memberCookie } });
+    expect((state.json().data.messages as Array<{ id: string }>).some((message) => message.id === messageId)).toBe(false);
+  });
+
+  it('expires presence after fifteen seconds without movement reports', async () => {
+    const clockRoot = await mkdtemp('D:/Temp/guild-world-clock-');
+    let clockValue = Date.parse('2026-08-12T08:00:00.000Z');
+    const clockApp = await createApp({
+      databasePath: `${clockRoot}/guild.sqlite`,
+      uploadRoot: `${clockRoot}/uploads`,
+      seed: true,
+      sessionSecret: 'integration-test-secret-that-is-long',
+      clock: () => clockValue,
+    });
+    try {
+      const clockMember = await login(clockApp, 'cos.member', 'DemoMember!2026');
+      await clockApp.inject({ method: 'POST', url: '/api/member/world/move', headers: { cookie: clockMember }, payload: { areaId: 'hall', x: 200, y: 200, dir: 'down' } });
+      let state = await clockApp.inject({ method: 'GET', url: '/api/member/world/areas/hall/state', headers: { cookie: clockMember } });
+      expect(state.json().data.members).toHaveLength(1);
+      clockValue += 16_000;
+      state = await clockApp.inject({ method: 'GET', url: '/api/member/world/areas/hall/state', headers: { cookie: clockMember } });
+      expect(state.json().data.members).toHaveLength(0);
+    } finally {
+      await clockApp.close();
+      await rm(clockRoot, { recursive: true, force: true });
+    }
+  });
+});

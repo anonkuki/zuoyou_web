@@ -1,0 +1,56 @@
+[
+  {
+    "anilistId": 5680,
+    "query": "K-ON!",
+    "title": "けいおん!",
+    "romaji": "K-ON!",
+    "year": 2009,
+    "cover": "assets/departments/music/01-cover.jpg",
+    "banner": "assets/departments/music/01-banner.jpg"
+  },
+  {
+    "anilistId": 130003,
+    "query": "Bocchi the Rock!",
+    "title": "ぼっち・ざ・ろっく！",
+    "romaji": "Bocchi the Rock!",
+    "year": 2022,
+    "cover": "assets/departments/music/02-cover.jpg",
+    "banner": "assets/departments/music/02-banner.jpg"
+  },
+  {
+    "anilistId": 87435,
+    "query": "BanG Dream!",
+    "title": "BanG Dream!（バンドリ！）",
+    "romaji": "BanG Dream!",
+    "year": 2017,
+    "cover": "assets/departments/music/03-cover.jpg",
+    "banner": "assets/departments/music/03-banner.jpg"
+  },
+  {
+    "anilistId": 108430,
+    "query": "Given",
+    "title": "ギヴン",
+    "romaji": "Given",
+    "year": 2019,
+    "cover": "assets/departments/music/04-cover.jpg",
+    "banner": "assets/departments/music/04-banner.jpg"
+  },
+  {
+    "anilistId": 20665,
+    "query": "Your Lie in April",
+    "title": "四月は君の嘘",
+    "romaji": "Shigatsu wa Kimi no Uso",
+    "year": 2014,
+    "cover": "assets/departments/music/05-cover.jpg",
+    "banner": "assets/departments/music/05-banner.jpg"
+  },
+  {
+    "anilistId": 101281,
+    "query": "Carole & Tuesday",
+    "title": "キャロル＆チューズデイ",
+    "romaji": "Carole & Tuesday",
+    "year": 2019,
+    "cover": "assets/departments/music/06-cover.jpg",
+    "banner": "assets/departments/music/06-banner.jpg"
+  }
+]

@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 import {
-  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, directConversationInputSchema, homeDataSchema, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, successResponse,
+  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, successResponse, worldMoveSchema,
   type ActivityStatus, type Role,
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
@@ -20,6 +20,7 @@ import { openDatabase, seedDatabase } from './database.js';
 import { canAccessDepartment, canAccessFile } from './policies.js';
 import { decryptSecret, encryptSecret, hashPassword, sha256, verifyPassword } from './security.js';
 import { GuildSocialRepository, SocialError, safeTags } from './social.js';
+import { GuildWorldService } from './world.js';
 
 export interface AppOptions {
   databasePath: string;
@@ -30,6 +31,7 @@ export interface AppOptions {
   production?: boolean;
   secureCookies?: boolean;
   webRoot?: string;
+  clock?: () => number;
 }
 
 interface UserRow {
@@ -75,6 +77,7 @@ interface AnnouncementRow {
   id: string;
   title: string;
   summary: string;
+  content: string;
   category: 'RECRUITMENT' | 'ACTIVITY' | 'NOTICE';
   href: string;
   pinned: number;
@@ -94,6 +97,7 @@ const publicAnnouncement = (row: AnnouncementRow) => ({
   id: row.id,
   title: row.title,
   summary: row.summary,
+  content: row.content ?? '',
   category: row.category,
   href: row.href,
   pinned: Boolean(row.pinned),
@@ -142,6 +146,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
   const app = Fastify({ logger: false });
   const social = new GuildSocialRepository(sqlite, newId, now);
+  const world = new GuildWorldService(sqlite, newId, now, options.clock);
   const departmentIdsFor = (userId: string, primaryDepartmentId: string | null): string[] => {
     const rows = sqlite.prepare('SELECT department_id FROM user_departments WHERE user_id=? ORDER BY is_primary DESC,rowid').all(userId) as Array<{ department_id: string }>;
     return rows.length ? rows.map((row) => row.department_id) : primaryDepartmentId ? [primaryDepartmentId] : [];
@@ -228,7 +233,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const levelTarget = Math.max(1, numericSetting('guildLevelTarget', 1));
     const memberCount = (sqlite.prepare('SELECT COUNT(*) count FROM users WHERE is_active=1').get() as { count: number }).count;
     const completedActivityCount = (sqlite.prepare("SELECT COUNT(*) count FROM activities WHERE status IN ('ENDED','ARCHIVED')").get() as { count: number }).count;
-    const rows = sqlite.prepare(`SELECT id,title,summary,category,href,pinned,published,published_at
+    const rows = sqlite.prepare(`SELECT id,title,summary,content,category,href,pinned,published,published_at
       FROM announcements WHERE published=1 ORDER BY pinned DESC,published_at DESC,id LIMIT 6`).all() as AnnouncementRow[];
     const data = homeDataSchema.parse({
       stats: {
@@ -257,7 +262,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
   app.get('/api/public/announcements', async (request) => {
     const paging = getPaging(request.query);
-    const rows = sqlite.prepare(`SELECT id,title,summary,category,href,pinned,published,published_at
+    const rows = sqlite.prepare(`SELECT id,title,summary,content,category,href,pinned,published,published_at
       FROM announcements WHERE published=1 ORDER BY pinned DESC,published_at DESC,id LIMIT ? OFFSET ?`)
       .all(paging.pageSize, paging.offset) as AnnouncementRow[];
     const total = (sqlite.prepare('SELECT COUNT(*) count FROM announcements WHERE published=1').get() as { count: number }).count;
@@ -266,7 +271,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
   app.get('/api/public/announcements/:id', async (request) => {
     const { id } = request.params as { id: string };
-    const row = sqlite.prepare(`SELECT id,title,summary,category,href,pinned,published,published_at
+    const row = sqlite.prepare(`SELECT id,title,summary,content,category,href,pinned,published,published_at
       FROM announcements WHERE id=? AND published=1`).get(id) as AnnouncementRow | undefined;
     if (!row) throw new HttpError(404, 'NOT_FOUND', '公告不存在或尚未发布');
     return successResponse({ announcement: publicAnnouncement(row) });
@@ -438,6 +443,83 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.delete('/api/member/messages/:id', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
     social.deleteMessage(principal, (request.params as { id: string }).id);
+    return successResponse({ deleted: true });
+  });
+
+  app.get('/api/member/posts', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const paging = getPaging(request.query);
+    return successResponse(social.listPosts(paging.page, paging.pageSize));
+  });
+  app.post('/api/member/posts', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const body = parse(postCreateSchema, request.body);
+    const post = social.createPost(principal, body.title, body.content);
+    return reply.status(201).send(successResponse({ post }));
+  });
+  app.get('/api/member/posts/:id', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    return successResponse(social.getPost((request.params as { id: string }).id));
+  });
+  app.post('/api/member/posts/:id/comments', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const { content } = parse(commentCreateSchema, request.body);
+    const comment = social.addComment(principal, (request.params as { id: string }).id, content);
+    return reply.status(201).send(successResponse({ comment }));
+  });
+  app.delete('/api/member/posts/:id', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const result = social.deletePost(principal, id);
+    if (result.moderated) audit(sqlite, principal.id, 'POST_DELETED', 'post', id, result.ownerId);
+    return successResponse({ deleted: true });
+  });
+  app.delete('/api/member/comments/:id', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const result = social.deleteComment(principal, id);
+    if (result.moderated) audit(sqlite, principal.id, 'COMMENT_DELETED', 'comment', id, result.ownerId);
+    return successResponse({ deleted: true });
+  });
+  app.patch('/api/member/posts/:id/pin', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const { pinned } = parse(z.object({ pinned: z.boolean() }), request.body);
+    const post = social.pinPost(id, pinned);
+    audit(sqlite, principal.id, pinned ? 'POST_PINNED' : 'POST_UNPINNED', 'post', id);
+    return successResponse({ post });
+  });
+
+  app.get('/api/member/match', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    return successResponse(social.matchMembers(principal));
+  });
+
+  app.get('/api/member/world/areas', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    return successResponse({ items: world.listAreas() });
+  });
+  app.post('/api/member/world/move', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const body = parse(worldMoveSchema, request.body);
+    return successResponse(world.move(principal, body));
+  });
+  app.get('/api/member/world/areas/:areaId/state', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const { after } = parse(z.object({ after: z.string().trim().max(100).optional() }), request.query);
+    return successResponse(world.state(principal, (request.params as { areaId: string }).areaId, after));
+  });
+  app.post('/api/member/world/areas/:areaId/messages', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const { content } = parse(areaMessageCreateSchema, request.body);
+    const message = world.postMessage(principal, (request.params as { areaId: string }).areaId, content);
+    return reply.status(201).send(successResponse({ message }));
+  });
+  app.delete('/api/member/world/messages/:id', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const result = world.deleteMessage(principal, id);
+    if (result.moderated) audit(sqlite, principal.id, 'AREA_MESSAGE_DELETED', 'area_message', id, result.ownerId);
     return successResponse({ deleted: true });
   });
 
@@ -629,30 +711,31 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const principal = requireAdmin(request, reply); if (!principal) return;
     const body = parse(announcementInputSchema, request.body);
     const id = newId('announcement');
-    sqlite.prepare('INSERT INTO announcements(id,title,summary,category,href,pinned,published,published_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
-      .run(id, body.title, body.summary, body.category, body.href, body.pinned ? 1 : 0, body.published ? 1 : 0, body.publishedAt, now(), now());
+    sqlite.prepare('INSERT INTO announcements(id,title,summary,content,category,href,pinned,published,published_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .run(id, body.title, body.summary, body.content, body.category, body.href, body.pinned ? 1 : 0, body.published ? 1 : 0, body.publishedAt, now(), now());
     audit(sqlite, principal.id, 'ANNOUNCEMENT_CREATED', 'announcement', id, null, body);
     return reply.status(201).send(successResponse({ id }));
   });
   app.patch('/api/admin/announcements/:id', async (request, reply) => {
     const principal = requireAdmin(request, reply); if (!principal) return;
     const id = (request.params as { id: string }).id;
-    const existing = sqlite.prepare('SELECT title,summary,category,href,pinned,published,published_at FROM announcements WHERE id=?').get(id) as {
-      title: string; summary: string; category: 'RECRUITMENT' | 'ACTIVITY' | 'NOTICE'; href: string; pinned: number; published: number; published_at: string;
+    const existing = sqlite.prepare('SELECT title,summary,content,category,href,pinned,published,published_at FROM announcements WHERE id=?').get(id) as {
+      title: string; summary: string; content: string; category: 'RECRUITMENT' | 'ACTIVITY' | 'NOTICE'; href: string; pinned: number; published: number; published_at: string;
     } | undefined;
     if (!existing) throw new HttpError(404, 'NOT_FOUND', '公告不存在');
     const patch = parse(announcementUpdateSchema, request.body);
     const next = announcementInputSchema.parse({
       title: patch.title ?? existing.title,
       summary: patch.summary ?? existing.summary,
+      content: patch.content ?? existing.content,
       category: patch.category ?? existing.category,
       href: patch.href ?? existing.href,
       pinned: patch.pinned ?? Boolean(existing.pinned),
       published: patch.published ?? Boolean(existing.published),
       publishedAt: patch.publishedAt ?? existing.published_at,
     });
-    sqlite.prepare('UPDATE announcements SET title=?,summary=?,category=?,href=?,pinned=?,published=?,published_at=?,updated_at=? WHERE id=?')
-      .run(next.title, next.summary, next.category, next.href, next.pinned ? 1 : 0, next.published ? 1 : 0, next.publishedAt, now(), id);
+    sqlite.prepare('UPDATE announcements SET title=?,summary=?,content=?,category=?,href=?,pinned=?,published=?,published_at=?,updated_at=? WHERE id=?')
+      .run(next.title, next.summary, next.content, next.category, next.href, next.pinned ? 1 : 0, next.published ? 1 : 0, next.publishedAt, now(), id);
     audit(sqlite, principal.id, 'ANNOUNCEMENT_UPDATED', 'announcement', id, null, patch);
     return successResponse({ updated: true });
   });

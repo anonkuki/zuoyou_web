@@ -1,0 +1,74 @@
+[
+  {
+    "anilistId": 9055,
+    "query": "Tamayura",
+    "title": "たまゆら",
+    "romaji": "Tamayura",
+    "year": 2010,
+    "cover": "assets/departments/tech/01-cover.jpg",
+    "banner": "assets/departments/tech/01-banner.jpg"
+  },
+  {
+    "anilistId": 100179,
+    "query": "Tada Never Falls in Love",
+    "title": "多田くんは恋をしない",
+    "romaji": "Tada-kun wa Koi wo Shinai",
+    "year": 2018,
+    "cover": "assets/departments/tech/02-cover.jpg",
+    "banner": "assets/departments/tech/02-banner.jpg"
+  },
+  {
+    "anilistId": 98820,
+    "query": "Just Because!",
+    "title": "Just Because!",
+    "romaji": "Just Because!",
+    "year": 2017,
+    "cover": "assets/departments/tech/03-cover.jpg",
+    "banner": "assets/departments/tech/03-banner.jpg"
+  },
+  {
+    "anilistId": 20954,
+    "query": "A Silent Voice",
+    "title": "聲の形",
+    "romaji": "Koe no Katachi",
+    "year": 2016,
+    "cover": "assets/departments/tech/04-cover.jpg",
+    "banner": "assets/departments/tech/04-banner.jpg"
+  },
+  {
+    "anilistId": 106286,
+    "query": "Weathering with You",
+    "title": "天気の子",
+    "romaji": "Tenki no Ko",
+    "year": 2019,
+    "cover": "assets/departments/tech/05-cover.jpg",
+    "banner": "assets/departments/tech/05-banner.jpg"
+  },
+  {
+    "anilistId": 16782,
+    "query": "The Garden of Words",
+    "title": "言の葉の庭",
+    "romaji": "Kotonoha no Niwa",
+    "year": 2013,
+    "cover": "assets/departments/tech/06-cover.jpg",
+    "banner": "assets/departments/tech/06-banner.jpg"
+  },
+  {
+    "anilistId": 1689,
+    "query": "5 Centimeters Per Second",
+    "title": "秒速５センチメートル",
+    "romaji": "Byousoku 5 Centimeter",
+    "year": 2007,
+    "cover": "assets/departments/tech/07-cover.jpg",
+    "banner": "assets/departments/tech/07-banner.jpg"
+  },
+  {
+    "anilistId": 21827,
+    "query": "Violet Evergarden",
+    "title": "ヴァイオレット・エヴァーガーデン",
+    "romaji": "Violet Evergarden",
+    "year": 2018,
+    "cover": "assets/departments/tech/08-cover.jpg",
+    "banner": "assets/departments/tech/08-banner.jpg"
+  }
+]

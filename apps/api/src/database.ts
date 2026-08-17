@@ -57,11 +57,44 @@ function ensureDepartmentConversations(sqlite: Database.Database, timestamp: str
   }
 }
 
+function ensureGuildTavernData(sqlite: Database.Database): void {
+  const insertPost = sqlite.prepare('INSERT OR IGNORE INTO posts(id,user_id,title,content,pinned,created_at,updated_at) VALUES (?,?,?,?,?,?,?)');
+  insertPost.run('post-welcome', 'user-admin', '欢迎来到冒险者酒馆', '这里是社团成员的公开交流区。\n分享创作进度、招募协作伙伴、约跑团或逛展都可以。\n请保持友善，遵守社团公约。', 1, '2026-08-01T08:00:00.000Z', '2026-08-01T08:00:00.000Z');
+  insertPost.run('post-cos-progress', 'user-lead', '夏日幻装工坊进度集中贴', '服装测量与道具安全清单已经更新。\n参加巡游的成员请在本帖回复确认尺寸。', 0, '2026-08-05T09:00:00.000Z', '2026-08-05T09:00:00.000Z');
+  insertPost.run('post-photo-recruit', 'user-member', '招募摄影搭档拍正片', '周末想去江边拍一组角色正片。\n希望找一位有外拍经验的摄影搭档，欢迎私信或留言。', 0, '2026-08-07T10:00:00.000Z', '2026-08-07T10:00:00.000Z');
+  insertPost.run('post-tech-share', 'user-tech-01', '魔导灯原型的灯光调试记录', '记录了便携魔导灯的灯带排布与供电方案。\n对互动装置感兴趣的同学可以在评论区交流。', 0, '2026-08-08T11:00:00.000Z', '2026-08-08T11:00:00.000Z');
+  insertPost.run('post-band-setlist', 'user-fiction-002', '轻音会歌单投票', '月下轻音会的候选歌单已整理。\n大家在评论区留下想听的曲目编号即可。', 0, '2026-08-09T12:00:00.000Z', '2026-08-09T12:00:00.000Z');
+  insertPost.run('post-trpg-recruit', 'user-fiction-003', '周五晚跑团缺一pl', '周五晚上的团缺一位玩家。\n规则是轻量奇幻，新手也完全欢迎，车卡会现场协助。', 0, '2026-08-10T13:00:00.000Z', '2026-08-10T13:00:00.000Z');
+  insertPost.run('post-expo-plan', 'user-fiction-004', '秋日逛展同行召集', '计划结伴去秋日的同人展。\n打算上午集合，下午自由逛，想一起的请在评论里报名。', 0, '2026-08-11T14:00:00.000Z', '2026-08-11T14:00:00.000Z');
+
+  const insertComment = sqlite.prepare('INSERT OR IGNORE INTO post_comments(id,post_id,user_id,content,created_at) VALUES (?,?,?,?,?)');
+  insertComment.run('comment-cos-1', 'post-cos-progress', 'user-member', '尺寸表我今晚核对后回复。', '2026-08-05T10:00:00.000Z');
+  insertComment.run('comment-cos-2', 'post-cos-progress', 'user-tech-01', '道具运输我来协调推车。', '2026-08-05T11:00:00.000Z');
+  insertComment.run('comment-photo-1', 'post-photo-recruit', 'user-lead', '我可以带反光板，周六上午有空。', '2026-08-07T12:00:00.000Z');
+  insertComment.run('comment-trpg-1', 'post-trpg-recruit', 'user-member', '新手想试试，私信你啦。', '2026-08-10T15:00:00.000Z');
+  insertComment.run('comment-band-1', 'post-band-setlist', 'user-fiction-005', '投 3 号和 7 号曲目一票。', '2026-08-09T13:00:00.000Z');
+
+  const insertAreaMessage = sqlite.prepare('INSERT OR IGNORE INTO area_messages(id,area_id,sender_id,content,created_at) VALUES (?,?,?,?,?)');
+  insertAreaMessage.run('area-message-hall-1', 'hall', 'user-admin', '欢迎来到公会大厅广场，用方向键四处走走吧。', '2026-08-10T08:00:00.000Z');
+  insertAreaMessage.run('area-message-hall-2', 'hall', 'user-lead', '今晚八点在广场集合确认巡游动线。', '2026-08-10T09:00:00.000Z');
+  insertAreaMessage.run('area-message-cos-1', 'cos', 'user-member', '幻装间里新增了布料架，大家按需取用。', '2026-08-10T10:00:00.000Z');
+}
+
 function ensureSocialShowcaseData(sqlite: Database.Database, timestamp: string): void {
-  const profile = sqlite.prepare(`UPDATE users SET guild_title=?,college=?,grade=?,skills=?,interests=?,avatar_color=?,profile_visibility='MEMBERS',last_seen_at=?,updated_at=? WHERE id=?`);
-  profile.run('星门总管', '社团联合事务中心', '运营组', '["活动统筹","成员服务","文档管理"]', '["像素艺术","社团建设"]', '#b26b3f', timestamp, timestamp, 'user-admin');
-  profile.run('首席幻装师', '数字媒体学院', '2023级', '["服装制作","舞台妆造","摄影协作"]', '["角色设计","舞台演出","漫展"]', '#c75f88', timestamp, timestamp, 'user-lead');
-  profile.run('幻装见习生', '艺术设计学院', '2025级', '["角色塑造","道具整理","活动协作"]', '["动画","COSPLAY","摄影"]', '#5279a8', timestamp, timestamp, 'user-member');
+  const profile = sqlite.prepare(`UPDATE users SET guild_title=?,college=?,grade=?,skills=?,interests=?,attributes=?,avatar_color=?,profile_visibility='MEMBERS',last_seen_at=?,updated_at=? WHERE id=?`);
+  profile.run('星门总管', '社团联合事务中心', '运营组', '["活动统筹","成员服务","文档管理"]', '["像素艺术","社团建设"]', '["planning","boardgame","expo"]', '#b26b3f', timestamp, timestamp, 'user-admin');
+  profile.run('首席幻装师', '数字媒体学院', '2023级', '["服装制作","舞台妆造","摄影协作"]', '["角色设计","舞台演出","漫展"]', '["cosplay","photography","dance","expo"]', '#c75f88', timestamp, timestamp, 'user-lead');
+  profile.run('幻装见习生', '艺术设计学院', '2025级', '["角色塑造","道具整理","活动协作"]', '["动画","COSPLAY","摄影"]', '["cosplay","photography","drawing","trpg"]', '#5279a8', timestamp, timestamp, 'user-member');
+
+  const fictionAttributes = sqlite.prepare('UPDATE users SET attributes=? WHERE id=?');
+  fictionAttributes.run('["coding","console","rhythm"]', 'user-tech-01');
+  fictionAttributes.run('["band","rhythm","merch"]', 'user-fiction-002');
+  fictionAttributes.run('["trpg","boardgame","writing"]', 'user-fiction-003');
+  fictionAttributes.run('["expo","merch","photography"]', 'user-fiction-004');
+  fictionAttributes.run('["drawing","writing","console"]', 'user-fiction-005');
+  fictionAttributes.run('["dance","cosplay","video"]', 'user-fiction-006');
+
+  ensureGuildTavernData(sqlite);
 
   ensureDepartmentConversations(sqlite, timestamp);
   const insertConversation = sqlite.prepare('INSERT OR IGNORE INTO conversations(id,type,direct_key,department_id,title,created_at,updated_at) VALUES (?,?,?,?,?,?,?)');
@@ -90,7 +123,7 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');

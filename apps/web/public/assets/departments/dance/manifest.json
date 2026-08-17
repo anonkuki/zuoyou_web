@@ -1,0 +1,56 @@
+[
+  {
+    "anilistId": 98005,
+    "query": "Welcome to the Ballroom",
+    "title": "ボールルームへようこそ",
+    "romaji": "Ballroom e Youkoso",
+    "year": 2017,
+    "cover": "assets/departments/dance/01-cover.jpg",
+    "banner": "assets/departments/dance/01-banner.jpg"
+  },
+  {
+    "anilistId": 15051,
+    "query": "Love Live! School Idol Project",
+    "title": "ラブライブ! School idol project",
+    "romaji": "Love Live! School idol project",
+    "year": 2013,
+    "cover": "assets/departments/dance/02-cover.jpg",
+    "banner": "assets/departments/dance/02-banner.jpg"
+  },
+  {
+    "anilistId": 103871,
+    "query": "Zombie Land Saga",
+    "title": "ゾンビランドサガ",
+    "romaji": "Zombie Land Saga",
+    "year": 2018,
+    "cover": "assets/departments/dance/03-cover.jpg",
+    "banner": "assets/departments/dance/03-banner.jpg"
+  },
+  {
+    "anilistId": 21709,
+    "query": "Yuri!!! on Ice",
+    "title": "ユーリ!!! on ICE",
+    "romaji": "Yuuri!!! on ICE",
+    "year": 2016,
+    "cover": "assets/departments/dance/04-cover.jpg",
+    "banner": "assets/departments/dance/04-banner.jpg"
+  },
+  {
+    "anilistId": 10278,
+    "query": "The iDOLM@STER",
+    "title": "アイドルマスター",
+    "romaji": "THE IDOLM@STER",
+    "year": 2011,
+    "cover": "assets/departments/dance/05-cover.jpg",
+    "banner": "assets/departments/dance/05-banner.jpg"
+  },
+  {
+    "anilistId": 20912,
+    "query": "Hibike! Euphonium",
+    "title": "響け！ユーフォニアム",
+    "romaji": "Hibike! Euphonium",
+    "year": 2015,
+    "cover": "assets/departments/dance/06-cover.jpg",
+    "banner": "assets/departments/dance/06-banner.jpg"
+  }
+]

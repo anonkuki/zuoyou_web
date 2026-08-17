@@ -1,0 +1,110 @@
+[
+  {
+    "anilistId": 127230,
+    "query": "Chainsaw Man",
+    "title": "チェンソーマン",
+    "romaji": "Chainsaw Man",
+    "year": 2022,
+    "cover": "assets/departments/publicity/01-cover.jpg",
+    "banner": "assets/departments/publicity/01-banner.jpg"
+  },
+  {
+    "anilistId": 174788,
+    "query": "Look Back",
+    "title": "ルックバック",
+    "romaji": "Look Back",
+    "year": 2024,
+    "cover": "assets/departments/publicity/02-cover.jpg",
+    "banner": "assets/departments/publicity/02-banner.jpg"
+  },
+  {
+    "anilistId": 142770,
+    "query": "Suzume",
+    "title": "すずめの戸締まり",
+    "romaji": "Suzume no Tojimari",
+    "year": 2022,
+    "cover": "assets/departments/publicity/03-cover.jpg",
+    "banner": "assets/departments/publicity/03-banner.jpg"
+  },
+  {
+    "anilistId": 16498,
+    "query": "Attack on Titan",
+    "title": "進撃の巨人",
+    "romaji": "Shingeki no Kyojin",
+    "year": 2013,
+    "cover": "assets/departments/publicity/04-cover.jpg",
+    "banner": "assets/departments/publicity/04-banner.jpg"
+  },
+  {
+    "anilistId": 101922,
+    "query": "Demon Slayer: Kimetsu no Yaiba",
+    "title": "鬼滅の刃",
+    "romaji": "Kimetsu no Yaiba",
+    "year": 2019,
+    "cover": "assets/departments/publicity/05-cover.jpg",
+    "banner": "assets/departments/publicity/05-banner.jpg"
+  },
+  {
+    "anilistId": 113415,
+    "query": "Jujutsu Kaisen",
+    "title": "呪術廻戦",
+    "romaji": "Jujutsu Kaisen",
+    "year": 2020,
+    "cover": "assets/departments/publicity/06-cover.jpg",
+    "banner": "assets/departments/publicity/06-banner.jpg"
+  },
+  {
+    "anilistId": 140960,
+    "query": "SPY x FAMILY",
+    "title": "SPY×FAMILY",
+    "romaji": "SPY×FAMILY",
+    "year": 2022,
+    "cover": "assets/departments/publicity/07-cover.jpg",
+    "banner": "assets/departments/publicity/07-banner.jpg"
+  },
+  {
+    "anilistId": 154587,
+    "query": "Frieren: Beyond Journey's End",
+    "title": "葬送のフリーレン",
+    "romaji": "Sousou no Frieren",
+    "year": 2023,
+    "cover": "assets/departments/publicity/08-cover.jpg",
+    "banner": "assets/departments/publicity/08-banner.jpg"
+  },
+  {
+    "anilistId": 21519,
+    "query": "Your Name.",
+    "title": "君の名は。",
+    "romaji": "Kimi no Na wa.",
+    "year": 2016,
+    "cover": "assets/departments/publicity/09-cover.jpg",
+    "banner": "assets/departments/publicity/09-banner.jpg"
+  },
+  {
+    "anilistId": 199,
+    "query": "Spirited Away",
+    "title": "千と千尋の神隠し",
+    "romaji": "Sen to Chihiro no Kamikakushi",
+    "year": 2001,
+    "cover": "assets/departments/publicity/10-cover.jpg",
+    "banner": "assets/departments/publicity/10-banner.jpg"
+  },
+  {
+    "anilistId": 21,
+    "query": "ONE PIECE",
+    "title": "ONE PIECE",
+    "romaji": "ONE PIECE",
+    "year": 1999,
+    "cover": "assets/departments/publicity/11-cover.jpg",
+    "banner": "assets/departments/publicity/11-banner.jpg"
+  },
+  {
+    "anilistId": 21827,
+    "query": "Violet Evergarden",
+    "title": "ヴァイオレット・エヴァーガーデン",
+    "romaji": "Violet Evergarden",
+    "year": 2018,
+    "cover": "assets/departments/publicity/12-cover.jpg",
+    "banner": "assets/departments/publicity/12-banner.jpg"
+  }
+]

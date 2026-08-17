@@ -6,6 +6,7 @@ import '@fontsource/press-start-2p';
 import './styles.css';
 import './home-responsive.css';
 import './guild-polish.css';
+import './departments.css';
 import './social.css';
 import './home-final-art.css';
 import './announcements.css';

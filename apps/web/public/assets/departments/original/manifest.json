@@ -1,0 +1,56 @@
+[
+  {
+    "anilistId": 128705,
+    "query": "Blue Period",
+    "title": "ブルーピリオド",
+    "romaji": "Blue Period",
+    "year": 2021,
+    "cover": "assets/departments/original/01-cover.jpg",
+    "banner": "assets/departments/original/01-banner.jpg"
+  },
+  {
+    "anilistId": 20668,
+    "query": "Monthly Girls' Nozaki-kun",
+    "title": "月刊少女野崎くん",
+    "romaji": "Gekkan Shoujo Nozaki-kun",
+    "year": 2014,
+    "cover": "assets/departments/original/02-cover.jpg",
+    "banner": "assets/departments/original/02-banner.jpg"
+  },
+  {
+    "anilistId": 20812,
+    "query": "SHIROBAKO",
+    "title": "SHIROBAKO",
+    "romaji": "SHIROBAKO",
+    "year": 2014,
+    "cover": "assets/departments/original/03-cover.jpg",
+    "banner": "assets/departments/original/03-banner.jpg"
+  },
+  {
+    "anilistId": 16,
+    "query": "Honey and Clover",
+    "title": "ハチミツとクローバー",
+    "romaji": "Hachimitsu to Clover",
+    "year": 2005,
+    "cover": "assets/departments/original/04-cover.jpg",
+    "banner": "assets/departments/original/04-banner.jpg"
+  },
+  {
+    "anilistId": 13759,
+    "query": "The Pet Girl of Sakurasou",
+    "title": "さくら荘のペットな彼女",
+    "romaji": "Sakurasou no Pet na Kanojo",
+    "year": 2012,
+    "cover": "assets/departments/original/05-cover.jpg",
+    "banner": "assets/departments/original/05-banner.jpg"
+  },
+  {
+    "anilistId": 109298,
+    "query": "Keep Your Hands Off Eizouken!",
+    "title": "映像研には手を出すな！",
+    "romaji": "Eizouken ni wa Te wo Dasu na!",
+    "year": 2020,
+    "cover": "assets/departments/original/06-cover.jpg",
+    "banner": "assets/departments/original/06-banner.jpg"
+  }
+]

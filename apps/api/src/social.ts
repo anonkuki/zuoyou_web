@@ -30,9 +30,11 @@ const presence = (lastSeenAt: string | null, timestamp: string) => {
 
 interface ProfileRow {
   id: string; display_name: string; role: Role; department_id: string | null; department_name: string | null; department_title: string | null;
-  bio: string; guild_title: string; college: string; grade: string; skills: string; interests: string; avatar_color: string; profile_visibility: 'MEMBERS' | 'PRIVATE';
+  bio: string; guild_title: string; college: string; grade: string; skills: string; interests: string; attributes: string; avatar_color: string; profile_visibility: 'MEMBERS' | 'PRIVATE';
   last_seen_at: string | null; created_at: string;
 }
+
+const PROFILE_COLUMNS = 'u.id,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.guild_title,u.college,u.grade,u.skills,u.interests,u.attributes,u.avatar_color,u.profile_visibility,u.last_seen_at,u.created_at';
 
 export class GuildSocialRepository {
   constructor(private sqlite: Database.Database, private makeId: (prefix: string) => string, private timestamp: () => string) {}
@@ -41,7 +43,7 @@ export class GuildSocialRepository {
     return {
       id: row.id, displayName: row.display_name, role: row.role, departmentId: row.department_id, departmentName: row.department_name,
       departmentTitle: row.department_title, bio: row.bio, guildTitle: row.guild_title, college: row.college, grade: row.grade,
-      skills: safeTags(row.skills), interests: safeTags(row.interests), avatarColor: row.avatar_color, profileVisibility: row.profile_visibility,
+      skills: safeTags(row.skills), interests: safeTags(row.interests), attributes: safeTags(row.attributes), avatarColor: row.avatar_color, profileVisibility: row.profile_visibility,
       presence: presence(row.last_seen_at, this.timestamp()), lastSeenAt: row.last_seen_at, joinedAt: row.created_at,
     };
   }
@@ -63,16 +65,17 @@ export class GuildSocialRepository {
       grade: input.grade ?? row.grade,
       skills: input.skills ? JSON.stringify([...new Set(input.skills)]) : row.skills,
       interests: input.interests ? JSON.stringify([...new Set(input.interests)]) : row.interests,
+      attributes: input.attributes ? JSON.stringify([...new Set(input.attributes)]) : row.attributes,
       avatarColor: input.avatarColor ?? row.avatar_color,
       visibility: input.profileVisibility ?? row.profile_visibility,
     };
-    this.sqlite.prepare(`UPDATE users SET display_name=?,bio=?,guild_title=?,college=?,grade=?,skills=?,interests=?,avatar_color=?,profile_visibility=?,last_seen_at=?,updated_at=? WHERE id=?`)
-      .run(next.displayName, next.bio, next.guildTitle, next.college, next.grade, next.skills, next.interests, next.avatarColor, next.visibility, this.timestamp(), this.timestamp(), userId);
+    this.sqlite.prepare(`UPDATE users SET display_name=?,bio=?,guild_title=?,college=?,grade=?,skills=?,interests=?,attributes=?,avatar_color=?,profile_visibility=?,last_seen_at=?,updated_at=? WHERE id=?`)
+      .run(next.displayName, next.bio, next.guildTitle, next.college, next.grade, next.skills, next.interests, next.attributes, next.avatarColor, next.visibility, this.timestamp(), this.timestamp(), userId);
     return this.serializeProfile(this.getProfileRow(userId));
   }
 
   private getProfileRow(userId: string): ProfileRow {
-    const row = this.sqlite.prepare(`SELECT u.id,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.guild_title,u.college,u.grade,u.skills,u.interests,u.avatar_color,u.profile_visibility,u.last_seen_at,u.created_at
+    const row = this.sqlite.prepare(`SELECT ${PROFILE_COLUMNS}
       FROM users u LEFT JOIN departments d ON d.id=u.department_id WHERE u.id=? AND u.is_active=1`).get(userId) as ProfileRow | undefined;
     if (!row) throw new SocialError(404, 'NOT_FOUND', '成员不存在');
     return row;
@@ -85,7 +88,7 @@ export class GuildSocialRepository {
     const where = `u.is_active=1 AND ${privacy} AND (?='' OR u.display_name LIKE ? OR u.guild_title LIKE ? OR d.name LIKE ?)`;
     parameters.push(query.trim(), search, search, search);
     const total = (this.sqlite.prepare(`SELECT COUNT(*) count FROM users u LEFT JOIN departments d ON d.id=u.department_id WHERE ${where}`).get(...parameters) as { count: number }).count;
-    const rows = this.sqlite.prepare(`SELECT u.id,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.guild_title,u.college,u.grade,u.skills,u.interests,u.avatar_color,u.profile_visibility,u.last_seen_at,u.created_at
+    const rows = this.sqlite.prepare(`SELECT ${PROFILE_COLUMNS}
       FROM users u LEFT JOIN departments d ON d.id=u.department_id WHERE ${where}
       ORDER BY CASE WHEN u.id=? THEN 0 ELSE 1 END,u.last_seen_at DESC,u.display_name LIMIT ? OFFSET ?`)
       .all(...parameters, principal.id, pageSize, (page - 1) * pageSize) as ProfileRow[];
@@ -232,6 +235,118 @@ export class GuildSocialRepository {
     if (message.sender_id !== principal.id) throw new SocialError(403, 'FORBIDDEN', '只能撤回自己的消息');
     if (message.deleted_at) throw new SocialError(409, 'MESSAGE_DELETED', '消息已经撤回');
     this.sqlite.prepare('UPDATE messages SET content=?,deleted_at=? WHERE id=?').run('', this.timestamp(), messageId);
+  }
+
+  private serializePost(row: Record<string, unknown>) {
+    return {
+      id: row.id, title: row.title, content: row.content, pinned: Boolean(row.pinned), commentCount: Number(row.comment_count ?? 0),
+      author: { id: row.user_id, displayName: row.author_name, avatarColor: row.author_color },
+      createdAt: row.created_at, updatedAt: row.updated_at,
+    };
+  }
+
+  private serializeComment(row: Record<string, unknown>) {
+    return {
+      id: row.id, postId: row.post_id, content: row.content,
+      author: { id: row.user_id, displayName: row.author_name, avatarColor: row.author_color },
+      createdAt: row.created_at,
+    };
+  }
+
+  listPosts(page: number, pageSize: number) {
+    const total = (this.sqlite.prepare('SELECT COUNT(*) count FROM posts WHERE deleted_at IS NULL').get() as { count: number }).count;
+    const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,
+      (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count
+      FROM posts p JOIN users u ON u.id=p.user_id WHERE p.deleted_at IS NULL
+      ORDER BY p.pinned DESC,p.created_at DESC,p.id LIMIT ? OFFSET ?`).all(pageSize, (page - 1) * pageSize) as Array<Record<string, unknown>>;
+    return { items: rows.map((row) => this.serializePost(row)), page, pageSize, total };
+  }
+
+  createPost(principal: SocialPrincipal, title: string, content: string) {
+    const id = this.makeId('post');
+    const createdAt = this.timestamp();
+    this.sqlite.prepare('INSERT INTO posts(id,user_id,title,content,pinned,created_at,updated_at) VALUES (?,?,?,?,0,?,?)').run(id, principal.id, title, content, createdAt, createdAt);
+    return this.getPost(id).post;
+  }
+
+  getPost(postId: string) {
+    const row = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,
+      (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count
+      FROM posts p JOIN users u ON u.id=p.user_id WHERE p.id=? AND p.deleted_at IS NULL`).get(postId) as Record<string, unknown> | undefined;
+    if (!row) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    const comments = this.sqlite.prepare(`SELECT c.*,u.display_name author_name,u.avatar_color author_color
+      FROM post_comments c JOIN users u ON u.id=c.user_id WHERE c.post_id=? AND c.deleted_at IS NULL ORDER BY c.created_at,c.id`).all(postId) as Array<Record<string, unknown>>;
+    return { post: this.serializePost(row), comments: comments.map((comment) => this.serializeComment(comment)) };
+  }
+
+  addComment(principal: SocialPrincipal, postId: string, content: string) {
+    const post = this.sqlite.prepare('SELECT id FROM posts WHERE id=? AND deleted_at IS NULL').get(postId);
+    if (!post) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    const id = this.makeId('comment');
+    const createdAt = this.timestamp();
+    this.sqlite.prepare('INSERT INTO post_comments(id,post_id,user_id,content,created_at) VALUES (?,?,?,?,?)').run(id, postId, principal.id, content, createdAt);
+    const row = this.sqlite.prepare(`SELECT c.*,u.display_name author_name,u.avatar_color author_color
+      FROM post_comments c JOIN users u ON u.id=c.user_id WHERE c.id=?`).get(id) as Record<string, unknown>;
+    return this.serializeComment(row);
+  }
+
+  deletePost(principal: SocialPrincipal, postId: string): { ownerId: string; moderated: boolean } {
+    const post = this.sqlite.prepare('SELECT user_id,deleted_at FROM posts WHERE id=?').get(postId) as { user_id: string; deleted_at: string | null } | undefined;
+    if (!post || post.deleted_at) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    const manager = principal.role === 'ADMIN' || principal.role === 'DEPARTMENT_LEAD';
+    if (post.user_id !== principal.id && !manager) throw new SocialError(403, 'FORBIDDEN', '只能删除自己的帖子');
+    this.sqlite.prepare('UPDATE posts SET deleted_at=?,updated_at=? WHERE id=?').run(this.timestamp(), this.timestamp(), postId);
+    return { ownerId: post.user_id, moderated: post.user_id !== principal.id };
+  }
+
+  deleteComment(principal: SocialPrincipal, commentId: string): { ownerId: string; moderated: boolean } {
+    const comment = this.sqlite.prepare('SELECT user_id,deleted_at FROM post_comments WHERE id=?').get(commentId) as { user_id: string; deleted_at: string | null } | undefined;
+    if (!comment || comment.deleted_at) throw new SocialError(404, 'NOT_FOUND', '评论不存在或已被删除');
+    const manager = principal.role === 'ADMIN' || principal.role === 'DEPARTMENT_LEAD';
+    if (comment.user_id !== principal.id && !manager) throw new SocialError(403, 'FORBIDDEN', '只能删除自己的评论');
+    this.sqlite.prepare('UPDATE post_comments SET deleted_at=? WHERE id=?').run(this.timestamp(), commentId);
+    return { ownerId: comment.user_id, moderated: comment.user_id !== principal.id };
+  }
+
+  pinPost(postId: string, pinned: boolean) {
+    const post = this.sqlite.prepare('SELECT id,deleted_at FROM posts WHERE id=?').get(postId) as { id: string; deleted_at: string | null } | undefined;
+    if (!post || post.deleted_at) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    this.sqlite.prepare('UPDATE posts SET pinned=?,updated_at=? WHERE id=?').run(pinned ? 1 : 0, this.timestamp(), postId);
+    return this.getPost(postId).post;
+  }
+
+  matchMembers(principal: SocialPrincipal, limit = 12) {
+    const selfRow = this.getProfileRow(principal.id);
+    const myAttributes = safeTags(selfRow.attributes);
+    const myTags = [...new Set([...safeTags(selfRow.skills), ...safeTags(selfRow.interests)])];
+    const mine = new Map<string, number>();
+    myAttributes.forEach((attribute) => mine.set(`attr:${attribute}`, 2));
+    myTags.forEach((tag) => mine.set(`tag:${tag}`, 1));
+    const privacy = principal.role === 'ADMIN' ? '1=1' : "u.profile_visibility='MEMBERS'";
+    const rows = this.sqlite.prepare(`SELECT ${PROFILE_COLUMNS}
+      FROM users u LEFT JOIN departments d ON d.id=u.department_id WHERE u.is_active=1 AND u.id<>? AND ${privacy}`).all(principal.id) as ProfileRow[];
+    const items = rows.map((row) => {
+      const theirs = new Map<string, number>();
+      safeTags(row.attributes).forEach((attribute) => theirs.set(`attr:${attribute}`, 2));
+      [...new Set([...safeTags(row.skills), ...safeTags(row.interests)])].forEach((tag) => theirs.set(`tag:${tag}`, 1));
+      let intersection = 0;
+      const unionKeys = new Set([...mine.keys(), ...theirs.keys()]);
+      for (const key of unionKeys) intersection += Math.min(mine.get(key) ?? 0, theirs.get(key) ?? 0);
+      let union = 0;
+      for (const key of unionKeys) union += Math.max(mine.get(key) ?? 0, theirs.get(key) ?? 0);
+      const score = union ? Math.round((intersection / union) * 100) : 0;
+      const myAttributeSet = new Set(myAttributes);
+      const myTagSet = new Set(myTags);
+      return {
+        profile: this.serializeProfile(row),
+        score,
+        sharedAttributes: safeTags(row.attributes).filter((attribute) => myAttributeSet.has(attribute)),
+        sharedTags: [...new Set([...safeTags(row.skills), ...safeTags(row.interests)])].filter((tag) => myTagSet.has(tag)),
+      };
+    }).filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score || String(a.profile.displayName).localeCompare(String(b.profile.displayName), 'zh-CN'))
+      .slice(0, limit);
+    return { myAttributes, items };
   }
 }
 

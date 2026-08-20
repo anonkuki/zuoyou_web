@@ -12,7 +12,7 @@ export const users = sqliteTable('users', {
   email: text('email').notNull().unique(), role: text('role').notNull(), departmentId: text('department_id').references(() => departments.id),
   bio: text('bio').notNull().default(''), guildTitle: text('guild_title').notNull().default(''), college: text('college').notNull().default(''), grade: text('grade').notNull().default(''),
   skills: text('skills').notNull().default('[]'), interests: text('interests').notNull().default('[]'), attributes: text('attributes').notNull().default('[]'), avatarColor: text('avatar_color').notNull().default('#2f6f64'),
-  profileVisibility: text('profile_visibility').notNull().default('MEMBERS'), lastSeenAt: text('last_seen_at'),
+  profileVisibility: text('profile_visibility').notNull().default('MEMBERS'), lastSeenAt: text('last_seen_at'), avatarConfig: text('avatar_config'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
 

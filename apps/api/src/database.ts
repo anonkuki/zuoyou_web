@@ -94,6 +94,11 @@ function ensureSocialShowcaseData(sqlite: Database.Database, timestamp: string):
   fictionAttributes.run('["drawing","writing","console"]', 'user-fiction-005');
   fictionAttributes.run('["dance","cosplay","video"]', 'user-fiction-006');
 
+  const seedAvatar = sqlite.prepare('UPDATE users SET avatar_config=? WHERE id=?');
+  seedAvatar.run(JSON.stringify({ skin: 'light', hairStyle: 'long', hairColor: 'red', eyes: 'sharp', outfit: 'cloak', accessory: 'none', accent: 'rose' }), 'user-lead');
+  seedAvatar.run(JSON.stringify({ skin: 'porcelain', hairStyle: 'twintails', hairColor: 'blue', eyes: 'sparkle', outfit: 'hoodie', accessory: 'headphones', accent: 'blue' }), 'user-member');
+  seedAvatar.run(JSON.stringify({ skin: 'warm', hairStyle: 'bun', hairColor: 'black', eyes: 'round', outfit: 'hanfu', accessory: 'glasses', accent: 'gold' }), 'user-admin');
+
   ensureGuildTavernData(sqlite);
 
   ensureDepartmentConversations(sqlite, timestamp);
@@ -123,7 +128,7 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');

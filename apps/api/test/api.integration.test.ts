@@ -871,3 +871,64 @@ describe.sequential('Pixel world plaza', () => {
     }
   });
 });
+
+describe.sequential('Pixel avatar builder', () => {
+  let app: FastifyInstance;
+  let root: string;
+  let memberCookie: string;
+  let leadCookie: string;
+
+  beforeAll(async () => {
+    root = await mkdtemp(tempRoot);
+    app = await createApp({
+      databasePath: `${root}/guild.sqlite`,
+      uploadRoot: `${root}/uploads`,
+      seed: true,
+      sessionSecret: 'integration-test-secret-that-is-long',
+    });
+    memberCookie = await login(app, 'cos.member', 'DemoMember!2026');
+    leadCookie = await login(app, 'cos.lead', 'DemoLead!2026');
+  });
+
+  afterAll(async () => {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('rejects avatar configs with values outside the enums', async () => {
+    const valid = { skin: 'light', hairStyle: 'short', hairColor: 'brown', eyes: 'round', outfit: 'adventurer', accessory: 'none', accent: 'teal' };
+    const invalid = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { avatarConfig: { ...valid, hairStyle: 'mohawk' } } });
+    expect(invalid.statusCode).toBe(400);
+    const missing = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { avatarConfig: { ...valid, outfit: undefined } } });
+    expect(missing.statusCode).toBe(400);
+  });
+
+  it('persists avatar config through profile update and directory payloads', async () => {
+    const config = { skin: 'tan', hairStyle: 'afro', hairColor: 'purple', eyes: 'sparkle', outfit: 'band', accessory: 'cap', accent: 'gold' };
+    const updated = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { avatarConfig: config } });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().data.profile.avatarConfig).toEqual(config);
+
+    const profile = await app.inject({ method: 'GET', url: '/api/member/profile', headers: { cookie: memberCookie } });
+    expect(profile.json().data.profile.avatarConfig).toEqual(config);
+
+    const directory = await app.inject({ method: 'GET', url: '/api/member/directory?q=白羽&page=1&pageSize=10', headers: { cookie: memberCookie } });
+    expect(directory.json().data.items[0].avatarConfig).toEqual(config);
+  });
+
+  it('derives stable defaults for members without a saved config', async () => {
+    const { deriveAvatarConfig } = await import('@guild/contracts');
+    const directory = await app.inject({ method: 'GET', url: '/api/member/directory?q=星序旅人001&page=1&pageSize=10', headers: { cookie: memberCookie } });
+    const fiction = directory.json().data.items[0];
+    expect(fiction.avatarConfig).toEqual(deriveAvatarConfig(fiction.id));
+  });
+
+  it('includes avatarConfig in world state members', async () => {
+    await app.inject({ method: 'POST', url: '/api/member/world/move', headers: { cookie: leadCookie }, payload: { areaId: 'hall', x: 300, y: 300, dir: 'down' } });
+    const state = await app.inject({ method: 'GET', url: '/api/member/world/areas/hall/state', headers: { cookie: memberCookie } });
+    const lead = (state.json().data.members as Array<{ userId: string; avatarConfig: { hairStyle: string; outfit: string } }>).find((member) => member.userId === 'user-lead');
+    expect(lead).toBeDefined();
+    // user-lead 在种子里保存了捏脸配置
+    expect(lead!.avatarConfig).toMatchObject({ hairStyle: 'long', outfit: 'cloak', accent: 'rose' });
+  });
+});

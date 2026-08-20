@@ -174,3 +174,134 @@
 @media(max-width:1100px){.world-area-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.world-area-grid{grid-template-columns:1fr}.world-dpad{display:grid}.world-sprite b{font-size:.55rem}.world-chat form{flex-direction:column}}
 @media(prefers-reduced-motion:reduce){.world-area-link{transition:none}}
+
+/* ===== 像素小人（参数化捏脸 SVG） ===== */
+.pixel-avatar{display:block;overflow:visible}
+.pixel-avatar[data-dir$="left"]{transform:scaleX(-1)}
+.world-sprite .pixel-avatar{width:100%;height:auto;filter:drop-shadow(0 4px 3px rgba(10,20,15,.4))}
+.world-area-scene .pixel-sprite{display:none}
+
+/* ===== 区域道具（参与碰撞的像素陈设） ===== */
+.world-prop{position:absolute;z-index:2;pointer-events:none}
+.world-prop svg,.world-prop img{display:block;width:100%;height:100%;image-rendering:pixelated}
+.world-prop-ghost{display:block;width:100%;height:100%}
+
+/* ===== 七区域主题美术：装饰层（不参与碰撞） ===== */
+.world-stage.theme-decor-host,.theme-decor{position:absolute;inset:0}
+.theme-decor i{position:absolute;pointer-events:none}
+
+/* 外宣部 · 黑白漫画影院 */
+.world-stage.theme-publicity,.world-area-scene.theme-publicity{background:linear-gradient(180deg,#f5efe0 0%,#efe6d2 62%,#e3d5b8 100%)}
+.theme-publicity .decor-halftone{inset:0;background-image:repeating-radial-gradient(circle at 12% 18%,rgba(23,21,15,.16) 0 2px,transparent 2px 9px),repeating-radial-gradient(circle at 88% 76%,rgba(23,21,15,.12) 0 2px,transparent 2px 11px)}
+.theme-publicity .decor-speedlines{left:-6%;top:-14%;width:60%;height:56%;background:repeating-linear-gradient(58deg,transparent 0 10px,rgba(23,21,15,.2) 10px 12px);transform:skewX(-8deg)}
+.theme-publicity .world-prop svg{filter:drop-shadow(4px 4px 0 rgba(23,21,15,.28))}
+
+/* 技术部 · 相机取景器 */
+.world-stage.theme-tech,.world-area-scene.theme-tech{background:linear-gradient(180deg,#161b21 0%,#1c232b 58%,#232c34 100%)}
+.theme-tech .decor-scanlines{inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.045) 0 2px,transparent 2px 6px)}
+.theme-tech .decor-focus-frame{inset:5% 6%;border:0;background:
+  linear-gradient(#3fd08c,#3fd08c) left top/34px 3px no-repeat,
+  linear-gradient(#3fd08c,#3fd08c) left top/3px 34px no-repeat,
+  linear-gradient(#3fd08c,#3fd08c) right top/34px 3px no-repeat,
+  linear-gradient(#3fd08c,#3fd08c) right top/3px 34px no-repeat,
+  linear-gradient(#3fd08c,#3fd08c) left bottom/34px 3px no-repeat,
+  linear-gradient(#3fd08c,#3fd08c) left bottom/3px 34px no-repeat,
+  linear-gradient(#3fd08c,#3fd08c) right bottom/34px 3px no-repeat,
+  linear-gradient(#3fd08c,#3fd08c) right bottom/3px 34px no-repeat;opacity:.85}
+.theme-tech .world-prop svg{filter:drop-shadow(0 0 10px rgba(63,208,140,.25))}
+
+/* 原创部 · pastel 画室 */
+.world-stage.theme-original,.world-area-scene.theme-original{background:linear-gradient(180deg,#f7f0dd 0%,#f3e9d2 60%,#ead9bd 100%)}
+.theme-original .decor-watercolor{inset:0;background:
+  radial-gradient(26% 34% at 18% 24%,rgba(247,168,184,.4),transparent 70%),
+  radial-gradient(30% 38% at 80% 20%,rgba(143,199,192,.42),transparent 70%),
+  radial-gradient(24% 30% at 68% 78%,rgba(242,193,78,.36),transparent 70%),
+  radial-gradient(20% 26% at 30% 80%,rgba(226,131,154,.3),transparent 70%)}
+.theme-original .decor-tape{left:8%;top:5%;width:84%;height:7%;background:
+  linear-gradient(100deg,rgba(214,182,124,.75),rgba(214,182,124,.75)) left top/72px 16px no-repeat,
+  linear-gradient(96deg,rgba(214,182,124,.75),rgba(214,182,124,.75)) right top/72px 16px no-repeat;opacity:.8}
+
+/* 舞装部 · 星轨舞台 */
+.world-stage.theme-dance,.world-area-scene.theme-dance{background:linear-gradient(180deg,#0d0f1d 0%,#141834 55%,#232742 100%)}
+.theme-dance .decor-starfield{inset:0 0 34%;background-image:
+  radial-gradient(2px 2px at 12% 22%,#fff 50%,transparent 51%),
+  radial-gradient(1.6px 1.6px at 34% 12%,#f5c96b 50%,transparent 51%),
+  radial-gradient(2px 2px at 58% 30%,#fff 50%,transparent 51%),
+  radial-gradient(1.4px 1.4px at 76% 14%,#8f7bd8 50%,transparent 51%),
+  radial-gradient(2px 2px at 90% 34%,#fff 50%,transparent 51%),
+  radial-gradient(1.6px 1.6px at 45% 44%,#ff4d8d 50%,transparent 51%),
+  radial-gradient(1.4px 1.4px at 22% 52%,#fff 50%,transparent 51%),
+  radial-gradient(1.8px 1.8px at 68% 56%,#f5c96b 50%,transparent 51%)}
+.theme-dance .decor-spotlights{inset:0;background:
+  conic-gradient(from 168deg at 22% -6%,transparent 0deg,rgba(255,77,141,.2) 8deg,transparent 16deg),
+  conic-gradient(from 178deg at 52% -6%,transparent 0deg,rgba(245,201,107,.18) 9deg,transparent 18deg),
+  conic-gradient(from 188deg at 80% -6%,transparent 0deg,rgba(143,123,216,.2) 8deg,transparent 16deg)}
+
+/* COS部 · 镜中变身 */
+.world-stage.theme-cos,.world-area-scene.theme-cos{background:linear-gradient(165deg,#f9e7ee 0%,#f3d5e2 55%,#e7c3d6 100%)}
+.theme-cos .decor-blobs{inset:0;background:
+  radial-gradient(30% 40% at 14% 20%,rgba(255,255,255,.55),transparent 70%),
+  radial-gradient(26% 34% at 86% 26%,rgba(247,168,184,.5),transparent 72%),
+  radial-gradient(30% 38% at 74% 82%,rgba(255,255,255,.45),transparent 70%),
+  radial-gradient(22% 28% at 24% 84%,rgba(163,74,104,.2),transparent 72%)}
+.theme-cos .decor-sparkles{inset:0;background-image:
+  radial-gradient(2.4px 2.4px at 20% 34%,#fff 50%,transparent 51%),
+  radial-gradient(2px 2px at 40% 16%,#f7a8b8 50%,transparent 51%),
+  radial-gradient(2.4px 2.4px at 62% 30%,#fff 50%,transparent 51%),
+  radial-gradient(2px 2px at 84% 52%,#f5c96b 50%,transparent 51%),
+  radial-gradient(2px 2px at 50% 66%,#fff 50%,transparent 51%),
+  radial-gradient(2.2px 2.2px at 10% 62%,#f7a8b8 50%,transparent 51%)}
+
+/* 轻音部 · 黑胶歌词房 */
+.world-stage.theme-music,.world-area-scene.theme-music{background:linear-gradient(180deg,#10152a 0%,#161d38 58%,#1d2545 100%)}
+.theme-music .decor-vinyl{right:-9%;top:-16%;width:46%;height:78%;border-radius:50%;background:repeating-radial-gradient(circle at 50% 50%,#0b0f1e 0 6px,#1d2545 6px 8px);box-shadow:0 0 0 4px rgba(245,201,107,.16)}
+.theme-music .decor-soundwave{left:0;right:0;bottom:0;height:16%;background:repeating-linear-gradient(90deg,rgba(245,201,107,.28) 0 4px,transparent 4px 12px);mask-image:linear-gradient(180deg,transparent,#000);-webkit-mask-image:linear-gradient(180deg,transparent,#000)}
+
+/* 暗色主题里的名牌与气泡微调 */
+.world-stage.theme-tech .world-sprite b,.world-stage.theme-dance .world-sprite b,.world-stage.theme-music .world-sprite b{background:rgba(8,10,18,.88)}
+
+/* ===== 像素形象工房 ===== */
+.avatar-studio section.shell{padding-top:44px;padding-bottom:110px}
+.avatar-studio-layout{display:grid;grid-template-columns:340px minmax(0,1fr);gap:26px;align-items:start}
+.avatar-preview-panel{position:sticky;top:96px;display:grid;justify-items:center;gap:16px;padding:26px 24px}
+.avatar-preview-tag{font:400 .44rem "Press Start 2P",monospace;color:#a5824d;letter-spacing:.08em}
+.avatar-preview-stage{display:grid;place-items:center;width:230px;height:250px;border:3px solid #26232b;background:
+  repeating-linear-gradient(0deg,rgba(38,35,43,.06) 0 2px,transparent 2px 24px),
+  repeating-linear-gradient(90deg,rgba(38,35,43,.06) 0 2px,transparent 2px 24px),
+  linear-gradient(180deg,#fdf6e4,#f2e3c2);box-shadow:inset 0 0 0 3px #fff8ee}
+.avatar-preview-stage .pixel-avatar{transition:transform .18s}
+.avatar-preview-stage[data-walking] .pixel-avatar{animation:avatar-bob .44s steps(2) infinite}
+@keyframes avatar-bob{0%{transform:translateY(0)}50%{transform:translateY(-4px)}100%{transform:translateY(0)}}
+.avatar-preview-actions{display:flex;gap:12px}
+.avatar-preview-actions button{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border:3px solid #26232b;background:#fff8ee;color:#26232b;font-size:.76rem;font-weight:700;cursor:pointer;box-shadow:3px 3px 0 #26232b;transition:transform .12s,box-shadow .12s}
+.avatar-preview-actions button:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 #26232b}
+.avatar-preview-actions button:active{transform:translate(2px,2px);box-shadow:0 0 0 #26232b}
+.avatar-preview-actions button[aria-pressed="true"]{background:#26232b;color:#ffe9b8}
+.avatar-preview-actions svg{width:14px}
+.avatar-back{display:inline-flex;align-items:center;gap:6px;color:#8e7350;font-size:.72rem;text-decoration:none}
+.avatar-back:hover{color:#5d4630}
+.avatar-back svg{width:13px}
+.avatar-editor{display:grid;gap:18px;padding:26px 28px;border:3px solid #26232b;background:linear-gradient(165deg,#fdf6e4,#f3e5c6);box-shadow:6px 6px 0 rgba(38,35,43,.28)}
+.avatar-editor .editor-section>span{font:400 .44rem "Press Start 2P",monospace;color:#a5824d}
+.avatar-group-label{display:block;margin:12px 0 8px;color:#8e7350;font-size:.68rem;font-weight:700;letter-spacing:.06em}
+.avatar-part-row{display:flex;flex-wrap:wrap;gap:10px}
+.avatar-part-option{display:grid;justify-items:center;gap:5px;width:82px;padding:8px 6px;border:3px solid #26232b;background:#fff8ee;cursor:pointer;box-shadow:3px 3px 0 #26232b;transition:transform .12s,box-shadow .12s,background .12s}
+.avatar-part-option:hover{transform:translate(-2px,-2px);box-shadow:5px 5px 0 #26232b}
+.avatar-part-option:active{transform:translate(2px,2px);box-shadow:0 0 0 #26232b}
+.avatar-part-option.active{background:#ffe9b8;outline:3px solid #c9622f;outline-offset:-1px}
+.avatar-part-option .pixel-avatar{pointer-events:none}
+.avatar-part-option span{font-size:.62rem;font-weight:700;color:#3d2716}
+.avatar-swatch-row{display:flex;flex-wrap:wrap;gap:9px}
+.avatar-swatch{display:grid;justify-items:center;gap:5px;width:56px;padding:6px 4px;border:0;background:transparent;cursor:pointer}
+.avatar-swatch i{display:block;width:30px;height:30px;border:3px solid #26232b;background:var(--swatch-color,#999);box-shadow:2px 2px 0 #26232b;transition:transform .12s,box-shadow .12s}
+.avatar-swatch:hover i{transform:translate(-1px,-1px);box-shadow:3px 3px 0 #26232b}
+.avatar-swatch.active i{outline:3px solid #c9622f;outline-offset:2px;transform:translate(1px,1px);box-shadow:1px 1px 0 #26232b}
+.avatar-swatch span{font-size:.6rem;font-weight:700;color:#5d4630}
+.avatar-editor .guild-button{justify-self:start;display:inline-flex;align-items:center;gap:8px}
+.avatar-editor .guild-button svg{width:14px}
+.form-success{display:inline-flex;align-items:center;gap:6px;margin:0;color:#25744b;font-size:.78rem;font-weight:700}
+.form-success svg{width:14px}
+.profile-editor .attribute-hint a{color:#c9622f;font-weight:700}
+
+@media(max-width:980px){.avatar-studio-layout{grid-template-columns:1fr}.avatar-preview-panel{position:static}}
+@media(prefers-reduced-motion:reduce){.avatar-preview-stage[data-walking] .pixel-avatar{animation:none}.avatar-part-option,.avatar-swatch i,.avatar-preview-actions button{transition:none}}

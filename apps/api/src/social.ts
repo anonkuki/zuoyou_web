@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { MemberProfileUpdate, Role } from '@guild/contracts';
+import { resolveAvatarConfig, type MemberProfileUpdate, type Role } from '@guild/contracts';
 
 export interface SocialPrincipal {
   id: string;
@@ -30,11 +30,11 @@ const presence = (lastSeenAt: string | null, timestamp: string) => {
 
 interface ProfileRow {
   id: string; display_name: string; role: Role; department_id: string | null; department_name: string | null; department_title: string | null;
-  bio: string; guild_title: string; college: string; grade: string; skills: string; interests: string; attributes: string; avatar_color: string; profile_visibility: 'MEMBERS' | 'PRIVATE';
+  bio: string; guild_title: string; college: string; grade: string; skills: string; interests: string; attributes: string; avatar_color: string; avatar_config: string | null; profile_visibility: 'MEMBERS' | 'PRIVATE';
   last_seen_at: string | null; created_at: string;
 }
 
-const PROFILE_COLUMNS = 'u.id,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.guild_title,u.college,u.grade,u.skills,u.interests,u.attributes,u.avatar_color,u.profile_visibility,u.last_seen_at,u.created_at';
+const PROFILE_COLUMNS = 'u.id,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.guild_title,u.college,u.grade,u.skills,u.interests,u.attributes,u.avatar_color,u.avatar_config,u.profile_visibility,u.last_seen_at,u.created_at';
 
 export class GuildSocialRepository {
   constructor(private sqlite: Database.Database, private makeId: (prefix: string) => string, private timestamp: () => string) {}
@@ -43,7 +43,7 @@ export class GuildSocialRepository {
     return {
       id: row.id, displayName: row.display_name, role: row.role, departmentId: row.department_id, departmentName: row.department_name,
       departmentTitle: row.department_title, bio: row.bio, guildTitle: row.guild_title, college: row.college, grade: row.grade,
-      skills: safeTags(row.skills), interests: safeTags(row.interests), attributes: safeTags(row.attributes), avatarColor: row.avatar_color, profileVisibility: row.profile_visibility,
+      skills: safeTags(row.skills), interests: safeTags(row.interests), attributes: safeTags(row.attributes), avatarColor: row.avatar_color, avatarConfig: resolveAvatarConfig(row.id, row.avatar_config), profileVisibility: row.profile_visibility,
       presence: presence(row.last_seen_at, this.timestamp()), lastSeenAt: row.last_seen_at, joinedAt: row.created_at,
     };
   }
@@ -66,11 +66,12 @@ export class GuildSocialRepository {
       skills: input.skills ? JSON.stringify([...new Set(input.skills)]) : row.skills,
       interests: input.interests ? JSON.stringify([...new Set(input.interests)]) : row.interests,
       attributes: input.attributes ? JSON.stringify([...new Set(input.attributes)]) : row.attributes,
+      avatarConfig: input.avatarConfig ? JSON.stringify(input.avatarConfig) : row.avatar_config,
       avatarColor: input.avatarColor ?? row.avatar_color,
       visibility: input.profileVisibility ?? row.profile_visibility,
     };
-    this.sqlite.prepare(`UPDATE users SET display_name=?,bio=?,guild_title=?,college=?,grade=?,skills=?,interests=?,attributes=?,avatar_color=?,profile_visibility=?,last_seen_at=?,updated_at=? WHERE id=?`)
-      .run(next.displayName, next.bio, next.guildTitle, next.college, next.grade, next.skills, next.interests, next.attributes, next.avatarColor, next.visibility, this.timestamp(), this.timestamp(), userId);
+    this.sqlite.prepare(`UPDATE users SET display_name=?,bio=?,guild_title=?,college=?,grade=?,skills=?,interests=?,attributes=?,avatar_config=?,avatar_color=?,profile_visibility=?,last_seen_at=?,updated_at=? WHERE id=?`)
+      .run(next.displayName, next.bio, next.guildTitle, next.college, next.grade, next.skills, next.interests, next.attributes, next.avatarConfig, next.avatarColor, next.visibility, this.timestamp(), this.timestamp(), userId);
     return this.serializeProfile(this.getProfileRow(userId));
   }
 

@@ -3,22 +3,27 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { useReducedMotion } from 'framer-motion';
 import { ArrowLeft, MessageCircle, Send, Trash2, Users } from 'lucide-react';
-import { worldAreas, type WorldDirection } from '@guild/contracts';
+import { deriveAvatarConfig, worldAreas, type AvatarConfig, type WorldDirection } from '@guild/contracts';
 import { api, json } from './api';
 import { useAuth } from './auth';
 import { EmptyPanel, ErrorPanel, LoadingPanel, PageHero } from './components';
-import { PixelFrame, PixelSprite } from './components/departments/pixel';
-import { applyMovement, normalizeKey, worldBounds, worldObstacles, type WorldPoint } from './world-movement';
+import { PixelFrame } from './components/departments/pixel';
+import { PixelAvatar } from './components/avatar/PixelAvatar';
+import { applyMovement, normalizeKey, worldBounds, type WorldPoint } from './world-movement';
+import { areaObstacles, areaThemes } from './world-themes';
 
 interface WorldAreaInfo { id: string; name: string; color: string; departmentSlug: string | null; online: number }
-interface WorldMember { userId: string; displayName: string; avatarColor: string; sprite: string; x: number; y: number; dir: WorldDirection; self: boolean }
+interface WorldMember { userId: string; displayName: string; avatarColor: string; avatarConfig: AvatarConfig; x: number; y: number; dir: WorldDirection; self: boolean }
 interface AreaMessage { id: string; areaId: string; content: string; createdAt: string; sender: { id: string; displayName: string; avatarColor: string } }
 interface WorldState { area: { id: string; name: string; color: string }; members: WorldMember[]; messages: AreaMessage[]; serverTime: string }
 
-interface OtherSprite { cur: WorldPoint; target: WorldPoint; dir: WorldDirection; displayName: string; avatarColor: string; sprite: string }
+interface OtherSprite { cur: WorldPoint; target: WorldPoint; dir: WorldDirection; displayName: string; avatarColor: string; avatarConfig: AvatarConfig; moving: boolean }
 
-const spriteSrc = (sprite: string) => `/assets/character/adventurers/${sprite}.png`;
 const toPercent = (point: WorldPoint) => ({ left: `${(point.x / worldBounds.w) * 100}%`, top: `${(point.y / worldBounds.h) * 100}%` });
+const rectStyle = (rect: { x: number; y: number; w: number; h: number }) => ({
+  left: `${(rect.x / worldBounds.w) * 100}%`, top: `${(rect.y / worldBounds.h) * 100}%`,
+  width: `${(rect.w / worldBounds.w) * 100}%`, height: `${(rect.h / worldBounds.h) * 100}%`,
+});
 
 export function WorldLobbyPage() {
   const query = useQuery({ queryKey: ['world', 'areas'], queryFn: () => api<{ items: WorldAreaInfo[] }>('/api/member/world/areas'), refetchInterval: 5000 });
@@ -26,18 +31,21 @@ export function WorldLobbyPage() {
     <PageHero eyebrow="PIXEL PLAZA" title="像素广场" description="选择一块区域，操纵你的像素小人四处走动，和在场的伙伴实时打招呼。" />
     <section className="shell">
       {query.isLoading ? <LoadingPanel label="正在铺开像素地图" /> : query.error ? <ErrorPanel error={query.error} /> : <div className="world-area-grid">
-        {query.data?.items.map((area) => <Link key={area.id} className="world-area-link" to={`/portal/world/${area.id}`} aria-label={`进入${area.name}`}>
-          <PixelFrame className="world-area-card" color={area.color}>
-            <div className="world-area-scene" style={{ '--area-color': area.color } as React.CSSProperties}>
-              <img src="/assets/background/golden-valley/forest-mid-a.png" alt="" aria-hidden="true" loading="lazy" />
-              <PixelSprite slug={area.departmentSlug ?? 'cos'} />
-            </div>
-            <div className="world-area-meta">
-              <h2>{area.name}</h2>
-              <span className={area.online ? 'online' : ''}><Users />{area.online ? `${area.online} 人在线` : '暂时无人'}</span>
-            </div>
-          </PixelFrame>
-        </Link>)}
+        {query.data?.items.map((area) => {
+          const theme = areaThemes[area.id] ?? areaThemes.hall;
+          return <Link key={area.id} className="world-area-link" to={`/portal/world/${area.id}`} aria-label={`进入${area.name}`}>
+            <PixelFrame className="world-area-card" color={area.color}>
+              <div className={`world-area-scene theme-${area.id}`} style={{ '--area-color': area.color } as React.CSSProperties}>
+                {theme.backdrop}
+                {theme.props.slice(0, 2).map((item) => <span key={item.id} className="world-prop mini" style={rectStyle(item.rect)}>{item.art}</span>)}
+              </div>
+              <div className="world-area-meta">
+                <h2>{area.name}</h2>
+                <span className={area.online ? 'online' : ''}><Users />{area.online ? `${area.online} 人在线` : '暂时无人'}</span>
+              </div>
+            </PixelFrame>
+          </Link>;
+        })}
       </div>}
     </section>
   </main>;
@@ -48,6 +56,8 @@ export function WorldAreaPage() {
   const { user } = useAuth();
   const reduce = useReducedMotion();
   const area = worldAreas.find((entry) => entry.id === areaId);
+  const theme = areaThemes[areaId] ?? areaThemes.hall;
+  const obstacles = areaObstacles(areaId);
 
   const [members, setMembers] = useState<WorldMember[]>([]);
   const [messages, setMessages] = useState<AreaMessage[]>([]);
@@ -56,12 +66,12 @@ export function WorldAreaPage() {
   const [tick, setTick] = useState(0);
 
   const myPos = useRef<WorldPoint & { dir: WorldDirection }>({ x: 480, y: 430, dir: 'down' });
+  const selfMoving = useRef(false);
   const keys = useRef(new Set<string>());
   const others = useRef(new Map<string, OtherSprite>());
   const lastMessageId = useRef<string | null>(null);
   const lastReportAt = useRef(0);
   const wasMoving = useRef(false);
-  const mySprite = useRef(['guild-steward', 'silver-ranger', 'green-mage', 'rose-adventurer'][Math.abs([...(user?.id ?? 'guest')].reduce((hash, char) => hash * 31 + char.charCodeAt(0) | 0, 0)) % 4]);
 
   // 上报当前位置（leaving 时清除）
   const report = (leaving = false, keepalive = false) => {
@@ -111,22 +121,30 @@ export function WorldAreaPage() {
     const step = (time: number) => {
       const dt = Math.min(0.05, (time - previous) / 1000);
       previous = time;
-      const next = applyMovement(myPos.current, keys.current, dt);
+      const next = applyMovement(myPos.current, keys.current, dt, worldBounds, obstacles);
       let dirty = false;
       if (next.moving) {
         if (next.x !== myPos.current.x || next.y !== myPos.current.y) dirty = true;
         myPos.current = { x: next.x, y: next.y, dir: next.dir };
+        selfMoving.current = true;
         if (time - lastReportAt.current > 350) {
           lastReportAt.current = time;
           report();
         }
         wasMoving.current = true;
-      } else if (wasMoving.current) {
-        wasMoving.current = false;
-        report();
+      } else {
+        if (selfMoving.current) dirty = true;
+        selfMoving.current = false;
+        if (wasMoving.current) {
+          wasMoving.current = false;
+          report();
+        }
       }
       for (const sprite of others.current.values()) {
         const gap = Math.hypot(sprite.target.x - sprite.cur.x, sprite.target.y - sprite.cur.y);
+        const wasSpriteMoving = sprite.moving;
+        sprite.moving = gap >= 0.5;
+        if (wasSpriteMoving !== sprite.moving) dirty = true;
         if (gap < 0.5) continue;
         if (reduce) {
           sprite.cur = { ...sprite.target };
@@ -160,8 +178,9 @@ export function WorldAreaPage() {
           if (existing) {
             existing.target = { x: member.x, y: member.y };
             existing.dir = member.dir;
+            existing.avatarConfig = member.avatarConfig;
           } else {
-            others.current.set(member.userId, { cur: { x: member.x, y: member.y }, target: { x: member.x, y: member.y }, dir: member.dir, displayName: member.displayName, avatarColor: member.avatarColor, sprite: member.sprite });
+            others.current.set(member.userId, { cur: { x: member.x, y: member.y }, target: { x: member.x, y: member.y }, dir: member.dir, displayName: member.displayName, avatarColor: member.avatarColor, avatarConfig: member.avatarConfig, moving: false });
           }
         }
         for (const stale of seen) others.current.delete(stale);
@@ -210,6 +229,7 @@ export function WorldAreaPage() {
     return latest && now - Date.parse(latest.createdAt) < 5000 ? latest.content : null;
   };
   const myBubble = user ? bubbleFor(user.id) : null;
+  const selfConfig = members.find((member) => member.self)?.avatarConfig ?? deriveAvatarConfig(user?.id ?? 'guest');
   const pressKey = (key: string, pressed: boolean) => {
     if (pressed) keys.current.add(key);
     else keys.current.delete(key);
@@ -222,26 +242,22 @@ export function WorldAreaPage() {
       <span className="world-online"><Users />{members.length} 人在场</span>
     </header>
     <section className="world-stage-shell">
-      <div className="world-stage" role="application" aria-label={`${area.name}像素场景，使用 WASD 或方向键移动`}>
-        <div className="world-backdrop" aria-hidden="true">
-          <img className="layer mountains" src="/assets/background/golden-valley/sunlit-mountains.png" alt="" />
-          <img className="layer forest-far" src="/assets/background/golden-valley/forest-far.png" alt="" />
-          <img className="layer forest-mid" src="/assets/background/golden-valley/forest-mid-a.png" alt="" />
-          <img className="layer lodge" src="/assets/architecture/guild/guild-lodge-cutout.png" alt="" />
-          <i className="world-tint" />
-        </div>
-        {worldObstacles.slice(1).map((tree, index) => <img key={index} className="world-tree" aria-hidden="true" src="/assets/background/golden-valley/tree-left.png" alt="" style={{ left: `${(tree.x / worldBounds.w) * 100}%`, top: `${(tree.y / worldBounds.h) * 100}%`, width: `${(tree.w / worldBounds.w) * 100}%` }} />)}
+      <div className={`world-stage theme-${area.id}`} role="application" aria-label={`${area.name}像素场景，使用 WASD 或方向键移动`}>
+        {theme.backdrop}
+        {theme.props.map((item) => (
+          <span key={item.id} className="world-prop" role="img" aria-label={item.label} style={rectStyle(item.rect)}>{item.art}</span>
+        ))}
         {[...others.current.entries()].map(([userId, sprite]) => {
           const bubble = bubbleFor(userId);
-          return <div key={userId} className="world-sprite" style={{ ...toPercent(sprite.cur), '--avatar-color': sprite.avatarColor } as React.CSSProperties} data-dir={sprite.dir}>
+          return <div key={userId} className="world-sprite" style={{ ...toPercent(sprite.cur), '--avatar-color': sprite.avatarColor } as React.CSSProperties}>
             {bubble && <span className="world-bubble">{bubble}</span>}
-            <img src={spriteSrc(sprite.sprite)} alt="" draggable={false} />
+            <PixelAvatar config={sprite.avatarConfig} moving={sprite.moving} dir={sprite.dir} size={52} label={`${sprite.displayName} 的像素小人`} />
             <b>{sprite.displayName}</b>
           </div>;
         })}
-        <div className="world-sprite self" style={{ ...toPercent(myPos.current), '--avatar-color': user?.avatarColor ?? '#5279a8' } as React.CSSProperties} data-dir={myPos.current.dir}>
+        <div className="world-sprite self" style={{ ...toPercent(myPos.current), '--avatar-color': user?.avatarColor ?? '#5279a8' } as React.CSSProperties}>
           {myBubble && <span className="world-bubble">{myBubble}</span>}
-          <img src={spriteSrc(mySprite.current)} alt="" draggable={false} />
+          <PixelAvatar config={selfConfig} moving={selfMoving.current} dir={myPos.current.dir} size={52} label="我的像素小人" />
           <b>{user?.displayName ?? '我'}</b>
         </div>
       </div>

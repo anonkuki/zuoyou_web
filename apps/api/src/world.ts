@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { worldAreas, worldMapHeight, worldMapWidth, type WorldDirection } from '@guild/contracts';
+import { resolveAvatarConfig, worldAreas, worldMapHeight, worldMapWidth, type AvatarConfig, type WorldDirection } from '@guild/contracts';
 import { SocialError, type SocialPrincipal } from './social.js';
 
 const PRESENCE_TIMEOUT_MS = 15_000;
@@ -9,6 +9,7 @@ interface WorldMemberState {
   userId: string;
   displayName: string;
   avatarColor: string;
+  avatarConfig: AvatarConfig;
   sprite: string;
   x: number;
   y: number;
@@ -67,9 +68,10 @@ export class GuildWorldService {
       members = new Map();
       this.positions.set(area.id, members);
     }
-    const profile = this.sqlite.prepare('SELECT display_name,avatar_color FROM users WHERE id=?').get(principal.id) as { display_name: string; avatar_color: string };
+    const profile = this.sqlite.prepare('SELECT display_name,avatar_color,avatar_config FROM users WHERE id=?').get(principal.id) as { display_name: string; avatar_color: string; avatar_config: string | null };
     members.set(principal.id, {
       userId: principal.id, displayName: profile.display_name, avatarColor: profile.avatar_color,
+      avatarConfig: resolveAvatarConfig(principal.id, profile.avatar_config),
       sprite: spriteFor(principal.id), x: input.x, y: input.y, dir: input.dir, updatedAt: this.clock(),
     });
     return { x: input.x, y: input.y, dir: input.dir };
@@ -79,7 +81,7 @@ export class GuildWorldService {
     const area = this.area(areaId);
     const members = this.prune(area.id)
       .sort((a, b) => a.userId.localeCompare(b.userId))
-      .map(({ userId, displayName, avatarColor, sprite, x, y, dir }) => ({ userId, displayName, avatarColor, sprite, x, y, dir, self: userId === principal.id }));
+      .map(({ userId, displayName, avatarColor, avatarConfig, sprite, x, y, dir }) => ({ userId, displayName, avatarColor, avatarConfig, sprite, x, y, dir, self: userId === principal.id }));
     let boundary: string | null = null;
     if (after) {
       const anchor = this.sqlite.prepare('SELECT created_at FROM area_messages WHERE id=?').get(after) as { created_at: string } | undefined;

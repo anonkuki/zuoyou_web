@@ -45,6 +45,58 @@ export const memberAttributePool = [
 export type MemberAttributeId = (typeof memberAttributePool)[number]['id'];
 export const memberAttributeIdSchema = z.enum(memberAttributePool.map((attribute) => attribute.id) as [MemberAttributeId, ...MemberAttributeId[]]);
 
+export const avatarSkins = ['porcelain', 'light', 'warm', 'tan', 'deep'] as const;
+export const avatarHairStyles = ['short', 'long', 'twintails', 'bun', 'ahoge', 'curtain', 'afro', 'bald'] as const;
+export const avatarHairColors = ['black', 'brown', 'blonde', 'red', 'pink', 'blue', 'purple', 'white'] as const;
+export const avatarEyes = ['round', 'sharp', 'closed', 'sparkle'] as const;
+export const avatarOutfits = ['adventurer', 'hoodie', 'maid', 'cloak', 'band', 'hanfu', 'workwear', 'dress'] as const;
+export const avatarAccessories = ['none', 'glasses', 'cat-ears', 'headphones', 'cap', 'mask'] as const;
+export const avatarAccents = ['red', 'orange', 'gold', 'teal', 'blue', 'purple', 'pink', 'rose'] as const;
+
+export const avatarConfigSchema = z.object({
+  skin: z.enum(avatarSkins),
+  hairStyle: z.enum(avatarHairStyles),
+  hairColor: z.enum(avatarHairColors),
+  eyes: z.enum(avatarEyes),
+  outfit: z.enum(avatarOutfits),
+  accessory: z.enum(avatarAccessories),
+  accent: z.enum(avatarAccents),
+});
+export type AvatarConfig = z.infer<typeof avatarConfigSchema>;
+
+export const defaultAvatarConfig: AvatarConfig = {
+  skin: 'light', hairStyle: 'short', hairColor: 'brown', eyes: 'round', outfit: 'adventurer', accessory: 'none', accent: 'teal',
+};
+
+/** 无捏脸配置的成员按 id 哈希派生稳定默认形象，保证永不空白 */
+export function deriveAvatarConfig(seed: string): AvatarConfig {
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  const pick = <T>(list: readonly T[], shift: number): T => list[(hash >>> shift) % list.length];
+  return {
+    skin: pick(avatarSkins, 0),
+    hairStyle: pick(avatarHairStyles, 3),
+    hairColor: pick(avatarHairColors, 6),
+    eyes: pick(avatarEyes, 9),
+    outfit: pick(avatarOutfits, 12),
+    accessory: pick(avatarAccessories, 15),
+    accent: pick(avatarAccents, 18),
+  };
+}
+
+/** 解析存储的 JSON 配置；缺失或非法时回退到派生默认 */
+export function resolveAvatarConfig(seed: string, raw: string | null | undefined): AvatarConfig {
+  if (raw) {
+    try {
+      const parsed = avatarConfigSchema.safeParse(JSON.parse(raw));
+      if (parsed.success) return parsed.data;
+    } catch {
+      // fall through to derived default
+    }
+  }
+  return deriveAvatarConfig(seed);
+}
+
 const profileTagSchema = z.string().trim().min(1).max(20);
 export const memberProfileUpdateSchema = z.object({
   displayName: z.string().trim().min(2).max(60).optional(),
@@ -55,6 +107,7 @@ export const memberProfileUpdateSchema = z.object({
   skills: z.array(profileTagSchema).max(8).optional(),
   interests: z.array(profileTagSchema).max(8).optional(),
   attributes: z.array(memberAttributeIdSchema).max(8).optional(),
+  avatarConfig: avatarConfigSchema.optional(),
   avatarColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   profileVisibility: ProfileVisibilitySchema.optional(),
 }).refine((value) => Object.keys(value).length > 0, '至少提供一个修改字段');

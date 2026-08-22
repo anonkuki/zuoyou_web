@@ -20,7 +20,7 @@ const spriteSrc: Record<string, string> = {
 };
 
 const spriteLabel: Record<string, string> = {
-  publicity: '外宣部像素接待员',
+  publicity: '外宣&幻想研像素接待员',
   tech: '技术部像素游侠',
   original: '原创部像素画师',
   dance: '舞装部像素舞者',

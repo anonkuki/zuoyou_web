@@ -126,6 +126,35 @@ test('首页故事卡与公告进入各自的真实内容页', async ({ page }) 
   await page.screenshot({ path: `${qaRoot}/announcements-1440x900.png`, fullPage: true });
 });
 
+test('部门视频使用清单中的 B站作品链接打开', async ({ page }) => {
+  await page.goto('/departments/cos');
+  const videoLink = page.locator('a[href^="https://www.bilibili.com/video/"]');
+  await expect(videoLink).toHaveCount(5);
+  const [destination] = await Promise.all([
+    page.waitForEvent('popup'),
+    videoLink.first().click(),
+  ]);
+  await destination.waitForLoadState('domcontentloaded');
+  await expect(destination).toHaveURL(/www\.bilibili\.com\/video\/BV1Vr7YzLE1R/);
+  await expect(destination.getByText('错误号:412')).toHaveCount(0);
+  await destination.close();
+});
+
+test('外宣与幻想研只展示公众号和年度总结入口', async ({ page }) => {
+  await page.goto('/departments/publicity');
+  await expect(page.locator('a[href^="https://www.bilibili.com/video/"]')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /在微信公众号阅读/ })).toHaveCount(5);
+  const annualReport = page.getByRole('link', { name: '打开佐佑动漫社 2025 年度总结网站' });
+  await expect(annualReport).toHaveAttribute('href', 'https://anonkuki.github.io/Zuoyou-Anime-Club-2025-Annual-Summary/');
+  const [reportPage] = await Promise.all([
+    page.waitForEvent('popup'),
+    annualReport.click(),
+  ]);
+  await reportPage.waitForLoadState('domcontentloaded');
+  await expect(reportPage).toHaveTitle(/佐佑动漫社 2025 年度报告/);
+  await reportPage.close();
+});
+
 test('首页主要景深层会随指针产生可辨认的差速位移', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');

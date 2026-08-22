@@ -30,9 +30,9 @@ export function PixelAvatar({ config, seed = 'guild', moving = false, dir = 'dow
   const runs = buildAvatarRuns(resolved, frame);
   return (
     <svg
-      viewBox="0 0 16 20"
+      viewBox="0 0 24 28"
       width={size}
-      height={size * 1.25}
+      height={(size * 28) / 24}
       className={`pixel-avatar ${className}`}
       data-dir={dir}
       data-moving={moving || undefined}
@@ -41,7 +41,7 @@ export function PixelAvatar({ config, seed = 'guild', moving = false, dir = 'dow
       aria-label={label}
     >
       {runs.map((part, index) => (
-        <rect key={index} x={part.x} y={part.y} width={part.w} height={part.h} fill={part.fill} />
+        <rect key={index} x={part.x} y={part.y} width={part.w} height={part.h} fill={part.fill} fillOpacity={part.o} />
       ))}
     </svg>
   );

@@ -1,3 +1,5 @@
+import type { AvatarConfig } from '@guild/contracts';
+
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string) {
     super(message);
@@ -53,6 +55,7 @@ export interface User {
   interests: string[];
   attributes?: string[];
   avatarColor: string;
+  avatarConfig?: AvatarConfig | null;
   profileVisibility: 'MEMBERS' | 'PRIVATE';
   lastSeenAt?: string | null;
 }

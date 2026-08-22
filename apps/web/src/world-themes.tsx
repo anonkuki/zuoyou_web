@@ -36,7 +36,7 @@ const hallTrees: AreaProp[] = [
   { id: 'tree-right', label: '右侧大树', rect: { x: 790, y: 280, w: 120, h: 120 }, art: <img src="/assets/background/golden-valley/tree-left.png" alt="" draggable={false} /> },
 ];
 
-/* ---------- 外宣部：黑白漫画影院 ---------- */
+/* ---------- 外宣&幻想研：黑白漫画影院 ---------- */
 const publicityScreen = (
   <svg viewBox="0 0 48 26" {...px} aria-hidden="true">
     <rect x="0" y="0" width="48" height="26" fill="#17150f" />

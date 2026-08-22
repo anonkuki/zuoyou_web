@@ -53,7 +53,7 @@ export const deptShowcases: DeptShowcase[] = [
     slug: 'publicity', order: 1, theme: '白箱影院', themeEn: 'SHIROBAKO CINEMA', accent: '#e0342f',
     vertical: '上映中',
     tagline: '把每一次热爱，都剪成值得一看再看的上映。',
-    intro: '推文、海报、摄影、公众号与 B 站——外宣部是公会的放映厅。我们负责让每一次活动被看见、被记住、被反复提起。',
+    intro: '推文、海报、摄影、公众号与 B 站，加上幻想研的影评和动漫文化讨论——我们负责让每一次活动被看见，也让值得聊的作品被认真记录。',
     duties: ['新媒体运营', '视觉设计', '宣传策划', '影像记录'],
     sections: [{ zh: '正在上映', en: 'NOW SHOWING' }, { zh: '年度片单', en: 'FILMOGRAPHY' }, { zh: '场刊', en: 'PRESS KIT' }],
     films: [

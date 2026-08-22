@@ -190,7 +190,7 @@
 .world-stage.theme-decor-host,.theme-decor{position:absolute;inset:0}
 .theme-decor i{position:absolute;pointer-events:none}
 
-/* 外宣部 · 黑白漫画影院 */
+/* 外宣&幻想研 · 黑白漫画影院 */
 .world-stage.theme-publicity,.world-area-scene.theme-publicity{background:linear-gradient(180deg,#f5efe0 0%,#efe6d2 62%,#e3d5b8 100%)}
 .theme-publicity .decor-halftone{inset:0;background-image:repeating-radial-gradient(circle at 12% 18%,rgba(23,21,15,.16) 0 2px,transparent 2px 9px),repeating-radial-gradient(circle at 88% 76%,rgba(23,21,15,.12) 0 2px,transparent 2px 11px)}
 .theme-publicity .decor-speedlines{left:-6%;top:-14%;width:60%;height:56%;background:repeating-linear-gradient(58deg,transparent 0 10px,rgba(23,21,15,.2) 10px 12px);transform:skewX(-8deg)}
@@ -284,6 +284,7 @@
 .avatar-editor{display:grid;gap:18px;padding:26px 28px;border:3px solid #26232b;background:linear-gradient(165deg,#fdf6e4,#f3e5c6);box-shadow:6px 6px 0 rgba(38,35,43,.28)}
 .avatar-editor .editor-section>span{font:400 .44rem "Press Start 2P",monospace;color:#a5824d}
 .avatar-group-label{display:block;margin:12px 0 8px;color:#8e7350;font-size:.68rem;font-weight:700;letter-spacing:.06em}
+.editor-hint{margin:-10px 0 16px;color:#8e7350;font-size:.72rem;line-height:1.6}
 .avatar-part-row{display:flex;flex-wrap:wrap;gap:10px}
 .avatar-part-option{display:grid;justify-items:center;gap:5px;width:82px;padding:8px 6px;border:3px solid #26232b;background:#fff8ee;cursor:pointer;box-shadow:3px 3px 0 #26232b;transition:transform .12s,box-shadow .12s,background .12s}
 .avatar-part-option:hover{transform:translate(-2px,-2px);box-shadow:5px 5px 0 #26232b}
@@ -305,3 +306,70 @@
 
 @media(max-width:980px){.avatar-studio-layout{grid-template-columns:1fr}.avatar-preview-panel{position:static}}
 @media(prefers-reduced-motion:reduce){.avatar-preview-stage[data-walking] .pixel-avatar{animation:none}.avatar-part-option,.avatar-swatch i,.avatar-preview-actions button{transition:none}}
+
+/* ===== 导航：登录按钮与用户芯片菜单 ===== */
+.pixel-nav-tools>.pixel-login-link{display:inline-flex;width:auto;height:40px;padding:0 16px;border-radius:20px;gap:7px;font-size:.78rem;font-weight:700;color:#ffe9b8}
+.pixel-nav-tools>.pixel-login-link svg{width:15px}
+.pixel-user-menu{position:relative;display:flex;align-items:center}
+.pixel-user-chip{display:inline-flex;align-items:center;gap:8px;height:42px;padding:3px 12px 3px 5px;border:2px solid #66402b;border-radius:22px;background:#1b110e;color:#e8c98f;font-size:.78rem;font-weight:700;box-shadow:inset 0 0 0 3px #100907;cursor:pointer;transition:.16s}
+.pixel-user-chip:hover{border-color:#c47e34;color:#ffe098;transform:translateY(-1px)}
+.pixel-user-chip .pixel-avatar{width:26px;height:30px;border-radius:14px;background:linear-gradient(180deg,#f7ecd2,#e3d0a4);padding:2px}
+.pixel-user-chip>svg{width:13px;opacity:.75}
+.pixel-user-dropdown{position:absolute;right:0;top:calc(100% + 10px);z-index:80;display:grid;min-width:220px;padding:8px;border:2px solid #66402b;background:linear-gradient(170deg,#2a1a12,#1d110c);box-shadow:0 14px 34px rgba(12,6,3,.5),inset 0 0 0 3px rgba(255,235,190,.06)}
+.pixel-user-dropdown-head{display:flex;align-items:center;gap:11px;padding:10px 10px 12px;border-bottom:1px solid rgba(228,184,100,.2)}
+.pixel-user-dropdown-head .pixel-avatar{width:34px;height:40px;padding:3px;border:2px solid rgba(228,184,100,.35);background:linear-gradient(180deg,#f7ecd2,#e0cb9d)}
+.pixel-user-dropdown-head strong{display:block;color:#ffe9bd;font-size:.86rem}
+.pixel-user-dropdown-head small{color:#a98f68;font-size:.6rem}
+.pixel-user-dropdown a,.pixel-user-dropdown button{display:flex;align-items:center;gap:10px;padding:10px 11px;border:0;background:transparent;color:#dcc491;font-size:.78rem;font-weight:600;text-align:left;text-decoration:none;cursor:pointer;transition:.12s}
+.pixel-user-dropdown a:hover,.pixel-user-dropdown button:hover{background:rgba(200,155,60,.16);color:#ffe098}
+.pixel-user-dropdown svg{width:15px}
+.pixel-user-dropdown button{color:#e0a08a}
+.pixel-user-dropdown button:hover{color:#ffc9b4}
+
+/* ===== 控制台侧栏：像素小人用户块 ===== */
+.console-user .pixel-avatar{width:30px;height:35px;padding:2px;border:2px solid rgba(228,184,100,.4);border-radius:6px;background:linear-gradient(180deg,#f7ecd2,#e0cb9d);image-rendering:pixelated}
+
+/* ===== 编辑资料页：形象卡 + 表单平衡布局 ===== */
+.profile-avatar-card{min-height:0;padding-bottom:38px}
+.profile-avatar-stage{display:grid;place-items:center;width:190px;height:220px;margin:28px 0 20px;border:3px solid rgba(228,184,100,.5);background:repeating-linear-gradient(0deg,rgba(255,244,214,.05) 0 2px,transparent 2px 22px),repeating-linear-gradient(90deg,rgba(255,244,214,.05) 0 2px,transparent 2px 22px),linear-gradient(180deg,rgba(255,246,222,.14),rgba(255,246,222,.05));box-shadow:inset 0 0 0 3px rgba(15,40,38,.55)}
+.profile-avatar-stage .pixel-avatar{width:132px;height:154px}
+.profile-avatar-cta{display:inline-flex;align-items:center;gap:8px;margin-top:20px}
+.profile-avatar-cta svg{width:14px}
+
+/* ===== 个人总览：形象卡 ===== */
+.portal-identity-card{display:flex;align-items:center;gap:26px;margin-top:40px;padding:22px 28px;border:3px solid #26232b;background:linear-gradient(150deg,#fdf6e4,#f0dfba);box-shadow:6px 6px 0 rgba(38,35,43,.25)}
+.portal-identity-avatar{display:grid;place-items:center;width:120px;height:140px;border:3px solid #26232b;background:repeating-linear-gradient(0deg,rgba(38,35,43,.05) 0 2px,transparent 2px 20px),repeating-linear-gradient(90deg,rgba(38,35,43,.05) 0 2px,transparent 2px 20px),linear-gradient(180deg,#fff8ea,#efdfbd);box-shadow:inset 0 0 0 3px #fff8ee}
+.portal-identity-avatar .pixel-avatar{width:84px;height:98px}
+.portal-identity-copy small{font:400 .44rem "Press Start 2P",monospace;color:#a5824d;letter-spacing:.08em}
+.portal-identity-copy h2{margin:7px 0 4px;font:500 1.7rem "Songti SC",serif;color:#3d2716}
+.portal-identity-copy p{margin:0;color:#8e7350;font-size:.8rem}
+.portal-identity-actions{display:flex;flex-wrap:wrap;gap:11px;margin-top:15px}
+.portal-identity-actions a{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border:3px solid #26232b;background:#fff8ee;color:#26232b;font-size:.76rem;font-weight:700;text-decoration:none;box-shadow:3px 3px 0 #26232b;transition:transform .12s,box-shadow .12s}
+.portal-identity-actions a:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 #26232b}
+.portal-identity-actions a:active{transform:translate(2px,2px);box-shadow:0 0 0 #26232b}
+.portal-identity-actions a.guild-button.primary{background:#26232b;color:#ffe9b8}
+.portal-identity-actions svg{width:14px}
+
+/* ===== 成员主页：像素形象 ===== */
+.profile-identity-avatar{display:grid;place-items:center;width:120px;height:140px;border:3px solid color-mix(in srgb,var(--profile-accent,#5279a8) 65%,#26232b);background:linear-gradient(180deg,rgba(255,248,230,.92),rgba(238,222,188,.9));box-shadow:5px 6px 0 rgba(20,14,10,.25)}
+.profile-identity-avatar .pixel-avatar{width:88px;height:103px}
+
+/* ===== 形象工房：风格卡 ===== */
+.avatar-style-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.avatar-klass-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.avatar-style-card{display:grid;justify-items:center;gap:7px;padding:14px 10px 12px;border:3px solid #26232b;background:#fff8ee;cursor:pointer;box-shadow:3px 3px 0 #26232b;transition:transform .12s,box-shadow .12s,background .12s;text-align:center}
+.avatar-style-card:hover{transform:translate(-2px,-2px);box-shadow:5px 5px 0 #26232b}
+.avatar-style-card:active{transform:translate(2px,2px);box-shadow:0 0 0 #26232b}
+.avatar-style-card.active{background:#ffe9b8;outline:3px solid #c9622f;outline-offset:-1px}
+.avatar-style-card .pixel-avatar{pointer-events:none}
+.avatar-style-card strong{font-size:.78rem;color:#26232b}
+.avatar-style-card small{color:#8e7350;font-size:.62rem;line-height:1.5}
+
+@media(max-width:760px){
+  .portal-identity-card{flex-direction:column;align-items:flex-start;gap:16px;padding:18px 20px}
+  .avatar-style-row{grid-template-columns:1fr}
+  .avatar-klass-row{grid-template-columns:repeat(2,1fr)}
+  .pixel-user-chip>span{display:none}
+  .pixel-user-dropdown{min-width:200px}
+}
+@media(prefers-reduced-motion:reduce){.portal-identity-actions a,.avatar-style-card,.pixel-user-chip{transition:none}}

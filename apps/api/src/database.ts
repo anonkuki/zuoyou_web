@@ -17,7 +17,7 @@ const departments = [
   ['dept-music', 'music', '轻音部', '吟游诗人', '乐队排练、歌曲编排与现场演出'],
   ['dept-original', 'original', '原创部', '绘卷术士', '绘画、设定创作与社团原创企划'],
   ['dept-dance', 'dance', '舞装部', '舞刃使', '宅舞排练、舞台编排与演出'],
-  ['dept-publicity', 'publicity', '外宣部', '传令官', '海报文案、新媒体运营与活动宣传'],
+  ['dept-publicity', 'publicity', '外宣&幻想研', '传令官', '宣传运营、影像记录与动漫文化研究'],
 ] as const;
 
 const archiveThemes = [
@@ -95,9 +95,9 @@ function ensureSocialShowcaseData(sqlite: Database.Database, timestamp: string):
   fictionAttributes.run('["dance","cosplay","video"]', 'user-fiction-006');
 
   const seedAvatar = sqlite.prepare('UPDATE users SET avatar_config=? WHERE id=?');
-  seedAvatar.run(JSON.stringify({ skin: 'light', hairStyle: 'long', hairColor: 'red', eyes: 'sharp', outfit: 'cloak', accessory: 'none', accent: 'rose' }), 'user-lead');
-  seedAvatar.run(JSON.stringify({ skin: 'porcelain', hairStyle: 'twintails', hairColor: 'blue', eyes: 'sparkle', outfit: 'hoodie', accessory: 'headphones', accent: 'blue' }), 'user-member');
-  seedAvatar.run(JSON.stringify({ skin: 'warm', hairStyle: 'bun', hairColor: 'black', eyes: 'round', outfit: 'hanfu', accessory: 'glasses', accent: 'gold' }), 'user-admin');
+  seedAvatar.run(JSON.stringify({ style: 'sharp', klass: 'ranger', skin: 'light', hairStyle: 'long', hairColor: 'red', eyes: 'sharp', accessory: 'none', accent: 'rose' }), 'user-lead');
+  seedAvatar.run(JSON.stringify({ style: 'chibi', klass: 'bard', skin: 'porcelain', hairStyle: 'twintails', hairColor: 'blue', eyes: 'sparkle', accessory: 'headphones', accent: 'blue' }), 'user-member');
+  seedAvatar.run(JSON.stringify({ style: 'mame', klass: 'cleric', skin: 'warm', hairStyle: 'bun', hairColor: 'black', eyes: 'round', accessory: 'glasses', accent: 'gold' }), 'user-admin');
 
   ensureGuildTavernData(sqlite);
 
@@ -128,7 +128,7 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config', '0011_publicity_fantasy_lab']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');

@@ -5,6 +5,11 @@ import {
   ApplicationStatusSchema,
   FileVisibilitySchema,
   announcementInputSchema,
+  avatarConfigSchema,
+  avatarKlasses,
+  avatarStyles,
+  deriveAvatarConfig,
+  resolveAvatarConfig,
   homeDataSchema,
   RoleSchema,
   WorkStatusSchema,
@@ -89,5 +94,25 @@ describe('shared contracts', () => {
     expect(directConversationInputSchema.safeParse({ userId: '' }).success).toBe(false);
     expect(messageCreateSchema.parse({ content: '  明天大厅见！  ' }).content).toBe('明天大厅见！');
     expect(messageCreateSchema.safeParse({ content: '   ' }).success).toBe(false);
+  });
+
+  it('supports avatar styles and stays compatible with legacy configs without style', () => {
+    expect(avatarStyles).toEqual(['chibi', 'mame', 'sharp']);
+    expect(avatarKlasses).toHaveLength(8);
+    // 旧数据：无 style/klass，且带有已废弃的 outfit 字段与 cap 配饰
+    const legacy = { skin: 'warm', hairStyle: 'bun', hairColor: 'black', eyes: 'closed', outfit: 'hanfu', accessory: 'cap', accent: 'gold' };
+    const parsed = avatarConfigSchema.parse(legacy);
+    expect(parsed.style).toBe('chibi');
+    expect(parsed.klass).toBe('knight');
+    expect(parsed.accessory).toBe('none'); // cap 已废弃，catch 为 none
+    expect('outfit' in parsed).toBe(false); // outfit 键被剥离
+    expect(avatarConfigSchema.parse({ ...legacy, style: 'mame', klass: 'mage' })).toMatchObject({ style: 'mame', klass: 'mage' });
+    expect(avatarConfigSchema.safeParse({ ...legacy, style: 'pixel' }).success).toBe(false);
+    expect(avatarConfigSchema.safeParse({ ...legacy, klass: 'paladin' }).success).toBe(false);
+    // 旧库存储的 JSON 没有 style/klass 字段，resolve 后应回退而不是丢弃整份配置
+    const resolved = resolveAvatarConfig('user-legacy', JSON.stringify(legacy));
+    expect(resolved).toMatchObject({ skin: 'warm', hairStyle: 'bun', style: 'chibi', klass: 'knight', accessory: 'none' });
+    expect(avatarStyles).toContain(resolveAvatarConfig('user-legacy', 'not-json').style);
+    expect(avatarKlasses).toContain(deriveAvatarConfig('user-legacy').klass);
   });
 });

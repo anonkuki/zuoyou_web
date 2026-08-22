@@ -117,6 +117,16 @@ describe('production seed safety', () => {
       expect(memberDepartments).toEqual([{ department_id: 'dept-cos', is_primary: 1 }]);
     });
   });
+
+  it('migrates the publicity department to 外宣&幻想研 without changing its stable id', async () => {
+    await withDevelopmentSeed(async (sqlite) => {
+      const department = sqlite.prepare("SELECT id,slug,name,description FROM departments WHERE id='dept-publicity'").get() as { id: string; slug: string; name: string; description: string };
+      const conversation = sqlite.prepare("SELECT title FROM conversations WHERE department_id='dept-publicity'").get() as { title: string };
+      expect(department).toMatchObject({ id: 'dept-publicity', slug: 'publicity', name: '外宣&幻想研' });
+      expect(department.description).toContain('动漫文化研究');
+      expect(conversation.title).toBe('外宣&幻想研协作频道');
+    });
+  });
 });
 
 describe.sequential('Adventurer Guild API', () => {
@@ -160,11 +170,11 @@ describe.sequential('Adventurer Guild API', () => {
     expect(departments.json().data.items).toHaveLength(6);
     expect(departments.json().data.items.map((item: { name: string; title: string }) => [item.name, item.title])).toEqual([
       ['COS部', '幻术师'], ['技术部', '魔导工程师'], ['轻音部', '吟游诗人'],
-      ['原创部', '绘卷术士'], ['舞装部', '舞刃使'], ['外宣部', '传令官'],
+      ['原创部', '绘卷术士'], ['舞装部', '舞刃使'], ['外宣&幻想研', '传令官'],
     ]);
     expect(departments.json().data.items.map((item: { description: string }) => item.description)).toEqual([
       '角色造型、服装道具与舞台呈现', '摄影摄像、直播与活动技术支持', '乐队排练、歌曲编排与现场演出',
-      '绘画、设定创作与社团原创企划', '宅舞排练、舞台编排与演出', '海报文案、新媒体运营与活动宣传',
+      '绘画、设定创作与社团原创企划', '宅舞排练、舞台编排与演出', '宣传运营、影像记录与动漫文化研究',
     ]);
     const activities = await app.inject({ method: 'GET', url: '/api/public/activities' });
     expect(activities.json().data.items.every((activity: Record<string, unknown>) => !('check_in_code' in activity) && !('checkInCode' in activity))).toBe(true);
@@ -896,15 +906,17 @@ describe.sequential('Pixel avatar builder', () => {
   });
 
   it('rejects avatar configs with values outside the enums', async () => {
-    const valid = { skin: 'light', hairStyle: 'short', hairColor: 'brown', eyes: 'round', outfit: 'adventurer', accessory: 'none', accent: 'teal' };
+    const valid = { style: 'chibi', klass: 'knight', skin: 'light', hairStyle: 'short', hairColor: 'brown', eyes: 'round', accessory: 'none', accent: 'teal' };
     const invalid = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { avatarConfig: { ...valid, hairStyle: 'mohawk' } } });
     expect(invalid.statusCode).toBe(400);
-    const missing = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { avatarConfig: { ...valid, outfit: undefined } } });
+    const badKlass = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { avatarConfig: { ...valid, klass: 'paladin' } } });
+    expect(badKlass.statusCode).toBe(400);
+    const missing = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { avatarConfig: { ...valid, skin: undefined } } });
     expect(missing.statusCode).toBe(400);
   });
 
   it('persists avatar config through profile update and directory payloads', async () => {
-    const config = { skin: 'tan', hairStyle: 'afro', hairColor: 'purple', eyes: 'sparkle', outfit: 'band', accessory: 'cap', accent: 'gold' };
+    const config = { style: 'mame', klass: 'mage', skin: 'tan', hairStyle: 'afro', hairColor: 'purple', eyes: 'sparkle', accessory: 'headphones', accent: 'gold' };
     const updated = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { avatarConfig: config } });
     expect(updated.statusCode).toBe(200);
     expect(updated.json().data.profile.avatarConfig).toEqual(config);
@@ -914,6 +926,13 @@ describe.sequential('Pixel avatar builder', () => {
 
     const directory = await app.inject({ method: 'GET', url: '/api/member/directory?q=白羽&page=1&pageSize=10', headers: { cookie: memberCookie } });
     expect(directory.json().data.items[0].avatarConfig).toEqual(config);
+
+    // 旧格式（无 style/klass、带废弃 outfit 字段）PATCH 后归一化：补默认值并剥离 outfit
+    const legacy = { skin: 'warm', hairStyle: 'bun', hairColor: 'black', eyes: 'closed', outfit: 'hanfu', accessory: 'glasses', accent: 'gold' };
+    const legacyUpdate = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { avatarConfig: legacy } });
+    const normalized = legacyUpdate.json().data.profile.avatarConfig;
+    expect(normalized).toMatchObject({ skin: 'warm', hairStyle: 'bun', style: 'chibi', klass: 'knight' });
+    expect('outfit' in normalized).toBe(false);
   });
 
   it('derives stable defaults for members without a saved config', async () => {
@@ -926,9 +945,9 @@ describe.sequential('Pixel avatar builder', () => {
   it('includes avatarConfig in world state members', async () => {
     await app.inject({ method: 'POST', url: '/api/member/world/move', headers: { cookie: leadCookie }, payload: { areaId: 'hall', x: 300, y: 300, dir: 'down' } });
     const state = await app.inject({ method: 'GET', url: '/api/member/world/areas/hall/state', headers: { cookie: memberCookie } });
-    const lead = (state.json().data.members as Array<{ userId: string; avatarConfig: { hairStyle: string; outfit: string } }>).find((member) => member.userId === 'user-lead');
+    const lead = (state.json().data.members as Array<{ userId: string; avatarConfig: { hairStyle: string; klass: string } }>).find((member) => member.userId === 'user-lead');
     expect(lead).toBeDefined();
     // user-lead 在种子里保存了捏脸配置
-    expect(lead!.avatarConfig).toMatchObject({ hairStyle: 'long', outfit: 'cloak', accent: 'rose' });
+    expect(lead!.avatarConfig).toMatchObject({ hairStyle: 'long', klass: 'ranger', accent: 'rose' });
   });
 });

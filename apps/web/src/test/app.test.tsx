@@ -58,10 +58,10 @@ describe('Adventurer Guild app', () => {
 
   it('renders the high-fidelity guild hall with live summary', async () => {
     renderAt('/');
-    expect(await screen.findByRole('heading', { name: /佐佑动漫社/ })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '创作型社团' })).toBeInTheDocument();
     expect(screen.getByTestId('layered-guild-scene')).toBeInTheDocument();
     expect(await screen.findByText('82')).toBeInTheDocument();
-    expect(screen.getByText('有人负责舞台，有人守着画板，')).toBeInTheDocument();
+    expect(screen.getByText('画面、舞台、声音、技术与记录在这里交织，')).toBeInTheDocument();
     expect(screen.getByText('2026 秋季招新现已开启')).toBeInTheDocument();
     expect(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('link', { name: '首页' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '搜索' })).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe('Adventurer Guild app', () => {
     ]));
     assetLayers.forEach((layer) => expect(layer).toHaveAttribute('data-license'));
     const party = scene.querySelector('[data-open-asset-layer="adventurer-party"]') as HTMLElement;
-    expect(within(party).getAllByRole('img', { name: /COS部|外宣部|原创部|轻音部/ })).toHaveLength(4);
+    expect(within(party).getAllByRole('img', { name: /COS部|外宣&幻想研|原创部|轻音部/ })).toHaveLength(4);
     expect(scene.querySelector('[data-architecture-piece="cohesive-lodge"]')).toBeInTheDocument();
     expect(scene.querySelectorAll('[data-architecture-piece]').length).toBeGreaterThanOrEqual(6);
     expect(scene.querySelector('[data-lighting="golden-hour"]')).toBeInTheDocument();
@@ -151,7 +151,7 @@ describe('Adventurer Guild app', () => {
       '轻音部乐器箱',
       '原创部画板',
       '舞装部折扇',
-      '外宣部相机',
+      '外宣&幻想研相机',
     ]);
     expect(scene.querySelector('[data-open-asset-layer="adventurer-party"]')).toHaveAttribute('data-facing', 'visitor');
   });
@@ -330,7 +330,7 @@ describe('Adventurer Guild app', () => {
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
     renderAt('/portal/profile');
-    expect(await screen.findByRole('heading', { name: '编辑个人主页' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '编辑资料' })).toBeInTheDocument();
     await user.clear(screen.getByLabelText('公会头衔'));
     await user.type(screen.getByLabelText('公会头衔'), '银翼记录官');
     await user.clear(screen.getByLabelText('技能标签'));
@@ -460,7 +460,7 @@ describe('Adventurer Guild app', () => {
     const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: ['cosplay'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
     const areas = [
       { id: 'hall', name: '公会大厅广场', color: '#c99a45', departmentSlug: null, online: 3 },
-      { id: 'publicity', name: '外宣部据点', color: '#e0342f', departmentSlug: 'publicity', online: 0 },
+      { id: 'publicity', name: '外宣&幻想研据点', color: '#e0342f', departmentSlug: 'publicity', online: 0 },
       { id: 'tech', name: '技术部工房', color: '#ff9f43', departmentSlug: 'tech', online: 1 },
       { id: 'original', name: '原创部画室', color: '#f7a8b8', departmentSlug: 'original', online: 0 },
       { id: 'dance', name: '舞装部舞台', color: '#ff4d8d', departmentSlug: 'dance', online: 0 },

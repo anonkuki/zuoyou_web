@@ -23,7 +23,7 @@ test('成员主页、成员发现与双账号聊天形成真实闭环', async ({
   await loginDemo(page, '成员');
 
   await page.goto('/portal/profile');
-  await expect(page.getByRole('heading', { name: '编辑个人主页' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '编辑资料' })).toBeVisible();
   await page.getByLabel('公会头衔').fill('星灯记录员');
   await page.getByLabel('学院').fill('艺术设计学院');
   await page.getByLabel('年级').fill('2025级');

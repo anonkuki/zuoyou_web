@@ -1,11 +1,12 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defaultAvatarConfig, type AvatarConfig } from '@guild/contracts';
+import { avatarEyes, avatarKlasses, avatarStyles, defaultAvatarConfig, type AvatarConfig } from '@guild/contracts';
 import { App } from '../app';
 import { PixelAvatar } from '../components/avatar/PixelAvatar';
+import { buildAvatarRuns } from '../components/avatar/avatar-parts';
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true, data: { user: null } }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
@@ -59,6 +60,81 @@ describe('PixelAvatar builder', () => {
     expect(svg).toHaveAttribute('data-dir', 'left');
     expect(svg).toHaveAttribute('data-moving', 'true');
   });
+
+  it('renders three art styles with distinct geometry', () => {
+    const fillsFor = (style: AvatarConfig['style']) => {
+      const view = render(<PixelAvatar config={{ ...defaultAvatarConfig, style }} />);
+      const fills = rectFills(view.container);
+      view.unmount();
+      return fills;
+    };
+    const chibi = fillsFor('chibi');
+    const mame = fillsFor('mame');
+    const sharp = fillsFor('sharp');
+    expect(chibi).not.toEqual(mame);
+    expect(chibi).not.toEqual(sharp);
+    expect(mame).not.toEqual(sharp);
+  });
+
+  it('gives every open eye type a white highlight pixel in all styles', () => {
+    for (const style of avatarStyles) {
+      for (const eyes of avatarEyes) {
+        if (eyes === 'closed') continue;
+        const view = render(<PixelAvatar config={{ ...defaultAvatarConfig, style, eyes }} />);
+        expect(rectFills(view.container), `${style}/${eyes}`).toContain('#ffffff');
+        view.unmount();
+      }
+    }
+  });
+
+  it('keeps the walking frame animation inside the 24x28 grid', () => {
+    for (const style of avatarStyles) {
+      const view = render(<PixelAvatar config={{ ...defaultAvatarConfig, style, hairStyle: 'long' }} moving />);
+      const rects = [...view.container.querySelectorAll('rect')];
+      for (const rect of rects) {
+        const x = Number(rect.getAttribute('x'));
+        const y = Number(rect.getAttribute('y'));
+        expect(x, `${style} rect x`).toBeGreaterThanOrEqual(0);
+        expect(y, `${style} rect y`).toBeGreaterThanOrEqual(0);
+        expect(x + Number(rect.getAttribute('width')), `${style} rect right`).toBeLessThanOrEqual(24);
+        expect(y + Number(rect.getAttribute('height')), `${style} rect bottom`).toBeLessThanOrEqual(28);
+      }
+      view.unmount();
+    }
+  });
+
+  it('gives every class a distinct silhouette across all styles', () => {
+    const fillsFor = (klass: AvatarConfig['klass'], style: AvatarConfig['style']) => {
+      const view = render(<PixelAvatar config={{ ...defaultAvatarConfig, klass, style }} />);
+      const fills = rectFills(view.container);
+      view.unmount();
+      return fills;
+    };
+    for (const style of avatarStyles) {
+      const seen = new Set<string>();
+      for (const klass of avatarKlasses) {
+        const key = JSON.stringify(fillsFor(klass, style));
+        expect(seen.has(key), `${style}/${klass} silhouette collides with another class`).toBe(false);
+        seen.add(key);
+      }
+    }
+  });
+
+  it('keeps every class inside the 24x28 grid in both walk frames', () => {
+    for (const style of avatarStyles) {
+      for (const klass of avatarKlasses) {
+        for (const frame of [0, 1] as const) {
+          const runs = buildAvatarRuns({ ...defaultAvatarConfig, style, klass, hairStyle: 'long' }, frame);
+          for (const part of runs) {
+            expect(part.x, `${style}/${klass} f${frame} x`).toBeGreaterThanOrEqual(0);
+            expect(part.y, `${style}/${klass} f${frame} y`).toBeGreaterThanOrEqual(0);
+            expect(part.x + part.w, `${style}/${klass} f${frame} right`).toBeLessThanOrEqual(24);
+            expect(part.y + part.h, `${style}/${klass} f${frame} bottom`).toBeLessThanOrEqual(28);
+          }
+        }
+      }
+    }
+  });
 });
 
 describe('Avatar studio page', () => {
@@ -98,7 +174,7 @@ describe('World area theming', () => {
     const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: ['cosplay'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
     const areas = [
       { id: 'hall', name: '公会大厅广场', color: '#c99a45', departmentSlug: null, online: 3 },
-      { id: 'publicity', name: '外宣部据点', color: '#e0342f', departmentSlug: 'publicity', online: 0 },
+      { id: 'publicity', name: '外宣&幻想研据点', color: '#e0342f', departmentSlug: 'publicity', online: 0 },
       { id: 'tech', name: '技术部工房', color: '#ff9f43', departmentSlug: 'tech', online: 1 },
       { id: 'original', name: '原创部画室', color: '#f7a8b8', departmentSlug: 'original', online: 0 },
       { id: 'dance', name: '舞装部舞台', color: '#ff4d8d', departmentSlug: 'dance', online: 0 },
@@ -120,5 +196,84 @@ describe('World area theming', () => {
       expect(scene, `theme-${id} card`).not.toBeNull();
       expect(scene?.querySelector('.world-prop'), `theme-${id} props`).not.toBeNull();
     }
+  });
+});
+
+const memberUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: ['cosplay'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+const memberConfig: AvatarConfig = { style: 'mame', klass: 'mage', skin: 'porcelain', hairStyle: 'twintails', hairColor: 'blue', eyes: 'sparkle', accessory: 'headphones', accent: 'blue' };
+
+function stubSession(user: unknown, extra?: (path: string, init?: RequestInit) => Response | null) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = typeof input === 'string' ? input : input.toString();
+    if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const hit = extra?.(path, init);
+    if (hit) return hit;
+    return new Response(JSON.stringify({ ok: true, data: { items: [], page: 1, pageSize: 20, total: 0, points: 0, events: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+describe('Navbar user entry', () => {
+  const navbar = (container: HTMLElement) => container.querySelector('.pixel-navbar') as HTMLElement;
+
+  it('shows a clear login button for guests', async () => {
+    stubSession(null);
+    const { container } = renderAt('/');
+    await screen.findByRole('heading', { name: '佐佑动漫社' }, { timeout: 4000 }).catch(() => undefined);
+    await waitFor(() => expect(navbar(container)).not.toBeNull());
+    const login = within(navbar(container)).getByRole('link', { name: '登录' });
+    expect(login).toHaveAttribute('href', '/login');
+  });
+
+  it('opens an account menu with avatar studio and logout for signed-in members', async () => {
+    stubSession({ ...memberUser, avatarConfig: memberConfig });
+    const user = userEvent.setup();
+    const { container } = renderAt('/');
+    const chip = await within(navbar(container)).findByRole('button', { name: '白羽见习者 的账号菜单' });
+    expect(chip).toHaveAttribute('aria-expanded', 'false');
+    await user.click(chip);
+    expect(chip).toHaveAttribute('aria-expanded', 'true');
+    const menu = within(navbar(container)).getByRole('menu', { name: '账号菜单' });
+    expect(within(menu).getByRole('menuitem', { name: '个人主页' })).toHaveAttribute('href', '/portal/members/user-member');
+    expect(within(menu).getByRole('menuitem', { name: '形象工房 · 捏脸' })).toHaveAttribute('href', '/portal/avatar');
+    expect(within(menu).getByRole('menuitem', { name: '成员中心' })).toHaveAttribute('href', '/portal');
+    expect(within(menu).getByRole('menuitem', { name: '退出登录' })).toBeEnabled();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(within(navbar(container)).queryByRole('menu')).toBeNull());
+  });
+
+  it('lets admins reach the console from the account menu', async () => {
+    stubSession({ ...memberUser, id: 'user-admin', displayName: '星门总管', role: 'ADMIN', avatarConfig: memberConfig });
+    const user = userEvent.setup();
+    const { container } = renderAt('/');
+    await user.click(await within(navbar(container)).findByRole('button', { name: '星门总管 的账号菜单' }));
+    const menu = within(navbar(container)).getByRole('menu', { name: '账号菜单' });
+    expect(within(menu).getByRole('menuitem', { name: '管理台' })).toHaveAttribute('href', '/admin');
+  });
+});
+
+describe('Profile and portal identity cards', () => {
+  it('shows the pixel avatar card and studio entry in the profile editor', async () => {
+    const profile = { ...memberUser, departmentName: 'COS部', presence: 'ONLINE', joinedAt: '2025-09-01T00:00:00.000Z', avatarConfig: memberConfig };
+    stubSession(memberUser, (path) => {
+      if (path === '/api/member/profile') return new Response(JSON.stringify({ ok: true, data: { profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return null;
+    });
+    const { container } = renderAt('/portal/profile');
+    expect(await screen.findByRole('heading', { name: '编辑资料' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /前往形象工房捏脸/ })).toHaveAttribute('href', '/portal/avatar');
+    await waitFor(() => expect(container.querySelector('.profile-avatar-stage .pixel-avatar')).not.toBeNull());
+  });
+
+  it('shows the identity card with quick links on portal home', async () => {
+    stubSession({ ...memberUser, avatarConfig: memberConfig });
+    const { container } = renderAt('/portal');
+    expect(await screen.findByRole('heading', { name: /欢迎回来/ })).toBeInTheDocument();
+    await waitFor(() => expect(container.querySelector('.portal-identity-card .pixel-avatar')).not.toBeNull());
+    const card = container.querySelector('.portal-identity-card') as HTMLElement;
+    expect(within(card).getByRole('link', { name: /捏脸/ })).toHaveAttribute('href', '/portal/avatar');
+    expect(within(card).getByRole('link', { name: /编辑资料/ })).toHaveAttribute('href', '/portal/profile');
+    expect(within(card).getByRole('link', { name: /像素广场/ })).toHaveAttribute('href', '/portal/world');
   });
 });

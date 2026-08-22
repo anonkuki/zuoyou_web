@@ -15,11 +15,12 @@ export function GuildHero({ stats, loading = false, onSelectSpeaker, selectedSpe
       </aside>
       <motion.div className="guild-hero-copy" data-surface="open-landscape-overlay" data-visual-priority="primary" initial={{ x: -28 }} animate={{ x: 0 }} transition={{ duration: .7 }}>
         <span className="hero-mini-crest">✦</span>
-        <small className="hero-season">A NEW DAY AT ZOUYOU · 2026</small>
-        <h1>佐佑动漫社</h1>
-        <div className="hero-title-plaque">今天也在公会集合</div>
+        <small className="hero-season">SAYUU ANIMATION CLUB · SINCE 1999</small>
+        <strong className="hero-we-are">WE ARE</strong>
+        <h1 className="hero-creative-title">创作型社团</h1>
+        <div className="hero-title-plaque">自由度高 · 综合性强</div>
         <b>ZOUYOU ANIME GUILD</b>
-        <p><span>有人负责舞台，有人守着画板，</span><span>也有人把每次相聚好好记录下来。</span><span>欢迎来看看，我们今天正在忙什么。</span></p>
+        <p><span>画面、舞台、声音、技术与记录在这里交织，</span><span>每一种兴趣，都能成为共同创作的起点。</span></p>
         <div><Link className="hero-pixel-button gold" to="/departments">逛逛各部门 <ArrowRight /></Link><Link className="hero-pixel-button blue" to="/join">来认识我们 <ArrowRight /></Link></div>
       </motion.div>
       <a className="hero-scroll-cue" href="#guild-passages" data-scroll-cue="continue" aria-label="继续查看公会入口">

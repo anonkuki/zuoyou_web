@@ -11,8 +11,8 @@ import type Database from 'better-sqlite3';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 import {
-  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, successResponse, worldMoveSchema,
-  type ActivityStatus, type Role,
+  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, resolveAvatarConfig, successResponse, worldMoveSchema,
+  type ActivityStatus, type AvatarConfig, type Role,
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
 import { canTransitionActivity } from './activity.js';
@@ -49,6 +49,7 @@ interface UserRow {
   skills: string;
   interests: string;
   avatar_color: string;
+  avatar_config: string | null;
   profile_visibility: 'MEMBERS' | 'PRIVATE';
   last_seen_at: string | null;
   is_active: number;
@@ -69,6 +70,7 @@ interface Principal {
   skills: string[];
   interests: string[];
   avatarColor: string;
+  avatarConfig: AvatarConfig;
   profileVisibility: 'MEMBERS' | 'PRIVATE';
   lastSeenAt: string | null;
 }
@@ -107,7 +109,7 @@ const publicAnnouncement = (row: AnnouncementRow) => ({
 const cleanUser = (user: UserRow, departmentIds: string[] = user.department_id ? [user.department_id] : []): Principal => ({
   id: user.id, username: user.username, displayName: user.display_name, email: user.email,
   role: user.role, departmentId: user.department_id, departmentIds, bio: user.bio, guildTitle: user.guild_title, college: user.college, grade: user.grade,
-  skills: safeTags(user.skills), interests: safeTags(user.interests), avatarColor: user.avatar_color, profileVisibility: user.profile_visibility, lastSeenAt: user.last_seen_at,
+  skills: safeTags(user.skills), interests: safeTags(user.interests), avatarColor: user.avatar_color, avatarConfig: resolveAvatarConfig(user.id, user.avatar_config), profileVisibility: user.profile_visibility, lastSeenAt: user.last_seen_at,
 });
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {

@@ -20,7 +20,7 @@ const parallaxLayers = [
 
 const adventurers = [
   { file: 'rose-adventurer.png', name: '阿澄', role: 'COS部 · 服装与角色', line: '下午要整理衣装间，想来搭把手吗？', className: 'party-member party-rose' },
-  { file: 'guild-steward.png', name: '小祈', role: '外宣部 · 活动记录', line: '相机已经充好电了，今天也别忘了留下合照。', className: 'party-member party-steward' },
+  { file: 'guild-steward.png', name: '小祈', role: '外宣&幻想研 · 活动记录', line: '相机已经充好电了，今天也别忘了留下合照。', className: 'party-member party-steward' },
   { file: 'green-mage.png', name: '青禾', role: '原创部 · 绘画创作', line: '窗边光线正好，我在画下一期社刊的封面。', className: 'party-member party-mage' },
   { file: 'silver-ranger.png', name: '银铃', role: '轻音部 · 乐队排练', line: '排练室还有空位，路过的话就来听一首吧。', className: 'party-member party-ranger' },
 ] as const;
@@ -31,7 +31,7 @@ const departmentProps = [
   { name: '轻音部乐器箱', short: 'MUSIC', className: 'culture-music' },
   { name: '原创部画板', short: 'ART', className: 'culture-art' },
   { name: '舞装部折扇', short: 'DANCE', className: 'culture-dance' },
-  { name: '外宣部相机', short: 'MEDIA', className: 'culture-camera' },
+  { name: '外宣&幻想研相机', short: 'MEDIA', className: 'culture-camera' },
 ] as const;
 
 function ArchitectureImage({ file, className, piece = true }: { file: string; className: string; piece?: true | string }) {

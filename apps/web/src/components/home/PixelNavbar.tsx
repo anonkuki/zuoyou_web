@@ -1,7 +1,11 @@
-import { Menu, Search, UserRound, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { ChevronDown, LayoutDashboard, LogOut, Menu, Palette, Search, UserRound, Users, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { api, json } from '../../api';
 import { useAuth } from '../../auth';
+import { PixelAvatar } from '../avatar/PixelAvatar';
 
 const navigation = [
   ['/', '首页'],
@@ -12,8 +16,72 @@ const navigation = [
   ['/join', '加入我们'],
 ] as const;
 
-export function PixelNavbar() {
+/** 右上角用户芯片：迷你像素小人 + 昵称，展开账号菜单 */
+function UserMenu() {
   const { user } = useAuth();
+  const client = useQueryClient();
+  const navigate = useNavigate();
+  const reduce = useReducedMotion();
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const logout = useMutation({
+    mutationFn: () => api('/api/auth/logout', json('POST')),
+    onSuccess: async () => { client.clear(); navigate('/'); },
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    const onPointer = (event: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onPointer);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('pointerdown', onPointer); };
+  }, [open]);
+
+  if (!user) {
+    return <Link className="pixel-login-link" to="/login"><UserRound />登录</Link>;
+  }
+  const home = user.role === 'MEMBER' ? '/portal' : '/admin';
+  const close = () => setOpen(false);
+  return <div className="pixel-user-menu" ref={rootRef}>
+    <button
+      className="pixel-user-chip"
+      aria-expanded={open}
+      aria-haspopup="menu"
+      aria-label={`${user.displayName} 的账号菜单`}
+      onClick={() => setOpen(!open)}
+    >
+      <PixelAvatar config={user.avatarConfig} seed={user.id} size={26} label="" />
+      <span>{user.displayName}</span>
+      <ChevronDown />
+    </button>
+    <AnimatePresence>
+      {open && <motion.div
+        className="pixel-user-dropdown"
+        role="menu"
+        aria-label="账号菜单"
+        initial={reduce ? false : { opacity: 0, y: -6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={reduce ? undefined : { opacity: 0, y: -6 }}
+        transition={{ duration: 0.16 }}
+      >
+        <div className="pixel-user-dropdown-head">
+          <PixelAvatar config={user.avatarConfig} seed={user.id} size={40} label={`${user.displayName} 的像素小人`} />
+          <div><strong>{user.displayName}</strong><small>{user.role === 'ADMIN' ? '社长 / 管理员' : user.role === 'DEPARTMENT_LEAD' ? '部门负责人' : '正式成员'}</small></div>
+        </div>
+        <Link role="menuitem" to={`/portal/members/${user.id}`} onClick={close}><UserRound />个人主页</Link>
+        <Link role="menuitem" to="/portal/avatar" onClick={close}><Palette />形象工房 · 捏脸</Link>
+        <Link role="menuitem" to={home} onClick={close}><LayoutDashboard />{user.role === 'MEMBER' ? '成员中心' : '管理台'}</Link>
+        {user.role !== 'MEMBER' && <Link role="menuitem" to="/portal" onClick={close}><Users />成员中心</Link>}
+        <button role="menuitem" onClick={() => logout.mutate()} disabled={logout.isPending}><LogOut />退出登录</button>
+      </motion.div>}
+    </AnimatePresence>
+  </div>;
+}
+
+export function PixelNavbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -36,7 +104,7 @@ export function PixelNavbar() {
       </nav>
       <div className="pixel-nav-tools">
         <button aria-label="搜索" onClick={() => setSearchOpen(true)}><Search/></button>
-        <Link aria-label={user ? '进入成员中心' : '用户入口'} to={user ? (user.role === 'MEMBER' ? '/portal' : '/admin') : '/login'}><UserRound/></Link>
+        <UserMenu />
         <button className="pixel-menu-button" aria-label={menuOpen ? '关闭菜单' : '打开菜单'} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X/> : <Menu/>}</button>
       </div>
     </header>

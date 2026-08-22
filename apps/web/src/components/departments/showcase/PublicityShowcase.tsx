@@ -7,7 +7,7 @@ import { WordReveal } from '../WordReveal';
 import { PixelDivider, PixelSprite } from '../pixel';
 import { ChapterRail, DeptReveal, SectionHead, useHeroParallax } from '../shared';
 
-/** 外宣部 · 白箱影院 SHIROBAKO CINEMA：黑白漫画影院 + 逐帧跳进 + 胶片条 scroll-snap + 放映机闪烁 */
+/** 外宣&幻想研 · 白箱影院 SHIROBAKO CINEMA：黑白漫画影院 + 逐帧跳进 + 胶片条 scroll-snap + 放映机闪烁 */
 export function PublicityShowcase({ dept, show }: ShowcaseProps) {
   const heroRef = useRef<HTMLElement>(null);
   const parallax = useHeroParallax(heroRef);

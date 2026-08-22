@@ -45,42 +45,52 @@ export const memberAttributePool = [
 export type MemberAttributeId = (typeof memberAttributePool)[number]['id'];
 export const memberAttributeIdSchema = z.enum(memberAttributePool.map((attribute) => attribute.id) as [MemberAttributeId, ...MemberAttributeId[]]);
 
+export const avatarStyles = ['chibi', 'mame', 'sharp'] as const;
+/** DND 职业：决定服装/头饰/手持物，与 style（脸型/比例）正交组合 */
+export const avatarKlasses = ['knight', 'mage', 'assassin', 'ranger', 'bard', 'mercenary', 'cleric', 'berserker'] as const;
 export const avatarSkins = ['porcelain', 'light', 'warm', 'tan', 'deep'] as const;
 export const avatarHairStyles = ['short', 'long', 'twintails', 'bun', 'ahoge', 'curtain', 'afro', 'bald'] as const;
 export const avatarHairColors = ['black', 'brown', 'blonde', 'red', 'pink', 'blue', 'purple', 'white'] as const;
 export const avatarEyes = ['round', 'sharp', 'closed', 'sparkle'] as const;
-export const avatarOutfits = ['adventurer', 'hoodie', 'maid', 'cloak', 'band', 'hanfu', 'workwear', 'dress'] as const;
-export const avatarAccessories = ['none', 'glasses', 'cat-ears', 'headphones', 'cap', 'mask'] as const;
+export const avatarAccessories = ['none', 'glasses', 'cat-ears', 'headphones', 'mask'] as const;
 export const avatarAccents = ['red', 'orange', 'gold', 'teal', 'blue', 'purple', 'pink', 'rose'] as const;
 
 export const avatarConfigSchema = z.object({
+  /** 美术风格；旧数据缺省时按 chibi 解析 */
+  style: z.enum(avatarStyles).default('chibi'),
+  /** 职业；旧数据（含已废弃的 outfit 字段）缺省时按 knight 解析 */
+  klass: z.enum(avatarKlasses).default('knight'),
   skin: z.enum(avatarSkins),
   hairStyle: z.enum(avatarHairStyles),
   hairColor: z.enum(avatarHairColors),
   eyes: z.enum(avatarEyes),
-  outfit: z.enum(avatarOutfits),
-  accessory: z.enum(avatarAccessories),
+  accessory: z.enum(avatarAccessories).catch('none'),
   accent: z.enum(avatarAccents),
 });
 export type AvatarConfig = z.infer<typeof avatarConfigSchema>;
 
 export const defaultAvatarConfig: AvatarConfig = {
-  skin: 'light', hairStyle: 'short', hairColor: 'brown', eyes: 'round', outfit: 'adventurer', accessory: 'none', accent: 'teal',
+  style: 'chibi', klass: 'knight', skin: 'light', hairStyle: 'short', hairColor: 'brown', eyes: 'round', accessory: 'none', accent: 'teal',
 };
 
 /** 无捏脸配置的成员按 id 哈希派生稳定默认形象，保证永不空白 */
 export function deriveAvatarConfig(seed: string): AvatarConfig {
   let hash = 0;
   for (let index = 0; index < seed.length; index += 1) hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
-  const pick = <T>(list: readonly T[], shift: number): T => list[(hash >>> shift) % list.length];
+  // 每个字段重新打散哈希（imul 保证 32 位精度），避免字段间相关性导致大片成员形象雷同
+  const pick = <T,>(list: readonly T[]): T => {
+    hash = (Math.imul(hash, 1103515245) + 12345) >>> 0;
+    return list[hash % list.length];
+  };
   return {
-    skin: pick(avatarSkins, 0),
-    hairStyle: pick(avatarHairStyles, 3),
-    hairColor: pick(avatarHairColors, 6),
-    eyes: pick(avatarEyes, 9),
-    outfit: pick(avatarOutfits, 12),
-    accessory: pick(avatarAccessories, 15),
-    accent: pick(avatarAccents, 18),
+    style: pick(avatarStyles),
+    klass: pick(avatarKlasses),
+    skin: pick(avatarSkins),
+    hairStyle: pick(avatarHairStyles),
+    hairColor: pick(avatarHairColors),
+    eyes: pick(avatarEyes),
+    accessory: pick(avatarAccessories),
+    accent: pick(avatarAccents),
   };
 }
 
@@ -129,7 +139,7 @@ export const worldMapHeight = 540;
 
 export const worldAreas = [
   { id: 'hall', name: '公会大厅广场', color: '#c99a45', departmentSlug: null },
-  { id: 'publicity', name: '外宣部据点', color: '#e0342f', departmentSlug: 'publicity' },
+  { id: 'publicity', name: '外宣&幻想研据点', color: '#e0342f', departmentSlug: 'publicity' },
   { id: 'tech', name: '技术部工房', color: '#ff9f43', departmentSlug: 'tech' },
   { id: 'original', name: '原创部画室', color: '#f7a8b8', departmentSlug: 'original' },
   { id: 'dance', name: '舞装部舞台', color: '#ff4d8d', departmentSlug: 'dance' },

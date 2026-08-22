@@ -11,6 +11,7 @@ import { DanceShowcase } from './showcase/DanceShowcase';
 import { CosShowcase } from './showcase/CosShowcase';
 import { MusicShowcase } from './showcase/MusicShowcase';
 import { DepartmentMediaShelf } from './DepartmentMediaShelf';
+import { DepartmentPhotoGallery } from './DepartmentPhotoGallery';
 
 export interface ShowcaseProps { dept: DepartmentInfo; show: DeptShowcase }
 
@@ -18,7 +19,7 @@ export interface ShowcaseProps { dept: DepartmentInfo; show: DeptShowcase }
 export function ClosingPanel({ dept, show, id }: ShowcaseProps & { id?: string }) {
   const section = show.sections[2];
   return (
-    <><DepartmentMediaShelf slug={show.slug} /><section className="dept-closing" aria-label={section.zh} id={id}>
+    <><DepartmentPhotoGallery slug={show.slug} /><DepartmentMediaShelf slug={show.slug} /><section className="dept-closing" aria-label={section.zh} id={id}>
       <div className="dept-closing-inner">
         <header className="dept-section-head">
           <span className="dept-section-no">03</span>

@@ -7,6 +7,7 @@ import { NoticeBoard } from './NoticeBoard';
 import { MascotGuide, type SceneSpeaker } from './MascotGuide';
 import { useState } from 'react';
 import { GuildScrollStory } from './GuildScrollStory';
+import { HomeSocialOutposts } from './HomeSocialOutposts';
 
 export function HomePage() {
   const [speaker, setSpeaker] = useState<SceneSpeaker | null>(null);
@@ -15,6 +16,7 @@ export function HomePage() {
     <GuildHero stats={home.data?.stats} loading={home.isLoading} onSelectSpeaker={setSpeaker} selectedSpeaker={speaker?.name}/>
     <MascotGuide speaker={speaker} onClearSpeaker={() => setSpeaker(null)}/>
     <GuildScrollStory />
+    <HomeSocialOutposts />
     <section className="home-entry-zone" id="guild-passages">
       <header className="entry-zone-heading">
         <small>WELCOME TO ZOUYOU</small>

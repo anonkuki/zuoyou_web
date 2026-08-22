@@ -48,12 +48,20 @@ const film = (slug: string, index: number, title: string, romaji: string, year: 
   return { title, romaji, year, cover: `/assets/departments/${slug}/${nn}-cover.jpg`, banner: `/assets/departments/${slug}/${nn}-banner.jpg` };
 };
 
+const techFilm = (file: string, index: number, title: string): FilmEntry => ({
+  title,
+  romaji: `FIELD RECORD ${String(index).padStart(2, '0')}`,
+  year: 2025,
+  cover: `/assets/photos/departments/tech/${file}`,
+  banner: `/assets/photos/departments/tech/${file}`,
+});
+
 export const deptShowcases: DeptShowcase[] = [
   {
     slug: 'publicity', order: 1, theme: '白箱影院', themeEn: 'SHIROBAKO CINEMA', accent: '#e0342f',
     vertical: '上映中',
     tagline: '把每一次热爱，都剪成值得一看再看的上映。',
-    intro: '推文、海报、摄影、公众号与 B 站，加上幻想研的影评和动漫文化讨论——我们负责让每一次活动被看见，也让值得聊的作品被认真记录。',
+    intro: '外宣负责推文、海报、摄影与宣传策划；幻想研则围绕看番、影评和动漫鉴赏展开交流。我们既记录社团活动，也认真分享值得讨论的作品。',
     duties: ['新媒体运营', '视觉设计', '宣传策划', '影像记录'],
     sections: [{ zh: '正在上映', en: 'NOW SHOWING' }, { zh: '年度片单', en: 'FILMOGRAPHY' }, { zh: '场刊', en: 'PRESS KIT' }],
     films: [
@@ -74,19 +82,19 @@ export const deptShowcases: DeptShowcase[] = [
   {
     slug: 'tech', order: 2, theme: '取景器', themeEn: 'VIEWFINDER', accent: '#ff9f43',
     vertical: '撮影中',
-    tagline: '世界在快门落下的一瞬成为永恒。',
-    intro: '摄影、直播、灯光、后期——技术部躲在取景器后面，把公会的每个高光时刻收进底片。我们不出现在照片里，但每张照片都是我们的签名。',
-    duties: ['摄影摄像', '直播推流', '后期制作', '舞台技术'],
+    tagline: '把想法拍下来，也把活动稳稳地送上舞台。',
+    intro: '技术部围绕视频制作、摄影和道具制作开展活动。平时会组织 Premiere Pro、After Effects 教学和道具制作周常；社庆期间负责后台调控，也参与拜年祭、社团 OP 等项目的拍摄、剪辑与制作。这里既有剪辑与道具教程，也有摄影经验交流，偶尔还会一起聚餐。',
+    duties: ['视频拍摄与剪辑', '摄影与经验交流', '道具制作周常', '社庆后台调控'],
     sections: [{ zh: '取景中', en: 'FOCUSING' }, { zh: '底片夹', en: 'CONTACT SHEET' }, { zh: '参数', en: 'EXIF' }],
     films: [
-      film('tech', 1, 'たまゆら', 'Tamayura', 2010),
-      film('tech', 2, '多田くんは恋をしない', 'Tada-kun wa Koi wo Shinai', 2018),
-      film('tech', 3, 'Just Because!', 'Just Because!', 2017),
-      film('tech', 4, '聲の形', 'Koe no Katachi', 2016),
-      film('tech', 5, '天気の子', 'Tenki no Ko', 2019),
-      film('tech', 6, '言の葉の庭', 'Kotonoha no Niwa', 2013),
-      film('tech', 7, '秒速５センチメートル', 'Byousoku 5 Centimeter', 2007),
-      film('tech', 8, 'ヴァイオレット・エヴァーガーデン', 'Violet Evergarden', 2018),
+      techFilm('05A52E2C6776BCF896B169F36D51D9EF.jpg', 1, '现场机位准备'),
+      techFilm('0F256EDC9DEA3894BFCD66D6F699B94B.jpg', 2, '镜头参数调整'),
+      techFilm('4A048043B0CFFB4FD3FF364DA94CCF50.jpg', 3, '后台素材整理'),
+      techFilm('571D9F4E47905DF526478FDBAEEED237.jpg', 4, '直播后台调控'),
+      techFilm('B77E7B6746F5AB925E73A1BBBC7EAA31.jpg', 5, '活动摄影机位'),
+      techFilm('AFAF89DD0D2AABA19B1E214B0DAD826D.jpg', 6, '现场跟拍'),
+      techFilm('37413AB610492BA9D93C231451B8FAAE.png', 7, '春日底片'),
+      techFilm('FAFD2BFA46F10447A854C4996C805206.png', 8, '胶片练习'),
     ],
   },
   {

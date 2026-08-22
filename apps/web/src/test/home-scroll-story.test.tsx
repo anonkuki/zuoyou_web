@@ -21,6 +21,10 @@ describe('GuildScrollStory', () => {
     expect(within(story).getByText('自由度高')).toBeInTheDocument();
     expect(within(story).getByText('综合性强')).toBeInTheDocument();
 
+    const indexedPhotos = Array.from(story.querySelectorAll<HTMLImageElement>('figure img'));
+    expect(indexedPhotos).toHaveLength(8);
+    expect(indexedPhotos.every(image => image.getAttribute('src')?.startsWith('/assets/photos/homepage/'))).toBe(true);
+
     const freedomChapter = story.querySelector('[data-scroll-section="freedom"]');
     expect(freedomChapter).not.toBeNull();
     const freedomGallery = within(freedomChapter as HTMLElement).getByLabelText('创作作品拼贴');

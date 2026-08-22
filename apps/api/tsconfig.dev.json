@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@guild/contracts": ["../../packages/contracts/src/index.ts"]
+    }
+  }
+}

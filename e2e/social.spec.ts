@@ -16,6 +16,26 @@ async function openConversation(page: Page, title: string) {
   await expect(page.locator('.active-chat-header')).toContainText(title);
 }
 
+test('成员捏脸配置可保存并在刷新后回读', async ({ page }) => {
+  await loginDemo(page, '成员');
+  await page.goto('/portal/avatar');
+  await expect(page.getByRole('heading', { name: '像素形象工房' })).toBeVisible();
+
+  await page.getByRole('button', { name: /耳机/ }).click();
+  await page.getByRole('button', { name: '玫瑰' }).click();
+  const saveResponse = page.waitForResponse((response) =>
+    response.url().endsWith('/api/member/profile')
+      && response.request().method() === 'PATCH',
+  );
+  await page.getByRole('button', { name: '保存像素形象' }).click();
+  expect((await saveResponse).status()).toBe(200);
+  await expect(page.getByText('像素形象已保存')).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: /耳机/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: '玫瑰' })).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('成员主页、成员发现与双账号聊天形成真实闭环', async ({ page }) => {
   const consoleErrors: string[] = [];
   page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });

@@ -8,7 +8,7 @@
     "test": "pnpm --filter @guild/contracts build && vitest run",
     "build": "tsc",
     "db:seed": "tsx src/seed-cli.ts",
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch --tsconfig tsconfig.dev.json src/server.ts",
     "start": "node dist/server.js"
   },
   "dependencies": {

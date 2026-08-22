@@ -5,14 +5,14 @@ import { Link } from 'react-router-dom';
 const departmentNames = ['COS', '原创', '舞装', '轻音', '技术', '外宣&幻想研'] as const;
 
 const storyImages = {
-  origin: '/assets/departments/original/01-banner.jpg',
-  cosplay: '/assets/departments/cos/03-banner.jpg',
-  music: '/assets/departments/music/02-banner.jpg',
-  dance: '/assets/departments/dance/03-banner.jpg',
-  publicity: '/assets/departments/publicity/05-banner.jpg',
-  sketch: '/assets/departments/original/06-banner.jpg',
-  ensemble: '/assets/departments/music/05-banner.jpg',
-  encounter: '/assets/departments/dance/06-banner.jpg',
+  origin: '/assets/photos/homepage/history-anniversary.jpg',
+  cosplay: '/assets/photos/homepage/department-cosplay.jpg',
+  music: '/assets/photos/homepage/department-music-stage.jpg',
+  dance: '/assets/photos/homepage/department-dance-stage.jpg',
+  publicity: '/assets/photos/homepage/department-publicity-screening.jpg',
+  sketch: '/assets/photos/homepage/creative-workshop.jpg',
+  ensemble: '/assets/photos/homepage/creative-ensemble.jpg',
+  encounter: '/assets/photos/homepage/friends-night.jpg',
 };
 
 export function GuildScrollStory() {
@@ -50,7 +50,7 @@ export function GuildScrollStory() {
           <Link className="story-text-link" to="/history">翻阅社团历史 <ArrowUpRight /></Link>
         </div>
         <motion.div className="story-origin-collage" {...mediaFromRight} aria-label="社团创作素材拼贴">
-          <figure className="story-frame frame-origin"><img src={storyImages.origin} alt="原创部绘画作品" /><figcaption>DRAW / CREATE / SHARE</figcaption></figure>
+          <figure className="story-frame frame-origin"><img src={storyImages.origin} alt="佐佑动漫社社庆成员合影" /><figcaption>MEET / CREATE / REMEMBER</figcaption></figure>
           <div className="mascot-card"><img className="story-mascot-cutout" src="/assets/brand/youzi-mascot.png" alt="佐佑动漫社柚子吉祥物" /><span>你好，新朋友</span></div>
           <span className="story-stamp">SINCE<br />1999</span>
         </motion.div>
@@ -87,12 +87,12 @@ export function GuildScrollStory() {
           </div>
           <motion.div className="freedom-gallery" aria-label="创作作品拼贴" {...mediaFromRight}>
             <figure className="freedom-main-art">
-              <img src={storyImages.sketch} alt="从草图开始的原创绘画" />
+              <img src={storyImages.sketch} alt="社团成员围坐讨论创作内容" />
               <figcaption><small>01 / START WITH A LINE</small><strong>把喜欢的事<br />做成作品</strong></figcaption>
             </figure>
             <div className="freedom-art-strip">
-              <figure><img src={storyImages.ensemble} alt="音乐创作与合奏" /><figcaption>SOUND</figcaption></figure>
-              <figure><img src={storyImages.encounter} alt="伙伴相遇与共同创作" /><figcaption>MEET</figcaption></figure>
+              <figure><img src={storyImages.ensemble} alt="社团伙伴在活动后合影" /><figcaption>TOGETHER</figcaption></figure>
+              <figure><img src={storyImages.encounter} alt="夜间活动结束后的成员合影" /><figcaption>MEET</figcaption></figure>
             </div>
             <div className="freedom-principles" aria-label="创作原则">
               <span><b>自由度高</b><small>FOLLOW YOUR CURIOSITY</small></span>

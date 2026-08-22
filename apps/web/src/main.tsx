@@ -10,6 +10,7 @@ import './departments.css';
 import './social.css';
 import './home-final-art.css';
 import './home-scroll-story.css';
+import './home-social-outposts.css';
 import './announcements.css';
 import { App } from './app';
 

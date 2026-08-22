@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -7,6 +7,8 @@ import { DepartmentMediaShelf } from '../components/departments/DepartmentMediaS
 import { departmentMediaBySlug, officialSocialLinks } from '../components/departments/department-media';
 import { PixelFooter } from '../components/home/PixelFooter';
 import { showcaseBySlug } from '../components/departments/showcase-data';
+import { DepartmentPhotoGallery } from '../components/departments/DepartmentPhotoGallery';
+import { departmentPhotosBySlug } from '../components/departments/department-photos';
 
 const expectedBvids = {
   cos: ['BV1Vr7YzLE1R', 'BV14MjozwE8G', 'BV1XkFoe6Esm', 'BV1yE4m1R7kw', 'BV11H4y1F7Q9'],
@@ -25,6 +27,65 @@ const publicityArticleLinks = [
 ] as const;
 
 describe('department social media shelf', () => {
+  it('indexes real and fallback photos for all six departments', () => {
+    expect(Object.keys(departmentPhotosBySlug).sort()).toEqual(['cos', 'dance', 'music', 'original', 'publicity', 'tech']);
+    expect(departmentPhotosBySlug.tech.length).toBeGreaterThan(6);
+    expect(departmentPhotosBySlug.tech.every(photo => photo.src.startsWith('/assets/photos/departments/tech/'))).toBe(true);
+    expect(departmentPhotosBySlug.dance).toHaveLength(6);
+    expect(departmentPhotosBySlug.dance.every(photo => photo.src.startsWith('/assets/photos/departments/dance/'))).toBe(true);
+    expect(departmentPhotosBySlug.publicity.length).toBeGreaterThan(6);
+    expect(departmentPhotosBySlug.publicity.every(photo => photo.src.startsWith('/assets/photos/departments/publicity-fantasy/'))).toBe(true);
+    expect(showcaseBySlug.tech.intro).toMatch(/视频制作.*摄影.*道具制作/);
+    expect(showcaseBySlug.tech.intro).toMatch(/Premiere Pro.*After Effects/);
+    expect(showcaseBySlug.publicity.intro).toContain('动漫鉴赏');
+  });
+
+  it('turns a large technical photo set into an operable carousel', async () => {
+    const user = userEvent.setup();
+    render(<DepartmentPhotoGallery slug="tech" />);
+
+    const gallery = screen.getByRole('region', { name: '技术部照片实录' });
+    expect(within(gallery).getByText(`1 / ${departmentPhotosBySlug.tech.length}`)).toBeInTheDocument();
+    expect(within(gallery).getByRole('img', { name: departmentPhotosBySlug.tech[0].alt })).toBeInTheDocument();
+
+    await user.click(within(gallery).getByRole('button', { name: '下一张照片' }));
+    expect(within(gallery).getByText(`2 / ${departmentPhotosBySlug.tech.length}`)).toBeInTheDocument();
+    expect(within(gallery).getByText(departmentPhotosBySlug.tech[1].caption)).toBeInTheDocument();
+
+    await user.click(within(gallery).getByRole('button', { name: `查看第 4 张照片：${departmentPhotosBySlug.tech[3].caption}` }));
+    expect(within(gallery).getByText(`4 / ${departmentPhotosBySlug.tech.length}`)).toBeInTheDocument();
+
+    await user.click(within(gallery).getByRole('button', { name: '上一张照片' }));
+    expect(within(gallery).getByText(`3 / ${departmentPhotosBySlug.tech.length}`)).toBeInTheDocument();
+  });
+
+  it('turns six or more department photos into a carousel', () => {
+    render(<DepartmentPhotoGallery slug="dance" />);
+    const gallery = screen.getByRole('region', { name: '舞装部照片实录' });
+    expect(within(gallery).getByRole('button', { name: '下一张照片' })).toBeInTheDocument();
+  });
+
+  it('supports horizontal touch gestures without reacting to vertical page scrolling', () => {
+    render(<DepartmentPhotoGallery slug="publicity" />);
+    const gallery = screen.getByRole('region', { name: '外宣&幻想研照片实录' });
+    const stage = within(gallery).getByLabelText('照片轮播，使用左右方向键或滑动切换');
+
+    fireEvent.touchStart(stage, { touches: [{ clientX: 310, clientY: 120 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 220, clientY: 126 }] });
+    expect(within(gallery).getByText('2 / 14', { exact: true })).toBeInTheDocument();
+
+    fireEvent.touchStart(stage, { touches: [{ clientX: 220, clientY: 120 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 215, clientY: 205 }] });
+    expect(within(gallery).getByText('2 / 14', { exact: true })).toBeInTheDocument();
+  });
+
+  it('keeps a short fallback set as an editorial grid instead of a carousel', () => {
+    render(<DepartmentPhotoGallery slug="cos" />);
+    const gallery = screen.getByRole('region', { name: 'COS部照片实录' });
+    expect(gallery).toBeInTheDocument();
+    expect(within(gallery).queryByRole('button', { name: '下一张照片' })).not.toBeInTheDocument();
+  });
+
   it('maps every supplied department video to its matching department', () => {
     expect(Object.keys(departmentMediaBySlug).sort()).toEqual(['cos', 'dance', 'music', 'original', 'publicity', 'tech']);
     for (const [slug, bvids] of Object.entries(expectedBvids)) {

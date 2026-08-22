@@ -43,9 +43,9 @@ process.on('SIGTERM', () => shutdown(0));
 if (await apiIsUp()) {
   console.log(`[dev-with-api] API already listening on ${apiPort}, reusing it.`);
 } else {
-  console.log('[dev-with-api] API not detected, spawning @guild/api (tsx watch src/server.ts)…');
+  console.log('[dev-with-api] API not detected, spawning @guild/api with live workspace contracts…');
   const tsxCli = resolve(apiRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
-  const api = spawn(process.execPath, [tsxCli, 'watch', 'src/server.ts'], {
+  const api = spawn(process.execPath, [tsxCli, 'watch', '--tsconfig', 'tsconfig.dev.json', 'src/server.ts'], {
     cwd: apiRoot,
     env: { ...process.env, PORT: apiPort },
     stdio: ['ignore', 'inherit', 'inherit'],

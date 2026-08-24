@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Clock3, Pin, Sparkles, ThumbsUp } from 'lucide-react';
+import { Clock3, Pin, Sparkles } from 'lucide-react';
 import { api } from '../../api';
-import { formatDate } from '../../components';
+import './BlogPostBoard.css';
 
 export interface BlogPostBlock { type: 'PARAGRAPH' | 'IMAGE' | 'LINK'; text?: string; assetId?: string; alt?: string; url?: string; label?: string }
 export interface BlogPostCard {
@@ -13,13 +13,12 @@ export interface BlogPostCard {
 interface BoardData { pinned: BlogPostCard[]; featured: BlogPostCard[]; latest: BlogPostCard[] }
 
 function BoardColumn({ title, icon, posts, empty }: { title: string; icon: React.ReactNode; posts: BlogPostCard[]; empty: string }) {
+  const visiblePosts = posts.slice(0, 5);
   return <section className="retro-blog-column">
-    <h3>{icon}<span>{title}</span><small>{posts.length.toString().padStart(2, '0')}</small></h3>
-    {posts.length ? posts.map((post) => <article key={post.id}>
-      <div className="retro-blog-meta"><span>{post.departmentName ?? '整个社团'}</span><time>{formatDate(post.createdAt)}</time></div>
-      <Link to={`/posts/${post.id}`}><strong>{post.title}</strong>{post.subtitle && <em>{post.subtitle}</em>}</Link>
-      <p>{post.content.split('\n')[0]}</p>
-      <footer><span>BY {post.author.displayName}</span><span><ThumbsUp /> 评分 {post.score > 0 ? `+${post.score}` : post.score}</span></footer>
+    <h3>{icon}<span>{title}</span><small>{visiblePosts.length.toString().padStart(2, '0')} / 05</small></h3>
+    {visiblePosts.length ? visiblePosts.map((post) => <article key={post.id}>
+      <Link to={`/posts/${post.id}`}><strong>{post.title}</strong></Link>
+      <span className="retro-blog-author">BY {post.author.displayName}</span>
     </article>) : <p className="retro-blog-empty">{empty}</p>}
   </section>;
 }

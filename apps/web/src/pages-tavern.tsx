@@ -1,12 +1,13 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, ChevronDown, Edit3, ImagePlus, Link2, MessageCircle, Pin, Plus, Send, Sparkles, Star, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react';
 import { isExecutiveRole, isManagementRole, memberAttributePool } from '@guild/contracts';
-import { api, json, type PageData, type User } from './api';
+import { api, ApiError, json, type PageData, type User } from './api';
 import { useAuth } from './auth';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero } from './components';
 import { PixelFrame, PixelSprite } from './components/departments/pixel';
+import { WikiText } from './components/blog/WikiText';
 import './tavern-editor.css';
 
 interface PostAuthor { id: string; displayName: string; avatarColor: string }
@@ -35,22 +36,6 @@ function urlsIn(text = '') {
   return [...text.matchAll(urlPattern)].map((match) => match[0].replace(trailingPunctuation, '')).filter((url, index, urls) => urls.indexOf(url) === index);
 }
 
-function linkify(text = ''): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  for (const match of text.matchAll(urlPattern)) {
-    const raw = match[0];
-    const url = raw.replace(trailingPunctuation, '');
-    const start = match.index ?? 0;
-    if (start > cursor) nodes.push(text.slice(cursor, start));
-    nodes.push(<a key={`${start}-${url}`} href={url} target="_blank" rel="noreferrer">{url}</a>);
-    if (raw.length > url.length) nodes.push(raw.slice(url.length));
-    cursor = start + raw.length;
-  }
-  if (cursor < text.length) nodes.push(text.slice(cursor));
-  return nodes;
-}
-
 function describeExternalLink(url: string) {
   try {
     const parsed = new URL(url);
@@ -77,7 +62,7 @@ function ExternalLinkPreview({ url, label }: { url: string; label?: string }) {
 
 function RichParagraph({ text }: { text?: string }) {
   const urls = urlsIn(text);
-  return <><p>{linkify(text)}</p>{urls.map((url) => <ExternalLinkPreview key={url} url={url} />)}</>;
+  return <><WikiText text={text} />{urls.map((url) => <ExternalLinkPreview key={url} url={url} />)}</>;
 }
 
 function editorBody(blocks: EditorBlock[]): PostBlock[] {
@@ -115,7 +100,7 @@ function PostContentEditor({ blocks, onChange, onUpload, uploading, uploadError 
   };
   return <fieldset className="tavern-content-editor">
     <legend>帖子内容</legend>
-    <p className="tavern-editor-help">按顺序插入文字与图片；外部链接可直接粘贴进文字，发布后会自动变成可点击的预览卡片。</p>
+    <p className="tavern-editor-help">支持基础 Wiki 语法：+ 标题、**粗体**、//斜体//、__下划线__、--删除线--、* 列表、&gt; 引用和 ---- 分隔线。外部链接可直接粘贴，或写成 [[链接地址 说明文字]]。</p>
     {blocks.map((block, index) => <div className={`tavern-editor-block ${block.type.toLowerCase()}`} key={block.key}>
       {block.type === 'PARAGRAPH' ? <>
         <label><span>{index === 0 ? '帖子内容' : `文字段落 ${index + 1}`}</span><textarea aria-label={index === 0 ? '帖子内容' : `文字段落 ${index + 1}`} maxLength={2000} rows={5} value={block.text} onChange={(event) => replace(index, { ...block, text: event.target.value })} placeholder="输入正文，链接可直接粘贴在这里……" /></label>
@@ -142,6 +127,15 @@ function DeleteConfirmDialog({ kind, pending, error, onCancel, onConfirm }: { ki
   </div>;
 }
 
+function NoticeDialog({ message, onClose }: { message: string; onClose: () => void }) {
+  return <div className="delete-confirm-backdrop" role="presentation">
+    <section className="delete-confirm-dialog placement-limit-dialog" role="alertdialog" aria-modal="true" aria-labelledby="placement-limit-title">
+      <AlertTriangle /><h2 id="placement-limit-title">展示数量提醒</h2><p>{message}</p>
+      <div><button type="button" className="guild-button primary" onClick={onClose}>我知道了</button></div>
+    </section>
+  </div>;
+}
+
 const attributeLabel = (id: string) => memberAttributePool.find((attribute) => attribute.id === id)?.label ?? id;
 
 function PostBody({ post }: { post: TavernPost }) {
@@ -159,7 +153,7 @@ export function PublicPostPage() {
   const post = query.data.post;
   return <main className="public-blog-detail"><article>
     <Link className="tavern-back" to="/"><ArrowLeft/>返回社团主页</Link>
-    <small>{post.departmentName ?? '整个社团'} · {formatDate(post.createdAt)}</small>
+    <small>{post.departmentName ?? '公会全域'} · {formatDate(post.createdAt)}</small>
     <h1>{post.title}</h1>{post.subtitle && <h2>{post.subtitle}</h2>}
     <p className="public-blog-byline">BY {post.author.displayName} · 综合评分 {post.score > 0 ? `+${post.score}` : post.score}</p>
     <PostBody post={post}/>
@@ -173,6 +167,7 @@ export function PostsPage() {
   const [form, setForm] = useState({ title: '', subtitle: '', departmentId: '' });
   const [blocks, setBlocks] = useState<EditorBlock[]>(emptyEditor);
   const [deletePost, setDeletePost] = useState<TavernPost | null>(null);
+  const [placementNotice, setPlacementNotice] = useState<string | null>(null);
   const departments = useQuery({ queryKey: ['public', 'departments'], queryFn: () => api<{ items: DepartmentOption[] }>('/api/public/departments') });
   const query = useQuery({ queryKey: ['tavern', 'posts'], queryFn: () => api<PageData<TavernPost>>('/api/member/posts?page=1&pageSize=50') });
   const refresh = () => client.invalidateQueries({ queryKey: ['tavern'] });
@@ -187,7 +182,12 @@ export function PostsPage() {
     onSuccess: ({ asset }, variables) => setBlocks((items) => [...items.slice(0, variables.afterIndex + 1), { key: nextEditorKey(), type: 'IMAGE', assetId: asset.id, previewUrl: variables.previewUrl, alt: '' }, ...items.slice(variables.afterIndex + 1)]),
     onError: (_error, variables) => URL.revokeObjectURL(variables.previewUrl),
   });
-  const place = useMutation({ mutationFn: ({ post, scope, visible = true, pinned, featured }: { post: TavernPost; scope: 'GUILD' | 'DEPARTMENT'; visible?: boolean; pinned?: boolean; featured?: boolean }) => api(`/api/member/posts/${post.id}/placement`, json('PUT', { scope, departmentId: scope === 'DEPARTMENT' ? post.departmentId : null, visible, pinned, featured })), onSuccess: refresh });
+  const place = useMutation({
+    mutationFn: ({ post, scope, visible = true, pinned, featured }: { post: TavernPost; scope: 'GUILD' | 'DEPARTMENT'; visible?: boolean; pinned?: boolean; featured?: boolean }) => api(`/api/member/posts/${post.id}/placement`, json('PUT', { scope, departmentId: scope === 'DEPARTMENT' ? post.departmentId : null, visible, pinned, featured })),
+    onMutate: () => setPlacementNotice(null),
+    onSuccess: refresh,
+    onError: (error) => { if (error instanceof ApiError && (error.code === 'PINNED_POST_LIMIT' || error.code === 'FEATURED_POST_LIMIT')) setPlacementNotice(error.message); },
+  });
   const remove = useMutation({ mutationFn: (id: string) => api(`/api/member/posts/${id}`, json('DELETE')), onSuccess: () => { setDeletePost(null); refresh(); } });
   const manager = Boolean(user && isManagementRole(user.role));
   const submit = (event: FormEvent) => { event.preventDefault(); create.mutate(); };
@@ -199,7 +199,7 @@ export function PostsPage() {
       {open && <form className="inline-create tavern-create" onSubmit={submit}>
         <label>帖子标题<input required minLength={2} maxLength={60} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="例如：周末道具修补互助" /></label>
         <label>小标题（选填）<input maxLength={160} value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} placeholder="给正文加一句引子" /></label>
-        <label>所属范围<select value={form.departmentId} onChange={(e) => setForm({ ...form, departmentId: e.target.value })}><option value="">整个社团</option>{departments.data?.items?.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+        <label>所属范围<select value={form.departmentId} onChange={(e) => setForm({ ...form, departmentId: e.target.value })}><option value="">公会全域</option>{departments.data?.items?.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
         <PostContentEditor blocks={blocks} onChange={setBlocks} uploading={upload.isPending} uploadError={upload.error} onUpload={(file, afterIndex) => upload.mutate({ file, afterIndex, previewUrl: URL.createObjectURL(file) })} />
         {editorContent(blocks).length > 0 && editorContent(blocks).length < 5 && <p className="form-error">正文文字至少需要 5 个字符。</p>}
         {create.error && <p className="form-error">{create.error.message}</p>}
@@ -214,7 +214,7 @@ export function PostsPage() {
           </div>
           <Link className="tavern-post-title" to={`/portal/tavern/${post.id}`}><h2>{post.title}</h2></Link>
           {post.subtitle && <p className="tavern-post-subtitle">{post.subtitle}</p>}
-          <span className="tavern-scope">{post.departmentName ?? '整个社团'}</span>
+          <span className="tavern-scope">{post.departmentName ?? '公会全域'}</span>
           <p className="tavern-post-excerpt">{post.content.split('\n')[0]}</p>
           <div className="tavern-post-foot">
             <Link to={`/portal/tavern/${post.id}`}><MessageCircle />{post.commentCount} 条评论</Link>
@@ -228,6 +228,7 @@ export function PostsPage() {
       </div>}
     </section>
     {deletePost && <DeleteConfirmDialog kind="帖子" pending={remove.isPending} error={remove.error} onCancel={() => setDeletePost(null)} onConfirm={() => remove.mutate(deletePost.id)} />}
+    {placementNotice && <NoticeDialog message={placementNotice} onClose={() => setPlacementNotice(null)} />}
   </main>;
 }
 

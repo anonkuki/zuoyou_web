@@ -453,6 +453,27 @@ describe('Adventurer Guild app', () => {
     expect(screen.queryByRole('button', { name: '删除 评论成员 的评论' })).not.toBeInTheDocument();
   });
 
+  it('shows a dialog when the pinned post section has reached five posts', async () => {
+    const authUser = { id: 'user-tech-lead', username: 'tech.lead', displayName: '技术部部长', email: 'tech@example.com', role: 'DEPARTMENT_HEAD', departmentId: 'dept-tech', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: [], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const post = { id: 'post-tech', title: '技术部直播日志', subtitle: '', content: '准备本周直播设备。', body: [{ type: 'PARAGRAPH', text: '准备本周直播设备。' }], departmentId: 'dept-tech', departmentName: '技术部', pinned: false, featured: false, visibleOnGuild: false, visibleOnDepartment: true, upvoteCount: 0, downvoteCount: 0, score: 0, myRating: 0, commentCount: 0, author: { id: 'tech-author', displayName: '技术部成员', avatarColor: '#765584' }, createdAt: '2026-08-20T08:00:00.000Z', updatedAt: '2026-08-20T08:00:00.000Z' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path.startsWith('/api/member/posts?')) return new Response(JSON.stringify({ ok: true, data: { items: [post], page: 1, pageSize: 50, total: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/posts/post-tech/placement' && init?.method === 'PUT') return new Response(JSON.stringify({ ok: false, error: { code: 'PINNED_POST_LIMIT', message: '置顶贴数量已到上限' } }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: { items: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/portal/tavern');
+
+    expect(await screen.findByRole('heading', { name: '技术部直播日志' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '置顶' }));
+    expect(await screen.findByRole('alertdialog', { name: '展示数量提醒' })).toHaveTextContent('置顶贴数量已到上限');
+    await user.click(screen.getByRole('button', { name: '我知道了' }));
+    expect(screen.queryByRole('alertdialog', { name: '展示数量提醒' })).not.toBeInTheDocument();
+  });
+
   it('shows resonance matches with shared attributes and guides unset members', async () => {
     const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: ['cosplay', 'photography'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
     const match = { myAttributes: ['cosplay', 'photography'], items: [

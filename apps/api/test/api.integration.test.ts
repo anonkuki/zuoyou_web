@@ -836,6 +836,36 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${guildPostId}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(200);
   });
 
+  it('limits every public board section to five posts and rejects a sixth manual pin or feature', async () => {
+    const postIds: string[] = [];
+    for (let index = 1; index <= 6; index += 1) {
+      const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: adminCookie }, payload: {
+        title: `技术部边界日志 ${index}`, content: `用于验证五帖展示上限的正文 ${index}。`, departmentId: 'dept-tech',
+      } });
+      expect(created.statusCode).toBe(201);
+      postIds.push(created.json().data.post.id as string);
+    }
+
+    for (const postId of postIds.slice(0, 5)) {
+      const placement = await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'DEPARTMENT', departmentId: 'dept-tech', visible: true, pinned: true, featured: true } });
+      expect(placement.statusCode).toBe(200);
+    }
+
+    const sixthPinned = await app.inject({ method: 'PUT', url: `/api/member/posts/${postIds[5]}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'DEPARTMENT', departmentId: 'dept-tech', visible: true, pinned: true } });
+    expect(sixthPinned.statusCode).toBe(409);
+    expect(sixthPinned.json().error).toEqual({ code: 'PINNED_POST_LIMIT', message: '置顶贴数量已到上限' });
+
+    const sixthFeatured = await app.inject({ method: 'PUT', url: `/api/member/posts/${postIds[5]}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'DEPARTMENT', departmentId: 'dept-tech', visible: true, featured: true } });
+    expect(sixthFeatured.statusCode).toBe(409);
+    expect(sixthFeatured.json().error).toEqual({ code: 'FEATURED_POST_LIMIT', message: '精选贴数量已到上限' });
+
+    const board = await app.inject({ method: 'GET', url: '/api/public/posts/board?departmentSlug=tech' });
+    expect(board.statusCode).toBe(200);
+    expect(board.json().data.pinned).toHaveLength(5);
+    expect(board.json().data.featured).toHaveLength(5);
+    expect(board.json().data.latest).toHaveLength(5);
+  });
+
   it('forbids a department head from editing another departments post', async () => {
     const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: {
       title: 'COS 部跨部门编辑边界', content: '这篇帖子只能由 COS 部管理层校对。', departmentId: 'dept-cos',

@@ -35,6 +35,7 @@ interface ProfileRow {
 }
 
 const PROFILE_COLUMNS = 'u.id,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.guild_title,u.college,u.grade,u.skills,u.interests,u.attributes,u.avatar_color,u.avatar_config,u.profile_visibility,u.last_seen_at,u.created_at';
+const POST_BOARD_SECTION_LIMIT = 5;
 
 export class GuildSocialRepository {
   constructor(private sqlite: Database.Database, private makeId: (prefix: string) => string, private timestamp: () => string) {}
@@ -377,6 +378,16 @@ export class GuildSocialRepository {
     throw new SocialError(403, 'FORBIDDEN', '只能将本部门帖子展示在权限允许的页面');
   }
 
+  private assertBoardSectionCapacity(postId: string, scope: 'GUILD' | 'DEPARTMENT', departmentId: string | null, section: 'pinned' | 'featured') {
+    const count = this.sqlite.prepare(`SELECT COUNT(*) count FROM post_placements x JOIN posts p ON p.id=x.post_id
+      WHERE p.deleted_at IS NULL AND x.scope_type=? AND COALESCE(x.department_id,'')=COALESCE(?,'') AND x.${section}=1 AND x.post_id<>?`)
+      .get(scope, departmentId, postId) as { count: number };
+    if (count.count >= POST_BOARD_SECTION_LIMIT) {
+      if (section === 'pinned') throw new SocialError(409, 'PINNED_POST_LIMIT', '置顶贴数量已到上限');
+      throw new SocialError(409, 'FEATURED_POST_LIMIT', '精选贴数量已到上限');
+    }
+  }
+
   placePost(principal: SocialPrincipal, postId: string, input: { scope: 'GUILD' | 'DEPARTMENT'; departmentId: string | null; visible: boolean; pinned?: boolean; featured?: boolean }) {
     const departmentId = input.scope === 'GUILD' ? null : input.departmentId;
     if (input.scope === 'DEPARTMENT' && !departmentId) throw new SocialError(400, 'DEPARTMENT_REQUIRED', '部门页面展示必须选择部门');
@@ -386,9 +397,13 @@ export class GuildSocialRepository {
       if (existing) this.sqlite.prepare('DELETE FROM post_placements WHERE id=?').run(existing.id);
       return { visible: false };
     }
+    const nextPinned = input.pinned ?? Boolean(existing?.pinned);
+    const nextFeatured = input.featured ?? Boolean(existing?.featured);
+    if (nextPinned && !existing?.pinned) this.assertBoardSectionCapacity(postId, input.scope, departmentId, 'pinned');
+    if (nextFeatured && !existing?.featured) this.assertBoardSectionCapacity(postId, input.scope, departmentId, 'featured');
     const timestamp = this.timestamp();
-    if (existing) this.sqlite.prepare('UPDATE post_placements SET pinned=?,featured=?,updated_at=? WHERE id=?').run((input.pinned ?? Boolean(existing.pinned)) ? 1 : 0, (input.featured ?? Boolean(existing.featured)) ? 1 : 0, timestamp, existing.id);
-    else this.sqlite.prepare('INSERT INTO post_placements(id,post_id,scope_type,department_id,pinned,featured,placed_by,placed_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(this.makeId('placement'), postId, input.scope, departmentId, input.pinned ? 1 : 0, input.featured ? 1 : 0, principal.id, timestamp, timestamp);
+    if (existing) this.sqlite.prepare('UPDATE post_placements SET pinned=?,featured=?,updated_at=? WHERE id=?').run(nextPinned ? 1 : 0, nextFeatured ? 1 : 0, timestamp, existing.id);
+    else this.sqlite.prepare('INSERT INTO post_placements(id,post_id,scope_type,department_id,pinned,featured,placed_by,placed_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(this.makeId('placement'), postId, input.scope, departmentId, nextPinned ? 1 : 0, nextFeatured ? 1 : 0, principal.id, timestamp, timestamp);
     return { visible: true };
   }
 
@@ -408,7 +423,7 @@ export class GuildSocialRepository {
       WHERE p.deleted_at IS NULL AND x.scope_type=? AND COALESCE(x.department_id,'')=COALESCE(?,'')
       ORDER BY x.pinned DESC,x.featured DESC,p.created_at DESC,p.id`).all(departmentId ? 'DEPARTMENT' : 'GUILD', departmentId) as Array<Record<string, unknown>>;
     const items = rows.map((row) => this.serializePost(row));
-    return { pinned: items.filter((item) => item.pinned).slice(0, 6), featured: items.filter((item) => item.featured || item.score > 0).sort((a, b) => Number(b.featured) - Number(a.featured) || b.score - a.score || b.upvoteCount - a.upvoteCount).slice(0, 6), latest: items.slice(0, 12) };
+    return { pinned: items.filter((item) => item.pinned).slice(0, POST_BOARD_SECTION_LIMIT), featured: items.filter((item) => item.featured || item.score > 0).sort((a, b) => Number(b.featured) - Number(a.featured) || b.score - a.score || b.upvoteCount - a.upvoteCount).slice(0, POST_BOARD_SECTION_LIMIT), latest: items.slice(0, POST_BOARD_SECTION_LIMIT) };
   }
 
   publicPost(postId: string) {

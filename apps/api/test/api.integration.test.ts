@@ -795,15 +795,28 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const publicImage = await app.inject({ method: 'GET', url: `/api/public/post-assets/${assetId}` });
     expect(publicImage.statusCode).toBe(200);
     expect(publicImage.body).toBe('fake-png-bytes');
-    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'GUILD', visible: true, featured: true } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(200);
 
-    const vote = await app.inject({ method: 'POST', url: `/api/member/posts/${postId}/vote`, headers: { cookie: memberCookie } });
-    expect(vote.json().data).toEqual({ voted: true, voteCount: 1 });
+    const upvote = await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/rating`, headers: { cookie: memberCookie }, payload: { value: 1 } });
+    expect(upvote.json().data).toEqual({ myRating: 1, upvoteCount: 1, downvoteCount: 0, score: 1 });
     const departmentBoard = await app.inject({ method: 'GET', url: '/api/public/posts/board?departmentSlug=cos' });
     expect(departmentBoard.statusCode).toBe(200);
-    expect(departmentBoard.json().data.pinned).toEqual(expect.arrayContaining([expect.objectContaining({ id: postId, pinned: true, voteCount: 1 })]));
+    expect(departmentBoard.json().data.pinned).toEqual(expect.arrayContaining([expect.objectContaining({ id: postId, pinned: true, upvoteCount: 1, downvoteCount: 0, score: 1 })]));
     const guildBoard = await app.inject({ method: 'GET', url: '/api/public/posts/board' });
-    expect(guildBoard.json().data.featured).toEqual(expect.arrayContaining([expect.objectContaining({ id: postId, featured: true })]));
+    expect(guildBoard.json().data.featured).toEqual(expect.arrayContaining([expect.objectContaining({ id: postId, score: 1 })]));
+
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/rating`, headers: { cookie: adminCookie }, payload: { value: -1 } })).statusCode).toBe(200);
+    const ratedDetail = await app.inject({ method: 'GET', url: `/api/member/posts/${postId}`, headers: { cookie: memberCookie } });
+    expect(ratedDetail.json().data.post).toMatchObject({ upvoteCount: 1, downvoteCount: 1, score: 0, myRating: 1 });
+    expect(ratedDetail.json().data.supporters).toEqual([expect.objectContaining({ id: 'user-member', displayName: '白羽见习者' })]);
+    expect(ratedDetail.json().data.supporters).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 'user-admin' })]));
+    const neutralBoard = await app.inject({ method: 'GET', url: '/api/public/posts/board' });
+    expect(neutralBoard.json().data.featured).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: postId })]));
+
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/rating`, headers: { cookie: adminCookie }, payload: { value: 0 } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'GUILD', visible: true, featured: true } })).statusCode).toBe(200);
+    const manualFeatured = await app.inject({ method: 'GET', url: '/api/public/posts/board' });
+    expect(manualFeatured.json().data.featured).toEqual(expect.arrayContaining([expect.objectContaining({ id: postId, featured: true })]));
     expect((await app.inject({ method: 'GET', url: `/api/public/posts/${postId}` })).statusCode).toBe(200);
 
     const guildPost = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: { title: '全社团随笔', content: '这是一篇全社团范围的随笔。' } });

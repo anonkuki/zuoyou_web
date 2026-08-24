@@ -398,6 +398,29 @@ describe('Adventurer Guild app', () => {
     expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ title: '周末道具修补互助' });
   });
 
+  it('rates a post up or down and reveals only supporters', async () => {
+    const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: [], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const post = { id: 'post-rating', title: 'SCP式评分测试帖', subtitle: '', content: '评分正文', body: [{ type: 'PARAGRAPH', text: '评分正文' }], departmentId: 'dept-cos', departmentName: 'COS部', pinned: false, featured: false, visibleOnGuild: true, visibleOnDepartment: true, upvoteCount: 2, downvoteCount: 1, score: 1, myRating: 0, commentCount: 0, author: { id: 'author-1', displayName: '作者', avatarColor: '#765584' }, createdAt: '2026-08-20T08:00:00.000Z', updatedAt: '2026-08-20T08:00:00.000Z' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/posts/post-rating') return new Response(JSON.stringify({ ok: true, data: { post, comments: [], supporters: [{ id: 'supporter-1', displayName: '赞成者甲', avatarColor: '#5279a8' }, { id: 'supporter-2', displayName: '赞成者乙', avatarColor: '#c75f88' }] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/posts/post-rating/rating' && init?.method === 'PUT') return new Response(JSON.stringify({ ok: true, data: { myRating: 1, upvoteCount: 3, downvoteCount: 1, score: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/portal/tavern/post-rating');
+    expect(await screen.findByRole('heading', { name: 'SCP式评分测试帖' })).toBeInTheDocument();
+    expect(screen.getByLabelText('帖子综合评分 1')).toHaveTextContent('+1');
+    expect(screen.getByText('赞成者甲')).not.toBeVisible();
+    await user.click(screen.getByText('查看赞成这篇帖子的成员（2）'));
+    expect(screen.getByText('赞成者甲')).toBeVisible();
+    expect(screen.getByText('赞成者乙')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '赞成，当前 2 人' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/posts/post-rating/rating', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ value: 1 }) })));
+  });
+
   it('shows resonance matches with shared attributes and guides unset members', async () => {
     const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: ['cosplay', 'photography'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
     const match = { myAttributes: ['cosplay', 'photography'], items: [

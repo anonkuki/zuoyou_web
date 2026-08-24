@@ -244,7 +244,8 @@ export class GuildSocialRepository {
     if (!Array.isArray(body) || !body.length) body = [{ type: 'PARAGRAPH', text: String(row.content ?? '') }];
     return {
       id: row.id, title: row.title, subtitle: row.subtitle ?? '', content: row.content, body, departmentId: row.department_id ?? null, departmentName: row.department_name ?? null,
-      pinned: Boolean(row.placement_pinned) || Boolean(row.pinned), featured: Boolean(row.placement_featured), visibleOnGuild: Boolean(row.visible_on_guild), visibleOnDepartment: Boolean(row.visible_on_department), voteCount: Number(row.vote_count ?? 0), voted: Boolean(row.voted), commentCount: Number(row.comment_count ?? 0),
+      pinned: Boolean(row.placement_pinned) || Boolean(row.pinned), featured: Boolean(row.placement_featured), visibleOnGuild: Boolean(row.visible_on_guild), visibleOnDepartment: Boolean(row.visible_on_department),
+      upvoteCount: Number(row.upvote_count ?? 0), downvoteCount: Number(row.downvote_count ?? 0), score: Number(row.rating_score ?? 0), myRating: Number(row.my_rating ?? 0), voteCount: Number(row.upvote_count ?? row.vote_count ?? 0), commentCount: Number(row.comment_count ?? 0),
       author: { id: row.user_id, displayName: row.author_name, avatarColor: row.author_color },
       createdAt: row.created_at, updatedAt: row.updated_at,
     };
@@ -262,7 +263,9 @@ export class GuildSocialRepository {
     const total = (this.sqlite.prepare('SELECT COUNT(*) count FROM posts WHERE deleted_at IS NULL').get() as { count: number }).count;
     const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,
       (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
-      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id) vote_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,
+      (SELECT COALESCE(SUM(v.value),0) FROM post_votes v WHERE v.post_id=p.id) rating_score,
       EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.pinned=1) placement_pinned,
       EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.featured=1) placement_featured,
       EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='GUILD') visible_on_guild,
@@ -293,19 +296,24 @@ export class GuildSocialRepository {
     return this.getPost(postId).post;
   }
 
-  getPost(postId: string) {
+  getPost(postId: string, viewerId?: string) {
     const row = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,
       (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
-      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id) vote_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,
+      (SELECT COALESCE(SUM(v.value),0) FROM post_votes v WHERE v.post_id=p.id) rating_score,
+      (SELECT v.value FROM post_votes v WHERE v.post_id=p.id AND v.user_id=?) my_rating,
       EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.pinned=1) placement_pinned,
       EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.featured=1) placement_featured,
       EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='GUILD') visible_on_guild,
       EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='DEPARTMENT') visible_on_department
-      FROM posts p JOIN users u ON u.id=p.user_id LEFT JOIN departments d ON d.id=p.department_id WHERE p.id=? AND p.deleted_at IS NULL`).get(postId) as Record<string, unknown> | undefined;
+      FROM posts p JOIN users u ON u.id=p.user_id LEFT JOIN departments d ON d.id=p.department_id WHERE p.id=? AND p.deleted_at IS NULL`).get(viewerId ?? '', postId) as Record<string, unknown> | undefined;
     if (!row) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
     const comments = this.sqlite.prepare(`SELECT c.*,u.display_name author_name,u.avatar_color author_color
       FROM post_comments c JOIN users u ON u.id=c.user_id WHERE c.post_id=? AND c.deleted_at IS NULL ORDER BY c.created_at,c.id`).all(postId) as Array<Record<string, unknown>>;
-    return { post: this.serializePost(row), comments: comments.map((comment) => this.serializeComment(comment)) };
+    const supporters = this.sqlite.prepare(`SELECT u.id,u.display_name displayName,u.avatar_color avatarColor
+      FROM post_votes v JOIN users u ON u.id=v.user_id WHERE v.post_id=? AND v.value=1 ORDER BY v.created_at,u.id`).all(postId);
+    return { post: this.serializePost(row), comments: comments.map((comment) => this.serializeComment(comment)), supporters };
   }
 
   addComment(principal: SocialPrincipal, postId: string, content: string) {
@@ -344,13 +352,13 @@ export class GuildSocialRepository {
     return this.getPost(postId).post;
   }
 
-  votePost(principal: SocialPrincipal, postId: string) {
+  ratePost(principal: SocialPrincipal, postId: string, value: -1 | 0 | 1) {
     if (!this.sqlite.prepare('SELECT 1 FROM posts WHERE id=? AND deleted_at IS NULL').get(postId)) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
-    const existing = this.sqlite.prepare('SELECT 1 FROM post_votes WHERE post_id=? AND user_id=?').get(postId, principal.id);
-    if (existing) this.sqlite.prepare('DELETE FROM post_votes WHERE post_id=? AND user_id=?').run(postId, principal.id);
-    else this.sqlite.prepare('INSERT INTO post_votes(post_id,user_id,created_at) VALUES (?,?,?)').run(postId, principal.id, this.timestamp());
-    const voteCount = (this.sqlite.prepare('SELECT COUNT(*) count FROM post_votes WHERE post_id=?').get(postId) as { count: number }).count;
-    return { voted: !existing, voteCount };
+    if (value === 0) this.sqlite.prepare('DELETE FROM post_votes WHERE post_id=? AND user_id=?').run(postId, principal.id);
+    else this.sqlite.prepare(`INSERT INTO post_votes(post_id,user_id,value,created_at) VALUES (?,?,?,?)
+      ON CONFLICT(post_id,user_id) DO UPDATE SET value=excluded.value,created_at=excluded.created_at`).run(postId, principal.id, value, this.timestamp());
+    const counts = this.sqlite.prepare(`SELECT COUNT(CASE WHEN value=1 THEN 1 END) upvoteCount,COUNT(CASE WHEN value=-1 THEN 1 END) downvoteCount,COALESCE(SUM(value),0) score FROM post_votes WHERE post_id=?`).get(postId) as { upvoteCount: number; downvoteCount: number; score: number };
+    return { myRating: value, ...counts };
   }
 
   private assertPlacement(principal: SocialPrincipal, postId: string, scope: 'GUILD' | 'DEPARTMENT', departmentId: string | null) {
@@ -386,18 +394,22 @@ export class GuildSocialRepository {
     }
     const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,x.pinned placement_pinned,x.featured placement_featured,
       (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
-      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id) vote_count
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,
+      (SELECT COALESCE(SUM(v.value),0) FROM post_votes v WHERE v.post_id=p.id) rating_score
       FROM post_placements x JOIN posts p ON p.id=x.post_id JOIN users u ON u.id=p.user_id LEFT JOIN departments d ON d.id=p.department_id
       WHERE p.deleted_at IS NULL AND x.scope_type=? AND COALESCE(x.department_id,'')=COALESCE(?,'')
       ORDER BY x.pinned DESC,x.featured DESC,p.created_at DESC,p.id`).all(departmentId ? 'DEPARTMENT' : 'GUILD', departmentId) as Array<Record<string, unknown>>;
     const items = rows.map((row) => this.serializePost(row));
-    return { pinned: items.filter((item) => item.pinned).slice(0, 6), featured: items.filter((item) => item.featured || item.voteCount > 0).sort((a, b) => Number(b.featured) - Number(a.featured) || b.voteCount - a.voteCount).slice(0, 6), latest: items.slice(0, 12) };
+    return { pinned: items.filter((item) => item.pinned).slice(0, 6), featured: items.filter((item) => item.featured || item.score > 0).sort((a, b) => Number(b.featured) - Number(a.featured) || b.score - a.score || b.upvoteCount - a.upvoteCount).slice(0, 6), latest: items.slice(0, 12) };
   }
 
   publicPost(postId: string) {
     const row = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,
       (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
-      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id) vote_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,
+      (SELECT COALESCE(SUM(v.value),0) FROM post_votes v WHERE v.post_id=p.id) rating_score,
       EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.pinned=1) placement_pinned,
       EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.featured=1) placement_featured
       FROM posts p JOIN users u ON u.id=p.user_id LEFT JOIN departments d ON d.id=p.department_id

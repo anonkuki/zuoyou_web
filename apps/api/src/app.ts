@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 import {
-  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, isExecutiveRole, isManagementRole, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, postPlacementSchema, resolveAvatarConfig, successResponse, worldMoveSchema,
+  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, isExecutiveRole, isManagementRole, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, postPlacementSchema, postRatingSchema, resolveAvatarConfig, successResponse, worldMoveSchema,
   type ActivityStatus, type AvatarConfig, type Role,
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
@@ -547,7 +547,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
   app.get('/api/member/posts/:id', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
-    return successResponse(social.getPost((request.params as { id: string }).id));
+    return successResponse(social.getPost((request.params as { id: string }).id, principal.id));
   });
   app.post('/api/member/posts/:id/comments', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
@@ -897,9 +897,10 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       d.rowid,u.display_name`).all(...parameters);
     return successResponse({ items, limits: { vicePresidents: 4, departmentHeads: 6, departmentAdminsPerDepartment: null } });
   });
-  app.post('/api/member/posts/:id/vote', async (request, reply) => {
+  app.put('/api/member/posts/:id/rating', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
-    return successResponse(social.votePost(principal, (request.params as { id: string }).id));
+    const { value } = parse(postRatingSchema, request.body);
+    return successResponse(social.ratePost(principal, (request.params as { id: string }).id, value));
   });
   app.put('/api/member/posts/:id/placement', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;

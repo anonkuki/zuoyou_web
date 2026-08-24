@@ -128,7 +128,7 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config', '0011_publicity_fantasy_lab', '0012_four_level_admin_hierarchy', '0013_blog_post_publishing']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config', '0011_publicity_fantasy_lab', '0012_four_level_admin_hierarchy', '0013_blog_post_publishing', '0014_post_ratings']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');

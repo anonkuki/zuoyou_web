@@ -159,6 +159,9 @@ export const postPlacementSchema = z.object({
   featured: z.boolean().optional(),
 });
 
+export const postRatingSchema = z.object({ value: z.union([z.literal(-1), z.literal(0), z.literal(1)]) });
+export type PostRating = z.infer<typeof postRatingSchema>;
+
 export const commentCreateSchema = z.object({
   content: z.string().trim().min(1).max(1000),
 });

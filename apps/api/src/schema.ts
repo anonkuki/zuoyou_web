@@ -130,7 +130,7 @@ export const postPlacements = sqliteTable('post_placements', {
 }, (table) => [index('post_placement_board_idx').on(table.scopeType, table.departmentId, table.pinned, table.featured, table.placedAt)]);
 
 export const postVotes = sqliteTable('post_votes', {
-  postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }), userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }), createdAt: utcText('created_at'),
+  postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }), userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }), value: integer('value').notNull().default(1), createdAt: utcText('created_at'),
 }, (table) => [primaryKey({ columns: [table.postId, table.userId] })]);
 
 export const postAssets = sqliteTable('post_assets', {

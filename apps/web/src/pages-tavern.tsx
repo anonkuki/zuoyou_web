@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit3, ImagePlus, Link2, MessageCircle, Pin, Send, Sparkles, Star, ThumbsUp, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Edit3, ImagePlus, Link2, MessageCircle, Pin, Send, Sparkles, Star, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react';
 import { isExecutiveRole, isManagementRole, memberAttributePool } from '@guild/contracts';
 import { api, json, type PageData } from './api';
 import { useAuth } from './auth';
@@ -10,7 +10,7 @@ import { PixelFrame, PixelSprite } from './components/departments/pixel';
 
 interface PostAuthor { id: string; displayName: string; avatarColor: string }
 interface PostBlock { type: 'PARAGRAPH' | 'IMAGE' | 'LINK'; text?: string; assetId?: string; alt?: string; url?: string; label?: string }
-export interface TavernPost { id: string; title: string; subtitle: string; content: string; body: PostBlock[]; departmentId: string | null; departmentName: string | null; pinned: boolean; featured: boolean; visibleOnGuild: boolean; visibleOnDepartment: boolean; voteCount: number; voted?: boolean; commentCount: number; author: PostAuthor; createdAt: string; updatedAt: string }
+export interface TavernPost { id: string; title: string; subtitle: string; content: string; body: PostBlock[]; departmentId: string | null; departmentName: string | null; pinned: boolean; featured: boolean; visibleOnGuild: boolean; visibleOnDepartment: boolean; upvoteCount: number; downvoteCount: number; score: number; myRating: -1 | 0 | 1; commentCount: number; author: PostAuthor; createdAt: string; updatedAt: string }
 interface TavernComment { id: string; postId: string; content: string; author: PostAuthor; createdAt: string }
 interface DepartmentOption { id: string; name: string }
 interface MatchProfile { id: string; displayName: string; avatarColor: string; guildTitle: string; departmentName?: string | null; bio: string; presence?: 'ONLINE' | 'AWAY' | 'OFFLINE' }
@@ -35,7 +35,7 @@ export function PublicPostPage() {
     <Link className="tavern-back" to="/"><ArrowLeft/>返回社团主页</Link>
     <small>{post.departmentName ?? '整个社团'} · {formatDate(post.createdAt)}</small>
     <h1>{post.title}</h1>{post.subtitle && <h2>{post.subtitle}</h2>}
-    <p className="public-blog-byline">BY {post.author.displayName} · {post.voteCount} 票精选</p>
+    <p className="public-blog-byline">BY {post.author.displayName} · 综合评分 {post.score > 0 ? `+${post.score}` : post.score}</p>
     <PostBody post={post}/>
   </article></main>;
 }
@@ -110,7 +110,7 @@ export function PostDetailPage() {
   const client = useQueryClient();
   const [content, setContent] = useState('');
   const [editForm, setEditForm] = useState<{ title: string; subtitle: string; content: string; linkUrl: string; linkLabel: string } | null>(null);
-  const query = useQuery({ queryKey: ['tavern', 'post', id], queryFn: () => api<{ post: TavernPost; comments: TavernComment[] }>(`/api/member/posts/${id}`), enabled: Boolean(id) });
+  const query = useQuery({ queryKey: ['tavern', 'post', id], queryFn: () => api<{ post: TavernPost; comments: TavernComment[]; supporters: PostAuthor[] }>(`/api/member/posts/${id}`), enabled: Boolean(id) });
   const refresh = () => client.invalidateQueries({ queryKey: ['tavern'] });
   const comment = useMutation({
     mutationFn: () => api(`/api/member/posts/${id}/comments`, json('POST', { content })),
@@ -118,7 +118,7 @@ export function PostDetailPage() {
   });
   const removeComment = useMutation({ mutationFn: (commentId: string) => api(`/api/member/comments/${commentId}`, json('DELETE')), onSuccess: refresh });
   const removePost = useMutation({ mutationFn: () => api(`/api/member/posts/${id}`, json('DELETE')), onSuccess: () => { refresh(); } });
-  const vote = useMutation({ mutationFn: () => api(`/api/member/posts/${id}/vote`, json('POST')), onSuccess: refresh });
+  const rate = useMutation({ mutationFn: (value: -1 | 0 | 1) => api(`/api/member/posts/${id}/rating`, json('PUT', { value })), onSuccess: refresh });
   const edit = useMutation({ mutationFn: () => api(`/api/member/posts/${id}`, json('PATCH', {
     title: editForm!.title, subtitle: editForm!.subtitle, content: editForm!.content, departmentId: query.data!.post.departmentId,
     body: [...editForm!.content.split(/\n{2,}/).filter(Boolean).map((text) => ({ type: 'PARAGRAPH', text })), ...query.data!.post.body.filter((block) => block.type === 'IMAGE'), ...(editForm!.linkUrl ? [{ type: 'LINK', url: editForm!.linkUrl, label: editForm!.linkLabel || undefined }] : [])],
@@ -126,7 +126,7 @@ export function PostDetailPage() {
   const navigate = useNavigate();
   if (query.isLoading) return <main><LoadingPanel label="正在读取帖子" /></main>;
   if (query.error || !query.data) return <main className="social-profile-error"><ErrorPanel error={query.error} /><Link to="/portal/tavern">返回冒险者酒馆</Link></main>;
-  const { post, comments } = query.data;
+  const { post, comments, supporters = [] } = query.data;
   const manager = Boolean(user && isManagementRole(user.role));
   return <main className="social-page tavern-page">
     <section className="shell tavern-detail">
@@ -150,10 +150,15 @@ export function PostDetailPage() {
           {edit.error && <p className="form-error">{edit.error.message}</p>}
         </form>}
         <div className="tavern-post-foot">
-          <button onClick={() => vote.mutate()}><ThumbsUp />投票精选 · {post.voteCount}</button>
+          <div className="scp-rating" aria-label={`帖子综合评分 ${post.score}`}>
+            <button className={post.myRating === 1 ? 'active' : ''} aria-label={`赞成，当前 ${post.upvoteCount} 人`} onClick={() => rate.mutate(post.myRating === 1 ? 0 : 1)}><ThumbsUp/>{post.upvoteCount}</button>
+            <strong>{post.score > 0 ? `+${post.score}` : post.score}</strong>
+            <button className={post.myRating === -1 ? 'active down' : ''} aria-label={`反对，当前 ${post.downvoteCount} 人`} onClick={() => rate.mutate(post.myRating === -1 ? 0 : -1)}><ThumbsDown/>{post.downvoteCount}</button>
+          </div>
           {manager && <button onClick={() => { const link = post.body.find((block) => block.type === 'LINK'); setEditForm({ title: post.title, subtitle: post.subtitle, content: post.content, linkUrl: link?.url ?? '', linkLabel: link?.label ?? '' }); }}><Edit3/>编辑帖子</button>}
           {(manager || user?.id === post.author.id) && <button className="danger" onClick={async () => { await removePost.mutateAsync(); navigate('/portal/tavern'); }}><Trash2 />删除帖子</button>}
         </div>
+        <details className="post-supporters"><summary><ChevronDown/>查看赞成这篇帖子的成员（{post.upvoteCount}）</summary>{supporters.length ? <ul>{supporters.map((supporter) => <li key={supporter.id}><span className="social-avatar small" style={{ '--avatar-color': supporter.avatarColor } as React.CSSProperties}><b>{supporter.displayName.slice(0, 1)}</b></span>{supporter.displayName}</li>)}</ul> : <p>还没有成员赞成这篇帖子。</p>}</details>
       </PixelFrame>
       <section className="tavern-comments">
         <h2>评论 · {comments.length}</h2>

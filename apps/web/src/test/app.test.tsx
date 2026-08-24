@@ -380,6 +380,7 @@ describe('Adventurer Guild app', () => {
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path.startsWith('/api/member/posts?')) return new Response(JSON.stringify({ ok: true, data: { items: posts, page: 1, pageSize: 50, total: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/posts' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { post: { ...posts[1], id: 'post-new' } } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/posts/post-photo' && init?.method === 'DELETE') return new Response(JSON.stringify({ ok: true, data: { deleted: true } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -391,11 +392,17 @@ describe('Adventurer Guild app', () => {
     expect(screen.getByText('3 条评论')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '发布新帖' }));
     await user.type(screen.getByLabelText('帖子标题'), '周末道具修补互助');
-    await user.type(screen.getByLabelText('帖子内容'), '周六下午在活动室修补巡游道具。');
+    await user.type(screen.getByLabelText('帖子内容'), '周六下午在活动室修补巡游道具。 https://www.bilibili.com/video/BV1test');
+    expect(screen.getByRole('link', { name: /哔哩哔哩视频/ })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '发布到酒馆' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/posts', expect.objectContaining({ method: 'POST' })));
     const call = fetchMock.mock.calls.find(([path, init]) => path === '/api/member/posts' && (init as RequestInit)?.method === 'POST');
-    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ title: '周末道具修补互助' });
+    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ title: '周末道具修补互助', body: [{ type: 'PARAGRAPH', text: expect.stringContaining('https://www.bilibili.com/video/BV1test') }] });
+    await user.click(screen.getByRole('button', { name: '删除 招募摄影搭档拍正片' }));
+    expect(screen.getByRole('alertdialog', { name: '确认删除该帖子吗？' })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([path, init]) => path === '/api/member/posts/post-photo' && init?.method === 'DELETE')).toBe(false);
+    await user.click(screen.getByRole('button', { name: '确认删除帖子' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/posts/post-photo', expect.objectContaining({ method: 'DELETE' })));
   });
 
   it('rates a post up or down and reveals only supporters', async () => {
@@ -404,8 +411,9 @@ describe('Adventurer Guild app', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === 'string' ? input : input.toString();
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      if (path === '/api/member/posts/post-rating') return new Response(JSON.stringify({ ok: true, data: { post, comments: [], supporters: [{ id: 'supporter-1', displayName: '赞成者甲', avatarColor: '#5279a8' }, { id: 'supporter-2', displayName: '赞成者乙', avatarColor: '#c75f88' }] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/posts/post-rating') return new Response(JSON.stringify({ ok: true, data: { post, comments: [{ id: 'comment-mine', postId: post.id, content: '我的待删除评论', author: { id: authUser.id, displayName: authUser.displayName, avatarColor: authUser.avatarColor }, createdAt: post.createdAt }], supporters: [{ id: 'supporter-1', displayName: '赞成者甲', avatarColor: '#5279a8' }, { id: 'supporter-2', displayName: '赞成者乙', avatarColor: '#c75f88' }] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/posts/post-rating/rating' && init?.method === 'PUT') return new Response(JSON.stringify({ ok: true, data: { myRating: 1, upvoteCount: 3, downvoteCount: 1, score: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/comments/comment-mine' && init?.method === 'DELETE') return new Response(JSON.stringify({ ok: true, data: { deleted: true } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -419,6 +427,11 @@ describe('Adventurer Guild app', () => {
     expect(screen.getByText('赞成者乙')).toBeVisible();
     await user.click(screen.getByRole('button', { name: '赞成，当前 2 人' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/posts/post-rating/rating', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ value: 1 }) })));
+    await user.click(screen.getByRole('button', { name: '删除 白羽见习者 的评论' }));
+    expect(screen.getByRole('alertdialog', { name: '确认删除该评论吗？' })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([path, init]) => path === '/api/member/comments/comment-mine' && init?.method === 'DELETE')).toBe(false);
+    await user.click(screen.getByRole('button', { name: '确认删除评论' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/comments/comment-mine', expect.objectContaining({ method: 'DELETE' })));
   });
 
   it('shows resonance matches with shared attributes and guides unset members', async () => {

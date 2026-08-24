@@ -4,7 +4,7 @@
   "packageManager": "pnpm@11.18.0",
   "scripts": {
     "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm --filter @guild/contracts build && pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:api": "pnpm --filter @guild/api test",
     "test:e2e": "playwright test",

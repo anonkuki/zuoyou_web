@@ -11,6 +11,13 @@ export interface DatabaseContext {
   orm: ReturnType<typeof drizzle<typeof schema>>;
 }
 
+export function allocateUserUid(sqlite: Database.Database): string {
+  const row = sqlite.prepare("SELECT MAX(CAST(uid AS INTEGER)) max_uid FROM users WHERE length(uid)=5 AND uid NOT GLOB '*[^0-9]*'").get() as { max_uid: number | null };
+  const next = Math.max(10001, (row.max_uid ?? 10000) + 1);
+  if (next > 99999) throw new Error('Five-digit user UID space is exhausted');
+  return String(next).padStart(5, '0');
+}
+
 const departments = [
   ['dept-cos', 'cos', 'COS部', '幻术师', '角色造型、服装道具与舞台呈现'],
   ['dept-tech', 'tech', '技术部', '魔导工程师', '摄影摄像、直播与活动技术支持'],
@@ -122,13 +129,31 @@ function ensureSocialShowcaseData(sqlite: Database.Database, timestamp: string):
   insertMessage.run('message-publicity-01', 'conversation-dept-publicity', 'user-fiction-006', '本周活动海报排期已更新，请负责人确认发布时间。', null, '2026-08-10T11:00:00.000Z');
 }
 
+async function ensureDevelopmentTestAccounts(sqlite: Database.Database, timestamp: string): Promise<void> {
+  const accounts = [
+    ['user-vice', 'vice.president', 'DemoVice!2026', '星轨副社长', 'vice.president@guild.example', 'VICE_PRESIDENT', null, '协助社长统筹跨部门事务'],
+    ['user-deputy', 'cos.deputy', 'DemoDeputy!2026', '绯羽副部长', 'cos.deputy@guild.example', 'DEPARTMENT_ADMIN', 'dept-cos', '协助部长管理 COS 部日常事务'],
+  ] as const;
+  const president = sqlite.prepare("SELECT id FROM users WHERE role='PRESIDENT' AND is_active=1 ORDER BY created_at LIMIT 1").get() as { id: string } | undefined;
+  for (const [id, username, password, displayName, email, role, departmentId, bio] of accounts) {
+    if (!sqlite.prepare('SELECT 1 FROM users WHERE username=?').get(username)) {
+      sqlite.prepare(`INSERT INTO users(id,uid,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, allocateUserUid(sqlite), username, await hashPassword(password), displayName, email, role, departmentId, bio, 1, timestamp, timestamp);
+    }
+    if (departmentId) sqlite.prepare('INSERT OR IGNORE INTO user_departments(user_id,department_id,is_primary,joined_at) VALUES (?,?,1,?)').run(id, departmentId, timestamp);
+    sqlite.prepare('INSERT OR IGNORE INTO role_assignments(id,user_id,role,department_id,granted_by,granted_at) VALUES (?,?,?,?,?,?)')
+      .run(`role-seed-${id}`, id, role, departmentId, president?.id ?? null, timestamp);
+  }
+}
+
 export async function openDatabase(databasePath: string): Promise<DatabaseContext> {
   await mkdir(dirname(databasePath), { recursive: true });
   const sqlite = new Database(databasePath);
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config', '0011_publicity_fantasy_lab', '0012_four_level_admin_hierarchy', '0013_blog_post_publishing', '0014_post_ratings']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config', '0011_publicity_fantasy_lab', '0012_four_level_admin_hierarchy', '0013_blog_post_publishing', '0014_post_ratings', '0015_user_uid']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');
@@ -174,6 +199,7 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
     }
     if (!options.production) {
       const timestamp = new Date().toISOString();
+      await ensureDevelopmentTestAccounts(sqlite, timestamp);
       ensureHomeShowcaseData(sqlite, timestamp);
       ensureSocialShowcaseData(sqlite, timestamp);
     } else {
@@ -184,17 +210,20 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   const now = new Date().toISOString();
   const adminPassword = options.adminPassword ?? 'DemoAdmin!2026';
   const adminHash = await hashPassword(adminPassword);
-  const [leadHash, memberHash] = options.production
-    ? [null, null]
-    : await Promise.all([hashPassword('DemoLead!2026'), hashPassword('DemoMember!2026')]);
+  const [viceHash, leadHash, deputyHash, memberHash] = options.production
+    ? [null, null, null, null]
+    : await Promise.all([hashPassword('DemoVice!2026'), hashPassword('DemoLead!2026'), hashPassword('DemoDeputy!2026'), hashPassword('DemoMember!2026')]);
 
   const insertDepartment = sqlite.prepare('INSERT INTO departments(id,slug,name,title,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?)');
   for (const [id, slug, name, title, description] of departments) insertDepartment.run(id, slug, name, title, description, now, now);
 
-  const insertUser = sqlite.prepare('INSERT INTO users(id,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
-  insertUser.run('user-admin', 'admin', adminHash, '星门总管', options.production ? 'initial-admin@local.invalid' : 'admin@guild.example', 'PRESIDENT', null, '负责公会运营与秩序', 1, '2018-05-01T00:00:00.000Z', now);
-  insertUser.run('user-lead', options.production ? null : 'cos.lead', leadHash, '绯月幻装师', 'cos.lead@guild.example', 'DEPARTMENT_HEAD', 'dept-cos', '负责幻装与舞台呈现', 1, '2023-05-01T00:00:00.000Z', now);
-  insertUser.run('user-member', options.production ? null : 'cos.member', memberHash, '白羽见习者', 'cos.member@guild.example', 'MEMBER', 'dept-cos', '热爱角色塑造与活动协作', 1, '2025-09-01T00:00:00.000Z', now);
+  const insertUser = sqlite.prepare('INSERT INTO users(id,uid,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+  const addUser = (...values: [string, string | null, string | null, string, string, string, string | null, string, number, string, string]) => insertUser.run(values[0], allocateUserUid(sqlite), ...values.slice(1));
+  addUser('user-admin', 'admin', adminHash, '星门总管', options.production ? 'initial-admin@local.invalid' : 'admin@guild.example', 'PRESIDENT', null, '负责公会运营与秩序', 1, '2018-05-01T00:00:00.000Z', now);
+  if (!options.production) addUser('user-vice', 'vice.president', viceHash, '星轨副社长', 'vice.president@guild.example', 'VICE_PRESIDENT', null, '协助社长统筹跨部门事务', 1, '2020-05-01T00:00:00.000Z', now);
+  addUser('user-lead', options.production ? null : 'cos.lead', leadHash, '绯月幻装师', 'cos.lead@guild.example', 'DEPARTMENT_HEAD', 'dept-cos', '负责幻装与舞台呈现', 1, '2023-05-01T00:00:00.000Z', now);
+  if (!options.production) addUser('user-deputy', 'cos.deputy', deputyHash, '绯羽副部长', 'cos.deputy@guild.example', 'DEPARTMENT_ADMIN', 'dept-cos', '协助部长管理 COS 部日常事务', 1, '2024-05-01T00:00:00.000Z', now);
+  addUser('user-member', options.production ? null : 'cos.member', memberHash, '白羽见习者', 'cos.member@guild.example', 'MEMBER', 'dept-cos', '热爱角色塑造与活动协作', 1, '2025-09-01T00:00:00.000Z', now);
 
   const departmentIds = departments.map(([id]) => id);
   const leaders: Record<string, string> = { 'dept-cos': 'user-lead' };
@@ -204,7 +233,7 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
     const firstForDepartment = !leaders[departmentId];
     const role = firstForDepartment ? 'DEPARTMENT_HEAD' : 'MEMBER';
     if (firstForDepartment) leaders[departmentId] = id;
-    insertUser.run(id, null, null, `星序旅人${String(index).padStart(3, '0')}`, `fiction${index}@guild.example`, role, departmentId, `虚构成员档案 ${index}`, 1, now, now);
+    addUser(id, null, null, `星序旅人${String(index).padStart(3, '0')}`, `fiction${index}@guild.example`, role, departmentId, `虚构成员档案 ${index}`, 1, now, now);
   }
   sqlite.prepare(`INSERT OR IGNORE INTO user_departments(user_id,department_id,is_primary,joined_at)
     SELECT id,department_id,1,created_at FROM users WHERE department_id IS NOT NULL`).run();
@@ -212,9 +241,11 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   for (const [departmentId, userId] of Object.entries(leaders)) setLeader.run(userId, now, departmentId);
   const insertRoleAssignment = sqlite.prepare('INSERT INTO role_assignments(id,user_id,role,department_id,granted_by,granted_at) VALUES (?,?,?,?,?,?)');
   insertRoleAssignment.run('role-seed-president', 'user-admin', 'PRESIDENT', null, null, '2018-05-01T00:00:00.000Z');
+  if (!options.production) insertRoleAssignment.run('role-seed-vice', 'user-vice', 'VICE_PRESIDENT', null, 'user-admin', now);
   for (const [departmentId, userId] of Object.entries(leaders)) {
     insertRoleAssignment.run(`role-seed-${departmentId}`, userId, 'DEPARTMENT_HEAD', departmentId, 'user-admin', now);
   }
+  if (!options.production) insertRoleAssignment.run('role-seed-deputy', 'user-deputy', 'DEPARTMENT_ADMIN', 'dept-cos', 'user-lead', now);
 
   const insertActivity = sqlite.prepare('INSERT INTO activities(id,department_id,title,description,status,capacity,check_in_code,result_summary,starts_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
   insertActivity.run('activity-open', 'dept-cos', '夏日幻装工坊', '小型角色造型交流', 'REGISTRATION', 1, null, null, '2026-08-10T10:00:00.000Z', now, now);

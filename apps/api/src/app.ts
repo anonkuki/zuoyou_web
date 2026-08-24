@@ -16,7 +16,7 @@ import {
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
 import { canTransitionActivity } from './activity.js';
-import { openDatabase, seedDatabase } from './database.js';
+import { allocateUserUid, openDatabase, seedDatabase } from './database.js';
 import { canAccessDepartment, canAccessFile } from './policies.js';
 import { decryptSecret, encryptSecret, hashPassword, sha256, verifyPassword } from './security.js';
 import { GuildSocialRepository, SocialError, safeTags } from './social.js';
@@ -36,6 +36,7 @@ export interface AppOptions {
 
 interface UserRow {
   id: string;
+  uid: string;
   username: string | null;
   password_hash: string | null;
   display_name: string;
@@ -57,6 +58,7 @@ interface UserRow {
 
 interface Principal {
   id: string;
+  uid: string;
   username: string | null;
   displayName: string;
   email: string;
@@ -107,7 +109,7 @@ const publicAnnouncement = (row: AnnouncementRow) => ({
   publishedAt: row.published_at,
 });
 const cleanUser = (user: UserRow, departmentIds: string[] = user.department_id ? [user.department_id] : []): Principal => ({
-  id: user.id, username: user.username, displayName: user.display_name, email: user.email,
+  id: user.id, uid: user.uid, username: user.username, displayName: user.display_name, email: user.email,
   role: user.role, departmentId: user.department_id, departmentIds, bio: user.bio, guildTitle: user.guild_title, college: user.college, grade: user.grade,
   skills: safeTags(user.skills), interests: safeTags(user.interests), avatarColor: user.avatar_color, avatarConfig: resolveAvatarConfig(user.id, user.avatar_config), profileVisibility: user.profile_visibility, lastSeenAt: user.last_seen_at,
 });
@@ -844,12 +846,17 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.get('/api/admin/members', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const paging = getPaging(request.query);
-    const where = isExecutiveRole(principal.role) ? '' : 'WHERE department_id=?';
-    const params = isExecutiveRole(principal.role) ? [paging.pageSize, paging.offset] : [principal.departmentId, paging.pageSize, paging.offset];
-    const rows = sqlite.prepare(`SELECT id,username,display_name,email,role,department_id,is_active,created_at FROM users ${where} ORDER BY created_at LIMIT ? OFFSET ?`).all(...params) as Array<Record<string, unknown>>;
+    const { q = '' } = parse(z.object({ q: z.string().trim().max(60).default('') }), request.query);
+    const search = `%${q}%`;
+    const clauses = ["(?='' OR uid LIKE ? OR display_name LIKE ? OR email LIKE ? OR COALESCE(username,'') LIKE ?)"];
+    const scopeParams: unknown[] = [];
+    if (!isExecutiveRole(principal.role)) { clauses.unshift('department_id=?'); scopeParams.push(principal.departmentId); }
+    const where = `WHERE ${clauses.join(' AND ')}`;
+    const searchParams = [q, search, search, search, search];
+    const params = [...scopeParams, ...searchParams, paging.pageSize, paging.offset];
+    const rows = sqlite.prepare(`SELECT id,uid,username,display_name,email,role,department_id,is_active,created_at FROM users ${where} ORDER BY created_at LIMIT ? OFFSET ?`).all(...params) as Array<Record<string, unknown>>;
     const items = rows.map((row) => ({ ...row, departmentId: row.department_id }));
-    const totalParams = isExecutiveRole(principal.role) ? [] : [principal.departmentId];
-    const total = (sqlite.prepare(`SELECT COUNT(*) count FROM users ${where}`).get(...totalParams) as { count: number }).count;
+    const total = (sqlite.prepare(`SELECT COUNT(*) count FROM users ${where}`).get(...scopeParams, ...searchParams) as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
   app.patch('/api/admin/members/:id', async (request, reply) => {
@@ -886,7 +893,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const scope = isExecutiveRole(principal.role) ? 'WHERE ra.revoked_at IS NULL' : 'WHERE ra.department_id=? AND ra.revoked_at IS NULL';
     const parameters = isExecutiveRole(principal.role) ? [] : [principal.departmentId];
     const items = sqlite.prepare(`SELECT ra.id,ra.user_id userId,ra.role,ra.department_id departmentId,
-      ra.granted_by grantedBy,ra.granted_at grantedAt,u.display_name displayName,
+      ra.granted_by grantedBy,ra.granted_at grantedAt,u.uid,u.display_name displayName,
       d.name departmentName,g.display_name grantedByName
       FROM role_assignments ra
       JOIN users u ON u.id=ra.user_id
@@ -1133,7 +1140,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const departmentIds = selected.length ? selected.map((department) => department.department_id) : [application.department_id];
     sqlite.transaction(() => {
       const createdAt = now();
-      sqlite.prepare('INSERT INTO users(id,display_name,email,role,department_id,bio,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(userId, application.display_name, application.email, 'MEMBER', departmentIds[0], '', 0, createdAt, createdAt);
+      sqlite.prepare('INSERT INTO users(id,uid,display_name,email,role,department_id,bio,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(userId, allocateUserUid(sqlite), application.display_name, application.email, 'MEMBER', departmentIds[0], '', 0, createdAt, createdAt);
       const insertMembership = sqlite.prepare('INSERT INTO user_departments(user_id,department_id,is_primary,joined_at) VALUES (?,?,?,?)');
       departmentIds.forEach((departmentId, index) => insertMembership.run(userId, departmentId, index === 0 ? 1 : 0, createdAt));
       sqlite.prepare('INSERT INTO activation_tokens(id,user_id,token_hash,expires_at,used_at,created_at) VALUES (?,?,?,?,?,?)').run(newId('activation'), userId, record.tokenHash, record.expiresAt, null, now());

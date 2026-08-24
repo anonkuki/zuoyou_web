@@ -25,15 +25,17 @@ corepack pnpm install
 corepack pnpm dev
 ```
 
-浏览器访问 `http://127.0.0.1:5173`，API 健康检查为 `http://127.0.0.1:3100/api/health`。首次启动会创建数据库并写入 82 名虚构成员与完整演示数据。
+浏览器访问 `http://127.0.0.1:5173`，API 健康检查为 `http://127.0.0.1:3100/api/health`。首次启动会创建数据库并写入 84 名虚构成员与完整演示数据。每个账号会获得唯一的五位数字 UID，可在成员名录和管理任命等账号检索场景中使用。
 
 开发演示账号：
 
 | 身份 | 用户名 | 密码 |
 | --- | --- | --- |
-| 管理员 | `admin` | `DemoAdmin!2026` |
-| COS 部负责人 | `cos.lead` | `DemoLead!2026` |
-| COS 部成员 | `cos.member` | `DemoMember!2026` |
+| 社长 | `admin` | `DemoAdmin!2026` |
+| 副社长 | `vice.president` | `DemoVice!2026` |
+| 部长 | `cos.lead` | `DemoLead!2026` |
+| 副部长 | `cos.deputy` | `DemoDeputy!2026` |
+| 普通成员 | `cos.member` | `DemoMember!2026` |
 
 演示凭据只在开发种子中存在。生产模式要求至少 24 字符的 `SESSION_SECRET` 和非占位、至少 12 字符的 `ADMIN_PASSWORD`，并拒绝复用开发种子数据库。
 

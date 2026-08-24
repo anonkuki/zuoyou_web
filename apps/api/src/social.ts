@@ -29,19 +29,19 @@ const presence = (lastSeenAt: string | null, timestamp: string) => {
 };
 
 interface ProfileRow {
-  id: string; display_name: string; role: Role; department_id: string | null; department_name: string | null; department_title: string | null;
+  id: string; uid: string; display_name: string; role: Role; department_id: string | null; department_name: string | null; department_title: string | null;
   bio: string; guild_title: string; college: string; grade: string; skills: string; interests: string; attributes: string; avatar_color: string; avatar_config: string | null; profile_visibility: 'MEMBERS' | 'PRIVATE';
   last_seen_at: string | null; created_at: string;
 }
 
-const PROFILE_COLUMNS = 'u.id,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.guild_title,u.college,u.grade,u.skills,u.interests,u.attributes,u.avatar_color,u.avatar_config,u.profile_visibility,u.last_seen_at,u.created_at';
+const PROFILE_COLUMNS = 'u.id,u.uid,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.guild_title,u.college,u.grade,u.skills,u.interests,u.attributes,u.avatar_color,u.avatar_config,u.profile_visibility,u.last_seen_at,u.created_at';
 
 export class GuildSocialRepository {
   constructor(private sqlite: Database.Database, private makeId: (prefix: string) => string, private timestamp: () => string) {}
 
   private serializeProfile(row: ProfileRow) {
     return {
-      id: row.id, displayName: row.display_name, role: row.role, departmentId: row.department_id, departmentName: row.department_name,
+      id: row.id, uid: row.uid, displayName: row.display_name, role: row.role, departmentId: row.department_id, departmentName: row.department_name,
       departmentTitle: row.department_title, bio: row.bio, guildTitle: row.guild_title, college: row.college, grade: row.grade,
       skills: safeTags(row.skills), interests: safeTags(row.interests), attributes: safeTags(row.attributes), avatarColor: row.avatar_color, avatarConfig: resolveAvatarConfig(row.id, row.avatar_config), profileVisibility: row.profile_visibility,
       presence: presence(row.last_seen_at, this.timestamp()), lastSeenAt: row.last_seen_at, joinedAt: row.created_at,
@@ -86,8 +86,8 @@ export class GuildSocialRepository {
     const search = `%${query.trim()}%`;
     const privacy = isExecutiveRole(principal.role) ? '1=1' : "(u.profile_visibility='MEMBERS' OR u.id=?)";
     const parameters: unknown[] = isExecutiveRole(principal.role) ? [] : [principal.id];
-    const where = `u.is_active=1 AND ${privacy} AND (?='' OR u.display_name LIKE ? OR u.guild_title LIKE ? OR d.name LIKE ?)`;
-    parameters.push(query.trim(), search, search, search);
+    const where = `u.is_active=1 AND ${privacy} AND (?='' OR u.uid LIKE ? OR u.display_name LIKE ? OR u.guild_title LIKE ? OR d.name LIKE ?)`;
+    parameters.push(query.trim(), search, search, search, search);
     const total = (this.sqlite.prepare(`SELECT COUNT(*) count FROM users u LEFT JOIN departments d ON d.id=u.department_id WHERE ${where}`).get(...parameters) as { count: number }).count;
     const rows = this.sqlite.prepare(`SELECT ${PROFILE_COLUMNS}
       FROM users u LEFT JOIN departments d ON d.id=u.department_id WHERE ${where}

@@ -244,7 +244,7 @@ describe('Navbar user entry', () => {
   });
 
   it('lets admins reach the console from the account menu', async () => {
-    stubSession({ ...memberUser, id: 'user-admin', displayName: '星门总管', role: 'ADMIN', avatarConfig: memberConfig });
+    stubSession({ ...memberUser, id: 'user-admin', displayName: '星门总管', role: 'PRESIDENT', avatarConfig: memberConfig });
     const user = userEvent.setup();
     const { container } = renderAt('/');
     await user.click(await within(navbar(container)).findByRole('button', { name: '星门总管 的账号菜单' }));

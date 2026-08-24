@@ -1,6 +1,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useLocation } from 'react-router-dom';
+import { isExecutiveRole } from '@guild/contracts';
 import { api, type User } from './api';
 import { LoadingPanel } from './components';
 
@@ -41,6 +42,6 @@ export function Protected({ children, manager = false, adminOnly = false }: { ch
     );
   }
   if (manager && user.role === 'MEMBER') return <Navigate to="/portal" replace />;
-  if (adminOnly && user.role !== 'ADMIN') return <Navigate to="/admin/activities" replace />;
+  if (adminOnly && !isExecutiveRole(user.role)) return <Navigate to="/admin/activities" replace />;
   return children;
 }

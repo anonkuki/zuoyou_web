@@ -45,7 +45,7 @@ export interface User {
   username: string | null;
   displayName: string;
   email: string;
-  role: 'MEMBER' | 'DEPARTMENT_LEAD' | 'ADMIN';
+  role: 'MEMBER' | 'DEPARTMENT_ADMIN' | 'DEPARTMENT_HEAD' | 'VICE_PRESIDENT' | 'PRESIDENT';
   departmentId: string | null;
   bio: string;
   guildTitle: string;

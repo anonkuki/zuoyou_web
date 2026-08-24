@@ -128,14 +128,30 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config', '0011_publicity_fantasy_lab']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config', '0011_publicity_fantasy_lab', '0012_four_level_admin_hierarchy']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');
-    sqlite.transaction(() => {
-      sqlite.exec(migration);
-      sqlite.prepare('INSERT INTO __migrations(name, applied_at) VALUES (?, ?)').run(name, new Date().toISOString());
-    })();
+    const rebuildsReferencedTable = name === '0012_four_level_admin_hierarchy';
+    if (rebuildsReferencedTable) sqlite.pragma('foreign_keys = OFF');
+    try {
+      sqlite.transaction(() => {
+        sqlite.exec(migration);
+        sqlite.prepare('INSERT INTO __migrations(name, applied_at) VALUES (?, ?)').run(name, new Date().toISOString());
+      })();
+    } catch (error) {
+      if (rebuildsReferencedTable) {
+        const legacyAdmins = (sqlite.prepare("SELECT COUNT(*) count FROM users WHERE role='ADMIN'").get() as { count: number }).count;
+        if (legacyAdmins > 1) throw new Error('Role hierarchy migration requires a single legacy ADMIN; designate the president before retrying', { cause: error });
+      }
+      throw error;
+    } finally {
+      if (rebuildsReferencedTable) sqlite.pragma('foreign_keys = ON');
+    }
+    if (rebuildsReferencedTable) {
+      const violations = sqlite.pragma('foreign_key_check') as unknown[];
+      if (violations.length) throw new Error('Foreign key validation failed after role hierarchy migration');
+    }
   }
   return { sqlite, orm: drizzle(sqlite, { schema }) };
 }
@@ -176,8 +192,8 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   for (const [id, slug, name, title, description] of departments) insertDepartment.run(id, slug, name, title, description, now, now);
 
   const insertUser = sqlite.prepare('INSERT INTO users(id,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
-  insertUser.run('user-admin', 'admin', adminHash, '星门总管', options.production ? 'initial-admin@local.invalid' : 'admin@guild.example', 'ADMIN', null, '负责公会运营与秩序', 1, '2018-05-01T00:00:00.000Z', now);
-  insertUser.run('user-lead', options.production ? null : 'cos.lead', leadHash, '绯月幻装师', 'cos.lead@guild.example', 'DEPARTMENT_LEAD', 'dept-cos', '负责幻装与舞台呈现', 1, '2023-05-01T00:00:00.000Z', now);
+  insertUser.run('user-admin', 'admin', adminHash, '星门总管', options.production ? 'initial-admin@local.invalid' : 'admin@guild.example', 'PRESIDENT', null, '负责公会运营与秩序', 1, '2018-05-01T00:00:00.000Z', now);
+  insertUser.run('user-lead', options.production ? null : 'cos.lead', leadHash, '绯月幻装师', 'cos.lead@guild.example', 'DEPARTMENT_HEAD', 'dept-cos', '负责幻装与舞台呈现', 1, '2023-05-01T00:00:00.000Z', now);
   insertUser.run('user-member', options.production ? null : 'cos.member', memberHash, '白羽见习者', 'cos.member@guild.example', 'MEMBER', 'dept-cos', '热爱角色塑造与活动协作', 1, '2025-09-01T00:00:00.000Z', now);
 
   const departmentIds = departments.map(([id]) => id);
@@ -186,7 +202,7 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
     const departmentId = index === 1 ? 'dept-tech' : departmentIds[(index - 1) % departmentIds.length];
     const id = index === 1 ? 'user-tech-01' : `user-fiction-${String(index).padStart(3, '0')}`;
     const firstForDepartment = !leaders[departmentId];
-    const role = firstForDepartment ? 'DEPARTMENT_LEAD' : 'MEMBER';
+    const role = firstForDepartment ? 'DEPARTMENT_HEAD' : 'MEMBER';
     if (firstForDepartment) leaders[departmentId] = id;
     insertUser.run(id, null, null, `星序旅人${String(index).padStart(3, '0')}`, `fiction${index}@guild.example`, role, departmentId, `虚构成员档案 ${index}`, 1, now, now);
   }
@@ -194,6 +210,11 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
     SELECT id,department_id,1,created_at FROM users WHERE department_id IS NOT NULL`).run();
   const setLeader = sqlite.prepare('UPDATE departments SET leader_id = ?, updated_at = ? WHERE id = ?');
   for (const [departmentId, userId] of Object.entries(leaders)) setLeader.run(userId, now, departmentId);
+  const insertRoleAssignment = sqlite.prepare('INSERT INTO role_assignments(id,user_id,role,department_id,granted_by,granted_at) VALUES (?,?,?,?,?,?)');
+  insertRoleAssignment.run('role-seed-president', 'user-admin', 'PRESIDENT', null, null, '2018-05-01T00:00:00.000Z');
+  for (const [departmentId, userId] of Object.entries(leaders)) {
+    insertRoleAssignment.run(`role-seed-${departmentId}`, userId, 'DEPARTMENT_HEAD', departmentId, 'user-admin', now);
+  }
 
   const insertActivity = sqlite.prepare('INSERT INTO activities(id,department_id,title,description,status,capacity,check_in_code,result_summary,starts_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
   insertActivity.run('activity-open', 'dept-cos', '夏日幻装工坊', '小型角色造型交流', 'REGISTRATION', 1, null, null, '2026-08-10T10:00:00.000Z', now, now);

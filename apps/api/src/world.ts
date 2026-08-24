@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { resolveAvatarConfig, worldAreas, worldMapHeight, worldMapWidth, type AvatarConfig, type WorldDirection } from '@guild/contracts';
+import { isExecutiveRole, resolveAvatarConfig, worldAreas, worldMapHeight, worldMapWidth, type AvatarConfig, type WorldDirection } from '@guild/contracts';
 import { SocialError, type SocialPrincipal } from './social.js';
 
 const PRESENCE_TIMEOUT_MS = 15_000;
@@ -114,7 +114,7 @@ export class GuildWorldService {
   deleteMessage(principal: SocialPrincipal, messageId: string): { ownerId: string; moderated: boolean } {
     const message = this.sqlite.prepare('SELECT sender_id,deleted_at FROM area_messages WHERE id=?').get(messageId) as { sender_id: string; deleted_at: string | null } | undefined;
     if (!message || message.deleted_at) throw new SocialError(404, 'NOT_FOUND', '消息不存在或已被删除');
-    const manager = principal.role === 'ADMIN';
+    const manager = isExecutiveRole(principal.role);
     if (message.sender_id !== principal.id && !manager) throw new SocialError(403, 'FORBIDDEN', '只能删除自己的消息');
     this.sqlite.prepare('UPDATE area_messages SET deleted_at=? WHERE id=?').run(this.timestamp(), messageId);
     return { ownerId: message.sender_id, moderated: message.sender_id !== principal.id };

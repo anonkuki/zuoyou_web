@@ -23,7 +23,7 @@ import {
 
 describe('shared contracts', () => {
   it('accepts only the exact role values', () => {
-    expect(RoleSchema.options).toEqual(['MEMBER', 'DEPARTMENT_LEAD', 'ADMIN']);
+    expect(RoleSchema.options).toEqual(['MEMBER', 'DEPARTMENT_ADMIN', 'DEPARTMENT_HEAD', 'VICE_PRESIDENT', 'PRESIDENT']);
     expect(RoleSchema.safeParse('OWNER').success).toBe(false);
   });
 

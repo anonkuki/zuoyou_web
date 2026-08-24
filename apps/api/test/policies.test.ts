@@ -5,10 +5,11 @@ import { calculateContribution } from '../src/contribution.js';
 import { consumeActivationToken, createActivationToken } from '../src/activation.js';
 
 describe('RBAC policies', () => {
-  it('gives admins global scope and leads only their department', () => {
-    expect(canAccessDepartment({ role: 'ADMIN', departmentId: null }, 'dept-b')).toBe(true);
-    expect(canAccessDepartment({ role: 'DEPARTMENT_LEAD', departmentId: 'dept-a' }, 'dept-a')).toBe(true);
-    expect(canAccessDepartment({ role: 'DEPARTMENT_LEAD', departmentId: 'dept-a' }, 'dept-b')).toBe(false);
+  it('gives executives global scope and department managers only their department', () => {
+    expect(canAccessDepartment({ role: 'PRESIDENT', departmentId: null }, 'dept-b')).toBe(true);
+    expect(canAccessDepartment({ role: 'VICE_PRESIDENT', departmentId: null }, 'dept-b')).toBe(true);
+    expect(canAccessDepartment({ role: 'DEPARTMENT_HEAD', departmentId: 'dept-a' }, 'dept-a')).toBe(true);
+    expect(canAccessDepartment({ role: 'DEPARTMENT_ADMIN', departmentId: 'dept-a' }, 'dept-b')).toBe(false);
     expect(canAccessDepartment({ role: 'MEMBER', departmentId: 'dept-a' }, 'dept-a')).toBe(false);
   });
 });
@@ -54,8 +55,8 @@ describe('file visibility', () => {
     expect(canAccessFile(member, { visibility: 'DEPARTMENT', departmentId: 'dept-a', deletedAt: null })).toBe(true);
     expect(canAccessFile(member, { visibility: 'DEPARTMENT', departmentId: 'dept-b', deletedAt: null })).toBe(false);
     expect(canAccessFile(member, { visibility: 'ADMINS', departmentId: null, deletedAt: null })).toBe(false);
-    expect(canAccessFile({ role: 'ADMIN', departmentId: null }, { visibility: 'ADMINS', departmentId: null, deletedAt: null })).toBe(true);
-    expect(canAccessFile({ role: 'ADMIN', departmentId: null }, { visibility: 'PUBLIC', departmentId: null, deletedAt: '2026-01-01' })).toBe(false);
+    expect(canAccessFile({ role: 'PRESIDENT', departmentId: null }, { visibility: 'ADMINS', departmentId: null, deletedAt: null })).toBe(true);
+    expect(canAccessFile({ role: 'VICE_PRESIDENT', departmentId: null }, { visibility: 'PUBLIC', departmentId: null, deletedAt: '2026-01-01' })).toBe(false);
   });
 
   it('allows access for every department a member has joined', () => {

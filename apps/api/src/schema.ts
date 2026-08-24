@@ -23,6 +23,17 @@ export const userDepartments = sqliteTable('user_departments', {
   joinedAt: utcText('joined_at'),
 }, (table) => [primaryKey({ columns: [table.userId, table.departmentId] }), index('user_department_membership_idx').on(table.departmentId, table.userId)]);
 
+export const roleAssignments = sqliteTable('role_assignments', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id),
+  role: text('role').notNull(),
+  departmentId: text('department_id').references(() => departments.id),
+  grantedBy: text('granted_by').references(() => users.id),
+  grantedAt: utcText('granted_at'),
+  revokedBy: text('revoked_by').references(() => users.id),
+  revokedAt: text('revoked_at'),
+}, (table) => [index('role_assignment_user_idx').on(table.userId, table.revokedAt), index('role_assignment_department_idx').on(table.departmentId, table.role, table.revokedAt)]);
+
 export const conversations = sqliteTable('conversations', {
   id: text('id').primaryKey(), type: text('type').notNull(), directKey: text('direct_key').unique(), departmentId: text('department_id').references(() => departments.id),
   title: text('title').notNull().default(''), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
@@ -129,4 +140,4 @@ export const auditLogs = sqliteTable('audit_logs', {
   id: text('id').primaryKey(), actorId: text('actor_id').references(() => users.id), targetUserId: text('target_user_id').references(() => users.id), action: text('action').notNull(), entityType: text('entity_type').notNull(), entityId: text('entity_id').notNull(), details: text('details'), createdAt: utcText('created_at'),
 }, (table) => [uniqueIndex('contribution_event_unique').on(table.action, table.entityType, table.entityId, table.targetUserId)]);
 
-export const schema = { departments, users, userDepartments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postComments, areaMessages, auditLogs };
+export const schema = { departments, users, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postComments, areaMessages, auditLogs };

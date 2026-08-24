@@ -13,8 +13,9 @@ import { MatchPage, PostDetailPage, PostsPage } from './pages-tavern';
 import { WorldAreaPage, WorldLobbyPage } from './pages-world';
 import { ActivitiesAdminPage, AdminDashboardPage, AnalyticsAdminPage, AnnouncementsAdminPage, AuditAdminPage, ChronicleAdminPage, DepartmentsAdminPage, FilesAdminPage, MembersAdminPage, RecruitmentAdminPage, SettingsAdminPage, TasksAdminPage, WorksAdminPage } from './pages-admin';
 import { showcaseBySlug } from './components/departments/showcase-data';
+import { isExecutiveRole } from '@guild/contracts';
 
-function AdminIndex(){const {user}=useAuth();return user?.role==='MEMBER'?<Navigate to="/portal" replace/>:user?.role==='DEPARTMENT_LEAD'?<Navigate to="/admin/activities" replace/>:<AdminDashboardPage/>}
+function AdminIndex(){const {user}=useAuth();return user?.role==='MEMBER'?<Navigate to="/portal" replace/>:user&&isExecutiveRole(user.role)?<AdminDashboardPage/>:<Navigate to="/admin/activities" replace/>}
 
 /** 路由切换回到顶部（instant，避免平滑滚动带来的漂浮感） */
 function ScrollToTop() {

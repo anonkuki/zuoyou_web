@@ -3,7 +3,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Award, CalendarCheck, Check, ChevronUp, Edit3, Eye, EyeOff, Hash, MessageCircle, MoreHorizontal, Palette, Reply, Search, Send, ShieldCheck, Sparkles, Trash2, UserRound, Users, X } from 'lucide-react';
 import { api, json, type PageData, type User } from './api';
-import { memberAttributePool, type AvatarConfig } from '@guild/contracts';
+import { memberAttributePool, roleLabels, type AvatarConfig } from '@guild/contracts';
 import { useAuth } from './auth';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero } from './components';
 import { PixelAvatar } from './components/avatar/PixelAvatar';
@@ -19,7 +19,7 @@ interface Conversation { id:string;type:'DIRECT'|'DEPARTMENT';departmentId:strin
 interface ChatMessage { id:string;conversationId:string;senderId:string;sender:{displayName:string;avatarColor:string};content:string;replyTo:{id:string;content:string;senderName:string}|null;editedAt:string|null;deletedAt:string|null;createdAt:string }
 interface MessagePage { items:ChatMessage[];hasMore:boolean;nextBefore:string|null }
 
-const roleLabel:Record<User['role'],string>={MEMBER:'正式成员',DEPARTMENT_LEAD:'部门负责人',ADMIN:'公会管理员'};
+const roleLabel:Record<User['role'],string>=roleLabels;
 const presenceLabel:Record<string,string>={ONLINE:'在线',AWAY:'最近活跃',OFFLINE:'离线'};
 const splitTags=(value:string)=>[...new Set(value.split(/[,，]/).map(item=>item.trim()).filter(Boolean))].slice(0,8);
 const attributeLabel=(id:string)=>memberAttributePool.find(attribute=>attribute.id===id)?.label??id;

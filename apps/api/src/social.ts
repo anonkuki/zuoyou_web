@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { isExecutiveRole, isManagementRole, resolveAvatarConfig, type MemberProfileUpdate, type Role } from '@guild/contracts';
+import { isExecutiveRole, isManagementRole, resolveAvatarConfig, type MemberProfileUpdate, type PostCreate, type Role } from '@guild/contracts';
 
 export interface SocialPrincipal {
   id: string;
@@ -239,8 +239,12 @@ export class GuildSocialRepository {
   }
 
   private serializePost(row: Record<string, unknown>) {
+    let body: unknown[] = [];
+    try { body = JSON.parse(String(row.body_json ?? '[]')) as unknown[]; } catch { body = []; }
+    if (!Array.isArray(body) || !body.length) body = [{ type: 'PARAGRAPH', text: String(row.content ?? '') }];
     return {
-      id: row.id, title: row.title, content: row.content, pinned: Boolean(row.pinned), commentCount: Number(row.comment_count ?? 0),
+      id: row.id, title: row.title, subtitle: row.subtitle ?? '', content: row.content, body, departmentId: row.department_id ?? null, departmentName: row.department_name ?? null,
+      pinned: Boolean(row.placement_pinned) || Boolean(row.pinned), featured: Boolean(row.placement_featured), visibleOnGuild: Boolean(row.visible_on_guild), visibleOnDepartment: Boolean(row.visible_on_department), voteCount: Number(row.vote_count ?? 0), voted: Boolean(row.voted), commentCount: Number(row.comment_count ?? 0),
       author: { id: row.user_id, displayName: row.author_name, avatarColor: row.author_color },
       createdAt: row.created_at, updatedAt: row.updated_at,
     };
@@ -256,24 +260,48 @@ export class GuildSocialRepository {
 
   listPosts(page: number, pageSize: number) {
     const total = (this.sqlite.prepare('SELECT COUNT(*) count FROM posts WHERE deleted_at IS NULL').get() as { count: number }).count;
-    const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,
-      (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count
-      FROM posts p JOIN users u ON u.id=p.user_id WHERE p.deleted_at IS NULL
-      ORDER BY p.pinned DESC,p.created_at DESC,p.id LIMIT ? OFFSET ?`).all(pageSize, (page - 1) * pageSize) as Array<Record<string, unknown>>;
+    const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,
+      (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id) vote_count,
+      EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.pinned=1) placement_pinned,
+      EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.featured=1) placement_featured,
+      EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='GUILD') visible_on_guild,
+      EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='DEPARTMENT') visible_on_department
+      FROM posts p JOIN users u ON u.id=p.user_id LEFT JOIN departments d ON d.id=p.department_id WHERE p.deleted_at IS NULL
+      ORDER BY placement_pinned DESC,p.pinned DESC,p.created_at DESC,p.id LIMIT ? OFFSET ?`).all(pageSize, (page - 1) * pageSize) as Array<Record<string, unknown>>;
     return { items: rows.map((row) => this.serializePost(row)), page, pageSize, total };
   }
 
-  createPost(principal: SocialPrincipal, title: string, content: string) {
+  createPost(principal: SocialPrincipal, input: PostCreate) {
     const id = this.makeId('post');
     const createdAt = this.timestamp();
-    this.sqlite.prepare('INSERT INTO posts(id,user_id,title,content,pinned,created_at,updated_at) VALUES (?,?,?,?,0,?,?)').run(id, principal.id, title, content, createdAt, createdAt);
+    if (input.departmentId && !this.sqlite.prepare('SELECT 1 FROM departments WHERE id=?').get(input.departmentId)) throw new SocialError(400, 'INVALID_DEPARTMENT', '所属部门不存在');
+    const body = input.body?.length ? input.body : [{ type: 'PARAGRAPH' as const, text: input.content }];
+    this.sqlite.prepare('INSERT INTO posts(id,user_id,title,subtitle,content,body_json,department_id,pinned,created_at,updated_at) VALUES (?,?,?,?,?,?,?,0,?,?)')
+      .run(id, principal.id, input.title, input.subtitle || null, input.content, JSON.stringify(body), input.departmentId, createdAt, createdAt);
     return this.getPost(id).post;
   }
 
+  editPost(principal: SocialPrincipal, postId: string, input: PostCreate) {
+    if (!isManagementRole(principal.role)) throw new SocialError(403, 'FORBIDDEN', '只有管理员可以编辑帖子');
+    const post = this.sqlite.prepare('SELECT id FROM posts WHERE id=? AND deleted_at IS NULL').get(postId);
+    if (!post) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    if (input.departmentId && !this.sqlite.prepare('SELECT 1 FROM departments WHERE id=?').get(input.departmentId)) throw new SocialError(400, 'INVALID_DEPARTMENT', '所属部门不存在');
+    const body = input.body?.length ? input.body : [{ type: 'PARAGRAPH' as const, text: input.content }];
+    this.sqlite.prepare('UPDATE posts SET title=?,subtitle=?,content=?,body_json=?,department_id=?,updated_at=? WHERE id=?')
+      .run(input.title, input.subtitle || null, input.content, JSON.stringify(body), input.departmentId, this.timestamp(), postId);
+    return this.getPost(postId).post;
+  }
+
   getPost(postId: string) {
-    const row = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,
-      (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count
-      FROM posts p JOIN users u ON u.id=p.user_id WHERE p.id=? AND p.deleted_at IS NULL`).get(postId) as Record<string, unknown> | undefined;
+    const row = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,
+      (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id) vote_count,
+      EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.pinned=1) placement_pinned,
+      EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.featured=1) placement_featured,
+      EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='GUILD') visible_on_guild,
+      EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='DEPARTMENT') visible_on_department
+      FROM posts p JOIN users u ON u.id=p.user_id LEFT JOIN departments d ON d.id=p.department_id WHERE p.id=? AND p.deleted_at IS NULL`).get(postId) as Record<string, unknown> | undefined;
     if (!row) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
     const comments = this.sqlite.prepare(`SELECT c.*,u.display_name author_name,u.avatar_color author_color
       FROM post_comments c JOIN users u ON u.id=c.user_id WHERE c.post_id=? AND c.deleted_at IS NULL ORDER BY c.created_at,c.id`).all(postId) as Array<Record<string, unknown>>;
@@ -314,6 +342,79 @@ export class GuildSocialRepository {
     if (!post || post.deleted_at) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
     this.sqlite.prepare('UPDATE posts SET pinned=?,updated_at=? WHERE id=?').run(pinned ? 1 : 0, this.timestamp(), postId);
     return this.getPost(postId).post;
+  }
+
+  votePost(principal: SocialPrincipal, postId: string) {
+    if (!this.sqlite.prepare('SELECT 1 FROM posts WHERE id=? AND deleted_at IS NULL').get(postId)) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    const existing = this.sqlite.prepare('SELECT 1 FROM post_votes WHERE post_id=? AND user_id=?').get(postId, principal.id);
+    if (existing) this.sqlite.prepare('DELETE FROM post_votes WHERE post_id=? AND user_id=?').run(postId, principal.id);
+    else this.sqlite.prepare('INSERT INTO post_votes(post_id,user_id,created_at) VALUES (?,?,?)').run(postId, principal.id, this.timestamp());
+    const voteCount = (this.sqlite.prepare('SELECT COUNT(*) count FROM post_votes WHERE post_id=?').get(postId) as { count: number }).count;
+    return { voted: !existing, voteCount };
+  }
+
+  private assertPlacement(principal: SocialPrincipal, postId: string, scope: 'GUILD' | 'DEPARTMENT', departmentId: string | null) {
+    const post = this.sqlite.prepare('SELECT department_id FROM posts WHERE id=? AND deleted_at IS NULL').get(postId) as { department_id: string | null } | undefined;
+    if (!post) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    if (isExecutiveRole(principal.role)) return;
+    if (principal.role === 'DEPARTMENT_HEAD' && scope === 'GUILD' && post.department_id && post.department_id === principal.departmentId) return;
+    if ((principal.role === 'DEPARTMENT_HEAD' || principal.role === 'DEPARTMENT_ADMIN') && scope === 'DEPARTMENT' && departmentId === principal.departmentId && post.department_id === principal.departmentId) return;
+    throw new SocialError(403, 'FORBIDDEN', '只能将本部门帖子展示在权限允许的页面');
+  }
+
+  placePost(principal: SocialPrincipal, postId: string, input: { scope: 'GUILD' | 'DEPARTMENT'; departmentId: string | null; visible: boolean; pinned?: boolean; featured?: boolean }) {
+    const departmentId = input.scope === 'GUILD' ? null : input.departmentId;
+    if (input.scope === 'DEPARTMENT' && !departmentId) throw new SocialError(400, 'DEPARTMENT_REQUIRED', '部门页面展示必须选择部门');
+    this.assertPlacement(principal, postId, input.scope, departmentId);
+    const existing = this.sqlite.prepare("SELECT id,pinned,featured FROM post_placements WHERE post_id=? AND scope_type=? AND COALESCE(department_id,'')=COALESCE(?,'')").get(postId, input.scope, departmentId) as { id: string; pinned: number; featured: number } | undefined;
+    if (!input.visible) {
+      if (existing) this.sqlite.prepare('DELETE FROM post_placements WHERE id=?').run(existing.id);
+      return { visible: false };
+    }
+    const timestamp = this.timestamp();
+    if (existing) this.sqlite.prepare('UPDATE post_placements SET pinned=?,featured=?,updated_at=? WHERE id=?').run((input.pinned ?? Boolean(existing.pinned)) ? 1 : 0, (input.featured ?? Boolean(existing.featured)) ? 1 : 0, timestamp, existing.id);
+    else this.sqlite.prepare('INSERT INTO post_placements(id,post_id,scope_type,department_id,pinned,featured,placed_by,placed_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(this.makeId('placement'), postId, input.scope, departmentId, input.pinned ? 1 : 0, input.featured ? 1 : 0, principal.id, timestamp, timestamp);
+    return { visible: true };
+  }
+
+  publicBoard(departmentSlug?: string) {
+    let departmentId: string | null = null;
+    if (departmentSlug) {
+      const department = this.sqlite.prepare('SELECT id FROM departments WHERE slug=?').get(departmentSlug) as { id: string } | undefined;
+      if (!department) throw new SocialError(404, 'NOT_FOUND', '部门不存在');
+      departmentId = department.id;
+    }
+    const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,x.pinned placement_pinned,x.featured placement_featured,
+      (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id) vote_count
+      FROM post_placements x JOIN posts p ON p.id=x.post_id JOIN users u ON u.id=p.user_id LEFT JOIN departments d ON d.id=p.department_id
+      WHERE p.deleted_at IS NULL AND x.scope_type=? AND COALESCE(x.department_id,'')=COALESCE(?,'')
+      ORDER BY x.pinned DESC,x.featured DESC,p.created_at DESC,p.id`).all(departmentId ? 'DEPARTMENT' : 'GUILD', departmentId) as Array<Record<string, unknown>>;
+    const items = rows.map((row) => this.serializePost(row));
+    return { pinned: items.filter((item) => item.pinned).slice(0, 6), featured: items.filter((item) => item.featured || item.voteCount > 0).sort((a, b) => Number(b.featured) - Number(a.featured) || b.voteCount - a.voteCount).slice(0, 6), latest: items.slice(0, 12) };
+  }
+
+  publicPost(postId: string) {
+    const row = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,
+      (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id) vote_count,
+      EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.pinned=1) placement_pinned,
+      EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.featured=1) placement_featured
+      FROM posts p JOIN users u ON u.id=p.user_id LEFT JOIN departments d ON d.id=p.department_id
+      WHERE p.id=? AND p.deleted_at IS NULL AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id)`).get(postId) as Record<string, unknown> | undefined;
+    if (!row) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或尚未公开展示');
+    return this.serializePost(row);
+  }
+
+  syncAssets(principal: SocialPrincipal, postId: string, assetIds: string[]) {
+    const uniqueIds = [...new Set(assetIds)];
+    const attached = this.sqlite.prepare('SELECT id FROM post_assets WHERE post_id=?').all(postId) as Array<{ id: string }>;
+    for (const asset of attached) if (!uniqueIds.includes(asset.id)) this.sqlite.prepare('UPDATE post_assets SET post_id=NULL WHERE id=?').run(asset.id);
+    for (const assetId of uniqueIds) {
+      const asset = this.sqlite.prepare('SELECT owner_id,post_id FROM post_assets WHERE id=?').get(assetId) as { owner_id: string; post_id: string | null } | undefined;
+      if (!asset || (asset.post_id !== postId && asset.owner_id !== principal.id) || (asset.post_id && asset.post_id !== postId)) throw new SocialError(400, 'INVALID_POST_ASSET', '帖子图片无效或不属于当前账户');
+      this.sqlite.prepare('UPDATE post_assets SET post_id=? WHERE id=?').run(postId, assetId);
+    }
   }
 
   matchMembers(principal: SocialPrincipal, limit = 12) {

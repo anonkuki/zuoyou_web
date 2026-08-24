@@ -1,37 +1,63 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, MessageCircle, Pin, PinOff, Send, Sparkles, Trash2 } from 'lucide-react';
-import { isManagementRole, memberAttributePool } from '@guild/contracts';
+import { ArrowLeft, Edit3, ImagePlus, Link2, MessageCircle, Pin, Send, Sparkles, Star, ThumbsUp, Trash2 } from 'lucide-react';
+import { isExecutiveRole, isManagementRole, memberAttributePool } from '@guild/contracts';
 import { api, json, type PageData } from './api';
 import { useAuth } from './auth';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero } from './components';
 import { PixelFrame, PixelSprite } from './components/departments/pixel';
 
 interface PostAuthor { id: string; displayName: string; avatarColor: string }
-export interface TavernPost { id: string; title: string; content: string; pinned: boolean; commentCount: number; author: PostAuthor; createdAt: string; updatedAt: string }
+interface PostBlock { type: 'PARAGRAPH' | 'IMAGE' | 'LINK'; text?: string; assetId?: string; alt?: string; url?: string; label?: string }
+export interface TavernPost { id: string; title: string; subtitle: string; content: string; body: PostBlock[]; departmentId: string | null; departmentName: string | null; pinned: boolean; featured: boolean; visibleOnGuild: boolean; visibleOnDepartment: boolean; voteCount: number; voted?: boolean; commentCount: number; author: PostAuthor; createdAt: string; updatedAt: string }
 interface TavernComment { id: string; postId: string; content: string; author: PostAuthor; createdAt: string }
+interface DepartmentOption { id: string; name: string }
 interface MatchProfile { id: string; displayName: string; avatarColor: string; guildTitle: string; departmentName?: string | null; bio: string; presence?: 'ONLINE' | 'AWAY' | 'OFFLINE' }
 interface MatchItem { score: number; sharedAttributes: string[]; sharedTags: string[]; profile: MatchProfile }
 
 const attributeLabel = (id: string) => memberAttributePool.find((attribute) => attribute.id === id)?.label ?? id;
 
-function PostBody({ content }: { content: string }) {
-  return <div className="tavern-post-content">{content.split(/\n{2,}/).map((paragraph, index) => <p key={index}>{paragraph.split('\n').map((line, lineIndex) => <span key={lineIndex}>{lineIndex > 0 && <br />}{line}</span>)}</p>)}</div>;
+function PostBody({ post }: { post: TavernPost }) {
+  return <div className="tavern-post-content">{post.body?.length ? post.body.map((block, index) => block.type === 'IMAGE' && block.assetId
+    ? <figure key={index}><img src={`/api/public/post-assets/${block.assetId}`} alt={block.alt || post.title}/>{block.alt && <figcaption>{block.alt}</figcaption>}</figure>
+    : block.type === 'LINK' && block.url ? <p key={index} className="tavern-external-link"><Link2/><a href={block.url} target="_blank" rel="noreferrer">{block.label || block.url}</a></p>
+    : <p key={index}>{block.text}</p>) : <p>{post.content}</p>}</div>;
+}
+
+export function PublicPostPage() {
+  const { id = '' } = useParams();
+  const query = useQuery({ queryKey: ['public-post', id], queryFn: () => api<{ post: TavernPost }>(`/api/public/posts/${id}`), enabled: Boolean(id) });
+  if (query.isLoading) return <main><LoadingPanel label="正在读取公开日志" /></main>;
+  if (query.error || !query.data) return <main className="social-profile-error"><ErrorPanel error={query.error} /><Link to="/">返回主页</Link></main>;
+  const post = query.data.post;
+  return <main className="public-blog-detail"><article>
+    <Link className="tavern-back" to="/"><ArrowLeft/>返回社团主页</Link>
+    <small>{post.departmentName ?? '整个社团'} · {formatDate(post.createdAt)}</small>
+    <h1>{post.title}</h1>{post.subtitle && <h2>{post.subtitle}</h2>}
+    <p className="public-blog-byline">BY {post.author.displayName} · {post.voteCount} 票精选</p>
+    <PostBody post={post}/>
+  </article></main>;
 }
 
 export function PostsPage() {
   const { user } = useAuth();
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: '', content: '' });
+  const [form, setForm] = useState({ title: '', subtitle: '', content: '', departmentId: '', linkUrl: '', linkLabel: '' });
+  const [assets, setAssets] = useState<Array<{ id: string; url: string }>>([]);
+  const departments = useQuery({ queryKey: ['public', 'departments'], queryFn: () => api<{ items: DepartmentOption[] }>('/api/public/departments') });
   const query = useQuery({ queryKey: ['tavern', 'posts'], queryFn: () => api<PageData<TavernPost>>('/api/member/posts?page=1&pageSize=50') });
   const refresh = () => client.invalidateQueries({ queryKey: ['tavern'] });
   const create = useMutation({
-    mutationFn: () => api<{ post: TavernPost }>('/api/member/posts', json('POST', form)),
-    onSuccess: () => { setOpen(false); setForm({ title: '', content: '' }); refresh(); },
+    mutationFn: () => api<{ post: TavernPost }>('/api/member/posts', json('POST', {
+      title: form.title, subtitle: form.subtitle, content: form.content, departmentId: form.departmentId || null,
+      body: [...form.content.split(/\n{2,}/).filter(Boolean).map((text) => ({ type: 'PARAGRAPH', text })), ...assets.map((asset) => ({ type: 'IMAGE', assetId: asset.id })), ...(form.linkUrl ? [{ type: 'LINK', url: form.linkUrl, label: form.linkLabel || undefined }] : [])],
+    })),
+    onSuccess: () => { setOpen(false); setForm({ title: '', subtitle: '', content: '', departmentId: '', linkUrl: '', linkLabel: '' }); setAssets([]); refresh(); },
   });
-  const pin = useMutation({ mutationFn: (post: TavernPost) => api(`/api/member/posts/${post.id}/pin`, json('PATCH', { pinned: !post.pinned })), onSuccess: refresh });
+  const upload = useMutation({ mutationFn: (file: File) => { const data = new FormData(); data.append('file', file); return api<{ asset: { id: string; url: string } }>('/api/member/post-assets', { method: 'POST', body: data }); }, onSuccess: ({ asset }) => setAssets((items) => [...items, asset]) });
+  const place = useMutation({ mutationFn: ({ post, scope, visible = true, pinned, featured }: { post: TavernPost; scope: 'GUILD' | 'DEPARTMENT'; visible?: boolean; pinned?: boolean; featured?: boolean }) => api(`/api/member/posts/${post.id}/placement`, json('PUT', { scope, departmentId: scope === 'DEPARTMENT' ? post.departmentId : null, visible, pinned, featured })), onSuccess: refresh });
   const remove = useMutation({ mutationFn: (id: string) => api(`/api/member/posts/${id}`, json('DELETE')), onSuccess: refresh });
   const manager = Boolean(user && isManagementRole(user.role));
   const submit = (event: FormEvent) => { event.preventDefault(); create.mutate(); };
@@ -42,7 +68,14 @@ export function PostsPage() {
     <section className="shell">
       {open && <form className="inline-create tavern-create" onSubmit={submit}>
         <label>帖子标题<input required minLength={2} maxLength={60} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="例如：周末道具修补互助" /></label>
+        <label>小标题（选填）<input maxLength={160} value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} placeholder="给正文加一句引子" /></label>
+        <label>所属范围<select value={form.departmentId} onChange={(e) => setForm({ ...form, departmentId: e.target.value })}><option value="">整个社团</option>{departments.data?.items?.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
         <label>帖子内容<textarea required minLength={5} maxLength={2000} rows={5} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} placeholder="支持空行分段，5-2000 字" /></label>
+        <label>外部链接（选填）<input type="url" value={form.linkUrl} onChange={(e) => setForm({ ...form, linkUrl: e.target.value })} placeholder="https://www.bilibili.com/video/..." /></label>
+        <label>链接说明（选填）<input maxLength={160} value={form.linkLabel} onChange={(e) => setForm({ ...form, linkLabel: e.target.value })} placeholder="例如：活动记录视频" /></label>
+        <label className="tavern-image-picker"><ImagePlus/>插入图片<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(e) => { const file = e.target.files?.[0]; if (file) upload.mutate(file); }} /></label>
+        {assets.length > 0 && <div className="tavern-image-preview">{assets.map((asset) => <img key={asset.id} src={asset.url} alt="待发布图片" />)}</div>}
+        {upload.error && <p className="form-error">{upload.error.message}</p>}
         {create.error && <p className="form-error">{create.error.message}</p>}
         <button className="guild-button primary" disabled={create.isPending}>发布到酒馆</button>
       </form>}
@@ -54,10 +87,15 @@ export function PostsPage() {
             {post.pinned && <span className="tavern-pin"><Pin />置顶</span>}
           </div>
           <Link className="tavern-post-title" to={`/portal/tavern/${post.id}`}><h2>{post.title}</h2></Link>
+          {post.subtitle && <p className="tavern-post-subtitle">{post.subtitle}</p>}
+          <span className="tavern-scope">{post.departmentName ?? '整个社团'}</span>
           <p className="tavern-post-excerpt">{post.content.split('\n')[0]}</p>
           <div className="tavern-post-foot">
             <Link to={`/portal/tavern/${post.id}`}><MessageCircle />{post.commentCount} 条评论</Link>
-            {manager && <button aria-label={`${post.pinned ? '取消置顶' : '置顶'} ${post.title}`} onClick={() => pin.mutate(post)}>{post.pinned ? <><PinOff />取消置顶</> : <><Pin />置顶</>}</button>}
+            {manager && (isExecutiveRole(user!.role) || (user?.role === 'DEPARTMENT_HEAD' && post.departmentId === user.departmentId)) && <button onClick={() => place.mutate({ post, scope: 'GUILD', visible: !post.visibleOnGuild })}><Sparkles/>{post.visibleOnGuild ? '撤下主页' : '展示在主页'}</button>}
+            {manager && post.departmentId && (isExecutiveRole(user!.role) || post.departmentId === user?.departmentId) && <button onClick={() => place.mutate({ post, scope: 'DEPARTMENT', visible: !post.visibleOnDepartment })}><Star/>{post.visibleOnDepartment ? '撤下部门页' : '展示在部门页'}</button>}
+            {manager && (isExecutiveRole(user!.role) || post.departmentId === user?.departmentId) && <button onClick={() => place.mutate({ post, scope: post.departmentId ? 'DEPARTMENT' : 'GUILD', pinned: !post.pinned })}><Pin/>{post.pinned ? '取消置顶' : '置顶'}</button>}
+            {manager && (isExecutiveRole(user!.role) || post.departmentId === user?.departmentId) && <button onClick={() => place.mutate({ post, scope: post.departmentId ? 'DEPARTMENT' : 'GUILD', featured: !post.featured })}><Sparkles/>{post.featured ? '取消精选' : '精选'}</button>}
             {(manager || user?.id === post.author.id) && <button className="danger" aria-label={`删除 ${post.title}`} onClick={() => remove.mutate(post.id)}><Trash2 />删除</button>}
           </div>
         </PixelFrame>)}
@@ -71,6 +109,7 @@ export function PostDetailPage() {
   const { user } = useAuth();
   const client = useQueryClient();
   const [content, setContent] = useState('');
+  const [editForm, setEditForm] = useState<{ title: string; subtitle: string; content: string; linkUrl: string; linkLabel: string } | null>(null);
   const query = useQuery({ queryKey: ['tavern', 'post', id], queryFn: () => api<{ post: TavernPost; comments: TavernComment[] }>(`/api/member/posts/${id}`), enabled: Boolean(id) });
   const refresh = () => client.invalidateQueries({ queryKey: ['tavern'] });
   const comment = useMutation({
@@ -79,6 +118,11 @@ export function PostDetailPage() {
   });
   const removeComment = useMutation({ mutationFn: (commentId: string) => api(`/api/member/comments/${commentId}`, json('DELETE')), onSuccess: refresh });
   const removePost = useMutation({ mutationFn: () => api(`/api/member/posts/${id}`, json('DELETE')), onSuccess: () => { refresh(); } });
+  const vote = useMutation({ mutationFn: () => api(`/api/member/posts/${id}/vote`, json('POST')), onSuccess: refresh });
+  const edit = useMutation({ mutationFn: () => api(`/api/member/posts/${id}`, json('PATCH', {
+    title: editForm!.title, subtitle: editForm!.subtitle, content: editForm!.content, departmentId: query.data!.post.departmentId,
+    body: [...editForm!.content.split(/\n{2,}/).filter(Boolean).map((text) => ({ type: 'PARAGRAPH', text })), ...query.data!.post.body.filter((block) => block.type === 'IMAGE'), ...(editForm!.linkUrl ? [{ type: 'LINK', url: editForm!.linkUrl, label: editForm!.linkLabel || undefined }] : [])],
+  })), onSuccess: () => { setEditForm(null); refresh(); } });
   const navigate = useNavigate();
   if (query.isLoading) return <main><LoadingPanel label="正在读取帖子" /></main>;
   if (query.error || !query.data) return <main className="social-profile-error"><ErrorPanel error={query.error} /><Link to="/portal/tavern">返回冒险者酒馆</Link></main>;
@@ -94,8 +138,22 @@ export function PostDetailPage() {
           {post.pinned && <span className="tavern-pin"><Pin />置顶</span>}
         </div>
         <h1>{post.title}</h1>
-        <PostBody content={post.content} />
-        {(manager || user?.id === post.author.id) && <div className="tavern-post-foot"><button className="danger" onClick={async () => { await removePost.mutateAsync(); navigate('/portal/tavern'); }}><Trash2 />删除帖子</button></div>}
+        {post.subtitle && <p className="tavern-detail-subtitle">{post.subtitle}</p>}
+        <PostBody post={post} />
+        {editForm && <form className="tavern-edit-form" onSubmit={(event) => { event.preventDefault(); edit.mutate(); }}>
+          <label>大标题<input required value={editForm.title} onChange={(event) => setEditForm({ ...editForm, title: event.target.value })}/></label>
+          <label>小标题<input value={editForm.subtitle} onChange={(event) => setEditForm({ ...editForm, subtitle: event.target.value })}/></label>
+          <label>正文<textarea required rows={8} value={editForm.content} onChange={(event) => setEditForm({ ...editForm, content: event.target.value })}/></label>
+          <label>外部链接<input type="url" value={editForm.linkUrl} onChange={(event) => setEditForm({ ...editForm, linkUrl: event.target.value })}/></label>
+          <label>链接说明<input value={editForm.linkLabel} onChange={(event) => setEditForm({ ...editForm, linkLabel: event.target.value })}/></label>
+          <div><button className="guild-button primary" disabled={edit.isPending}>保存修改</button><button type="button" onClick={() => setEditForm(null)}>取消</button></div>
+          {edit.error && <p className="form-error">{edit.error.message}</p>}
+        </form>}
+        <div className="tavern-post-foot">
+          <button onClick={() => vote.mutate()}><ThumbsUp />投票精选 · {post.voteCount}</button>
+          {manager && <button onClick={() => { const link = post.body.find((block) => block.type === 'LINK'); setEditForm({ title: post.title, subtitle: post.subtitle, content: post.content, linkUrl: link?.url ?? '', linkLabel: link?.label ?? '' }); }}><Edit3/>编辑帖子</button>}
+          {(manager || user?.id === post.author.id) && <button className="danger" onClick={async () => { await removePost.mutateAsync(); navigate('/portal/tavern'); }}><Trash2 />删除帖子</button>}
+        </div>
       </PixelFrame>
       <section className="tavern-comments">
         <h2>评论 · {comments.length}</h2>

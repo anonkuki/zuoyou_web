@@ -762,6 +762,56 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     expect(audit.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'POST_PINNED', entity_id: 'post-cos-progress' })]));
   });
 
+  it('publishes structured blog posts with scoped placement, editing and member voting', async () => {
+    const boundary = '----guild-post-image-boundary';
+    const imageBody = Buffer.from([
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="prop.png"\r\nContent-Type: image/png\r\n\r\nfake-png-bytes\r\n`,
+      `--${boundary}--\r\n`,
+    ].join(''));
+    const uploaded = await app.inject({ method: 'POST', url: '/api/member/post-assets', headers: { cookie: memberCookie, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: imageBody });
+    expect(uploaded.statusCode).toBe(201);
+    const assetId = uploaded.json().data.asset.id as string;
+
+    const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: {
+      title: '幻装工坊网络日志', subtitle: '世纪初风格测试页', content: '今天完成了新道具的上色。', departmentId: 'dept-cos',
+      body: [
+        { type: 'PARAGRAPH', text: '今天完成了新道具的上色。' },
+        { type: 'IMAGE', assetId, alt: '上色后的道具' },
+        { type: 'LINK', url: 'https://www.bilibili.com/video/BV1test', label: '查看制作记录' },
+      ],
+    } });
+    expect(created.statusCode).toBe(201);
+    const postId = created.json().data.post.id as string;
+    expect(created.json().data.post).toMatchObject({ subtitle: '世纪初风格测试页', departmentId: 'dept-cos', departmentName: 'COS部' });
+    expect((await app.inject({ method: 'GET', url: `/api/public/post-assets/${assetId}` })).statusCode).toBe(404);
+
+    expect((await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}`, headers: { cookie: memberCookie }, payload: { title: '成员不可编辑', content: '普通成员不可编辑。', departmentId: 'dept-cos' } })).statusCode).toBe(403);
+    const edited = await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}`, headers: { cookie: leadCookie }, payload: { title: '幻装工坊网络日志（已校对）', subtitle: '部长校对', content: '内容已经完成校对。', departmentId: 'dept-cos', body: [{ type: 'PARAGRAPH', text: '内容已经完成校对。' }, { type: 'IMAGE', assetId, alt: '上色后的道具' }] } });
+    expect(edited.statusCode).toBe(200);
+
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: memberCookie }, payload: { scope: 'DEPARTMENT', departmentId: 'dept-cos', visible: true } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'DEPARTMENT', departmentId: 'dept-tech', visible: true } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'DEPARTMENT', departmentId: 'dept-cos', visible: true, pinned: true } })).statusCode).toBe(200);
+    const publicImage = await app.inject({ method: 'GET', url: `/api/public/post-assets/${assetId}` });
+    expect(publicImage.statusCode).toBe(200);
+    expect(publicImage.body).toBe('fake-png-bytes');
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'GUILD', visible: true, featured: true } })).statusCode).toBe(200);
+
+    const vote = await app.inject({ method: 'POST', url: `/api/member/posts/${postId}/vote`, headers: { cookie: memberCookie } });
+    expect(vote.json().data).toEqual({ voted: true, voteCount: 1 });
+    const departmentBoard = await app.inject({ method: 'GET', url: '/api/public/posts/board?departmentSlug=cos' });
+    expect(departmentBoard.statusCode).toBe(200);
+    expect(departmentBoard.json().data.pinned).toEqual(expect.arrayContaining([expect.objectContaining({ id: postId, pinned: true, voteCount: 1 })]));
+    const guildBoard = await app.inject({ method: 'GET', url: '/api/public/posts/board' });
+    expect(guildBoard.json().data.featured).toEqual(expect.arrayContaining([expect.objectContaining({ id: postId, featured: true })]));
+    expect((await app.inject({ method: 'GET', url: `/api/public/posts/${postId}` })).statusCode).toBe(200);
+
+    const guildPost = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: { title: '全社团随笔', content: '这是一篇全社团范围的随笔。' } });
+    const guildPostId = guildPost.json().data.post.id as string;
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${guildPostId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${guildPostId}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(200);
+  });
+
   it('round-trips profile attributes and ranks resonance matches', async () => {
     const invalid = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { attributes: ['not-in-pool'] } });
     expect(invalid.statusCode).toBe(400);

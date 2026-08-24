@@ -119,10 +119,23 @@ export const announcements = sqliteTable('announcements', {
 
 export const posts = sqliteTable('posts', {
   id: text('id').primaryKey(), userId: text('user_id').notNull().references(() => users.id),
-  title: text('title').notNull(), content: text('content').notNull(),
+  title: text('title').notNull(), subtitle: text('subtitle'), content: text('content').notNull(), bodyJson: text('body_json').notNull().default('[]'), departmentId: text('department_id').references(() => departments.id),
   pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false), deletedAt: text('deleted_at'),
   createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 }, (table) => [index('post_list_idx').on(table.deletedAt, table.pinned, table.createdAt)]);
+
+export const postPlacements = sqliteTable('post_placements', {
+  id: text('id').primaryKey(), postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }), scopeType: text('scope_type').notNull(), departmentId: text('department_id').references(() => departments.id),
+  pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false), featured: integer('featured', { mode: 'boolean' }).notNull().default(false), placedBy: text('placed_by').notNull().references(() => users.id), placedAt: utcText('placed_at'), updatedAt: utcText('updated_at'),
+}, (table) => [index('post_placement_board_idx').on(table.scopeType, table.departmentId, table.pinned, table.featured, table.placedAt)]);
+
+export const postVotes = sqliteTable('post_votes', {
+  postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }), userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }), value: integer('value').notNull().default(1), createdAt: utcText('created_at'),
+}, (table) => [primaryKey({ columns: [table.postId, table.userId] })]);
+
+export const postAssets = sqliteTable('post_assets', {
+  id: text('id').primaryKey(), ownerId: text('owner_id').notNull().references(() => users.id), postId: text('post_id').references(() => posts.id, { onDelete: 'cascade' }), storageKey: text('storage_key').notNull().unique(), mimeType: text('mime_type').notNull(), size: integer('size').notNull(), createdAt: utcText('created_at'),
+}, (table) => [index('post_asset_post_idx').on(table.postId)]);
 
 export const postComments = sqliteTable('post_comments', {
   id: text('id').primaryKey(), postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
@@ -140,4 +153,4 @@ export const auditLogs = sqliteTable('audit_logs', {
   id: text('id').primaryKey(), actorId: text('actor_id').references(() => users.id), targetUserId: text('target_user_id').references(() => users.id), action: text('action').notNull(), entityType: text('entity_type').notNull(), entityId: text('entity_id').notNull(), details: text('details'), createdAt: utcText('created_at'),
 }, (table) => [uniqueIndex('contribution_event_unique').on(table.action, table.entityType, table.entityId, table.targetUserId)]);
 
-export const schema = { departments, users, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postComments, areaMessages, auditLogs };
+export const schema = { departments, users, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postPlacements, postVotes, postAssets, postComments, areaMessages, auditLogs };

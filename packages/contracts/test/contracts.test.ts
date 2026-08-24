@@ -19,6 +19,7 @@ import {
   directConversationInputSchema,
   memberProfileUpdateSchema,
   messageCreateSchema,
+  postRatingSchema,
 } from '../src/index.js';
 
 describe('shared contracts', () => {
@@ -32,6 +33,12 @@ describe('shared contracts', () => {
     expect(ApplicationStatusSchema.options).toEqual(['PENDING', 'APPROVED', 'REJECTED']);
     expect(WorkStatusSchema.options).toEqual(['PENDING', 'PUBLISHED', 'REJECTED']);
     expect(FileVisibilitySchema.options).toEqual(['PUBLIC', 'MEMBERS', 'DEPARTMENT', 'ADMINS']);
+  });
+
+  it('accepts only upvote, downvote, or rating removal', () => {
+    expect([-1, 0, 1].every((value) => postRatingSchema.safeParse({ value }).success)).toBe(true);
+    expect(postRatingSchema.safeParse({ value: 2 }).success).toBe(false);
+    expect(postRatingSchema.safeParse({ value: '1' }).success).toBe(false);
   });
 
   it('validates and bounds paging input', () => {

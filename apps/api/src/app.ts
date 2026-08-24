@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 import {
-  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, isExecutiveRole, isManagementRole, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, resolveAvatarConfig, successResponse, worldMoveSchema,
+  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, isExecutiveRole, isManagementRole, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, postPlacementSchema, postRatingSchema, resolveAvatarConfig, successResponse, worldMoveSchema,
   type ActivityStatus, type AvatarConfig, type Role,
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
@@ -526,12 +526,28 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.post('/api/member/posts', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
     const body = parse(postCreateSchema, request.body);
-    const post = social.createPost(principal, body.title, body.content);
+    const post = sqlite.transaction(() => {
+      const created = social.createPost(principal, body);
+      social.syncAssets(principal, String(created.id), body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? []);
+      return created;
+    })();
     return reply.status(201).send(successResponse({ post }));
+  });
+  app.patch('/api/member/posts/:id', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const body = parse(postCreateSchema, request.body);
+    const post = sqlite.transaction(() => {
+      const edited = social.editPost(principal, id, body);
+      social.syncAssets(principal, id, body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? []);
+      return edited;
+    })();
+    audit(sqlite, principal.id, 'POST_EDITED', 'post', id);
+    return successResponse({ post });
   });
   app.get('/api/member/posts/:id', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
-    return successResponse(social.getPost((request.params as { id: string }).id));
+    return successResponse(social.getPost((request.params as { id: string }).id, principal.id));
   });
   app.post('/api/member/posts/:id/comments', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
@@ -557,7 +573,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const principal = requireManager(request, reply); if (!principal) return;
     const id = (request.params as { id: string }).id;
     const { pinned } = parse(z.object({ pinned: z.boolean() }), request.body);
-    const post = social.pinPost(id, pinned);
+    const post = social.pinPost(principal, id, pinned);
     audit(sqlite, principal.id, pinned ? 'POST_PINNED' : 'POST_UNPINNED', 'post', id);
     return successResponse({ post });
   });
@@ -880,6 +896,53 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       ORDER BY CASE ra.role WHEN 'PRESIDENT' THEN 1 WHEN 'VICE_PRESIDENT' THEN 2 WHEN 'DEPARTMENT_HEAD' THEN 3 ELSE 4 END,
       d.rowid,u.display_name`).all(...parameters);
     return successResponse({ items, limits: { vicePresidents: 4, departmentHeads: 6, departmentAdminsPerDepartment: null } });
+  });
+  app.put('/api/member/posts/:id/rating', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const { value } = parse(postRatingSchema, request.body);
+    return successResponse(social.ratePost(principal, (request.params as { id: string }).id, value));
+  });
+  app.put('/api/member/posts/:id/placement', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const body = parse(postPlacementSchema, request.body);
+    const result = social.placePost(principal, id, body);
+    audit(sqlite, principal.id, body.visible ? 'POST_PLACED' : 'POST_UNPLACED', 'post', id, undefined, JSON.stringify({ scope: body.scope, departmentId: body.departmentId }));
+    return successResponse(result);
+  });
+
+  app.post('/api/member/post-assets', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const part = await request.file();
+    if (!part) throw new HttpError(400, 'FILE_REQUIRED', '请选择图片');
+    const extensions: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+    const extension = extensions[part.mimetype];
+    if (!extension) throw new HttpError(415, 'INVALID_IMAGE_TYPE', '仅支持 JPG、PNG、WebP 或 GIF 图片');
+    const id = newId('post-asset');
+    const storageKey = `posts/${id}${extension}`;
+    const path = resolve(options.uploadRoot, storageKey);
+    await mkdir(resolve(options.uploadRoot, 'posts'), { recursive: true });
+    await pipeline(part.file, createWriteStream(path, { flags: 'wx' }));
+    const info = await stat(path);
+    if (part.file.truncated || info.size > 8 * 1024 * 1024) { await unlink(path); throw new HttpError(413, 'IMAGE_TOO_LARGE', '单张图片不能超过 8MB'); }
+    sqlite.prepare('INSERT INTO post_assets(id,owner_id,post_id,storage_key,mime_type,size,created_at) VALUES (?,?,NULL,?,?,?,?)').run(id, principal.id, storageKey, part.mimetype, info.size, now());
+    return reply.status(201).send(successResponse({ asset: { id, url: `/api/public/post-assets/${id}`, mimeType: part.mimetype, size: info.size } }));
+  });
+
+  app.get('/api/public/posts/board', async (request) => {
+    const { departmentSlug } = parse(z.object({ departmentSlug: z.string().trim().min(1).optional() }), request.query);
+    return successResponse(social.publicBoard(departmentSlug));
+  });
+  app.get('/api/public/posts/:id', async (request) => successResponse({ post: social.publicPost((request.params as { id: string }).id) }));
+
+  app.get('/api/public/post-assets/:id', async (request, reply) => {
+    const asset = sqlite.prepare(`SELECT a.storage_key,a.mime_type FROM post_assets a JOIN posts p ON p.id=a.post_id WHERE a.id=? AND p.deleted_at IS NULL AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id)`).get((request.params as { id: string }).id) as { storage_key: string; mime_type: string } | undefined;
+    if (!asset) throw new HttpError(404, 'NOT_FOUND', '图片不存在');
+    const uploadRoot = resolve(options.uploadRoot);
+    const filePath = resolve(uploadRoot, asset.storage_key);
+    if (!filePath.startsWith(`${uploadRoot}${sep}`)) throw new HttpError(400, 'INVALID_STORAGE_KEY', '文件路径无效');
+    reply.type(asset.mime_type).header('Cache-Control', 'public, max-age=3600');
+    return reply.send(createReadStream(filePath));
   });
 
   app.post('/api/admin/roles/:id/assign', async (request, reply) => {

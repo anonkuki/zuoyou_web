@@ -9,7 +9,7 @@ import { HomePage } from './components/home/HomePage';
 import { MemberActivitiesPage, MemberFilesPage, MemberTasksPage, MemberWorksPage, PortalHomePage } from './pages-portal';
 import { ChatPage, MemberDirectoryPage, MemberHomepagePage, ProfileEditorPage } from './pages-social';
 import { AvatarStudioPage } from './pages-avatar';
-import { MatchPage, PostDetailPage, PostsPage } from './pages-tavern';
+import { MatchPage, PostDetailPage, PostsPage, PublicPostPage } from './pages-tavern';
 import { WorldAreaPage, WorldLobbyPage } from './pages-world';
 import { ActivitiesAdminPage, AdminDashboardPage, AnalyticsAdminPage, AnnouncementsAdminPage, AuditAdminPage, ChronicleAdminPage, DepartmentsAdminPage, FilesAdminPage, MembersAdminPage, RecruitmentAdminPage, SettingsAdminPage, TasksAdminPage, WorksAdminPage } from './pages-admin';
 import { showcaseBySlug } from './components/departments/showcase-data';
@@ -39,7 +39,7 @@ function AppRoutes() {
   const location = useLocation();
   const reduce = useReducedMotion();
   const routes = <Routes location={location}>
-    <Route element={<PublicLayout/>}><Route index element={<HomePage/>}/><Route path="chronicle" element={<ChroniclePage/>}/><Route path="departments" element={<DepartmentsPage/>}/><Route path="departments/:slug" element={<DepartmentDetailPage/>}/><Route path="activities" element={<ActivitiesPage/>}/><Route path="activities/:id" element={<ActivityDetailPage/>}/><Route path="announcements" element={<AnnouncementsPage/>}/><Route path="announcements/:id" element={<AnnouncementDetailPage/>}/><Route path="works" element={<WorksPage/>}/><Route path="join" element={<JoinPage/>}/><Route path="application/:token" element={<ApplicationStatusPage/>}/></Route>
+    <Route element={<PublicLayout/>}><Route index element={<HomePage/>}/><Route path="chronicle" element={<ChroniclePage/>}/><Route path="departments" element={<DepartmentsPage/>}/><Route path="departments/:slug" element={<DepartmentDetailPage/>}/><Route path="posts/:id" element={<PublicPostPage/>}/><Route path="activities" element={<ActivitiesPage/>}/><Route path="activities/:id" element={<ActivityDetailPage/>}/><Route path="announcements" element={<AnnouncementsPage/>}/><Route path="announcements/:id" element={<AnnouncementDetailPage/>}/><Route path="works" element={<WorksPage/>}/><Route path="join" element={<JoinPage/>}/><Route path="application/:token" element={<ApplicationStatusPage/>}/></Route>
     <Route path="login" element={<LoginPage/>}/>
     <Route path="activate" element={<ActivatePage/>}/>
     <Route path="portal" element={<Protected><ConsoleLayout/></Protected>}><Route index element={<PortalHomePage/>}/><Route path="profile" element={<ProfileEditorPage/>}/><Route path="avatar" element={<AvatarStudioPage/>}/><Route path="members" element={<MemberDirectoryPage/>}/><Route path="members/:id" element={<MemberHomepagePage/>}/><Route path="tavern" element={<PostsPage/>}/><Route path="tavern/:id" element={<PostDetailPage/>}/><Route path="match" element={<MatchPage/>}/><Route path="world" element={<WorldLobbyPage/>}/><Route path="world/:areaId" element={<WorldAreaPage/>}/><Route path="chat" element={<ChatPage/>}/><Route path="activities" element={<MemberActivitiesPage/>}/><Route path="works" element={<MemberWorksPage/>}/><Route path="tasks" element={<MemberTasksPage/>}/><Route path="files" element={<MemberFilesPage/>}/></Route>

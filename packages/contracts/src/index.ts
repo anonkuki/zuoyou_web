@@ -135,11 +135,32 @@ export const memberProfileUpdateSchema = z.object({
 }).refine((value) => Object.keys(value).length > 0, '至少提供一个修改字段');
 export type MemberProfileUpdate = z.infer<typeof memberProfileUpdateSchema>;
 
+export const postBodyBlockSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('PARAGRAPH'), text: z.string().trim().min(1).max(4000) }),
+  z.object({ type: z.literal('IMAGE'), assetId: z.string().trim().min(1).max(100), alt: z.string().trim().max(160).optional() }),
+  z.object({ type: z.literal('LINK'), url: z.url().refine((url) => /^https?:\/\//i.test(url), '仅支持 http/https 链接'), label: z.string().trim().max(160).optional() }),
+]);
+export type PostBodyBlock = z.infer<typeof postBodyBlockSchema>;
+
 export const postCreateSchema = z.object({
-  title: z.string().trim().min(2).max(60),
-  content: z.string().trim().min(5).max(2000),
+  title: z.string().trim().min(2).max(100),
+  subtitle: z.string().trim().max(160).optional().default(''),
+  content: z.string().trim().min(1).max(12000),
+  departmentId: z.string().trim().min(1).nullable().default(null),
+  body: z.array(postBodyBlockSchema).min(1).max(80).optional(),
 });
 export type PostCreate = z.infer<typeof postCreateSchema>;
+
+export const postPlacementSchema = z.object({
+  scope: z.enum(['GUILD', 'DEPARTMENT']),
+  departmentId: z.string().trim().min(1).nullable().default(null),
+  visible: z.boolean().default(true),
+  pinned: z.boolean().optional(),
+  featured: z.boolean().optional(),
+});
+
+export const postRatingSchema = z.object({ value: z.union([z.literal(-1), z.literal(0), z.literal(1)]) });
+export type PostRating = z.infer<typeof postRatingSchema>;
 
 export const commentCreateSchema = z.object({
   content: z.string().trim().min(1).max(1000),

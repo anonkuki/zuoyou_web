@@ -12,6 +12,7 @@ import { CosShowcase } from './showcase/CosShowcase';
 import { MusicShowcase } from './showcase/MusicShowcase';
 import { DepartmentMediaShelf } from './DepartmentMediaShelf';
 import { DepartmentPhotoGallery } from './DepartmentPhotoGallery';
+import { BlogPostBoard } from '../blog/BlogPostBoard';
 
 export interface ShowcaseProps { dept: DepartmentInfo; show: DeptShowcase }
 
@@ -67,6 +68,7 @@ function GenericShowcase({ dept }: { dept: DepartmentInfo }) {
           </div>
         </div>
       </div></section>
+      <BlogPostBoard departmentSlug={dept.slug} />
     </main>
   );
 }
@@ -75,5 +77,5 @@ export function DeptShowcasePage({ department }: { department: DepartmentInfo })
   const show = showcaseBySlug[department.slug];
   if (!show) return <GenericShowcase dept={department} />;
   const Themed = themed[show.slug];
-  return <Themed dept={department} show={show} />;
+  return <><Themed dept={department} show={show} /><BlogPostBoard departmentSlug={department.slug} /></>;
 }

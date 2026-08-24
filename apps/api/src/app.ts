@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 import {
-  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, resolveAvatarConfig, successResponse, worldMoveSchema,
+  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, isExecutiveRole, isManagementRole, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, resolveAvatarConfig, successResponse, worldMoveSchema,
   type ActivityStatus, type AvatarConfig, type Role,
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
@@ -203,7 +203,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   function requireManager(request: FastifyRequest, reply: FastifyReply): Principal | null {
     const principal = requireMember(request, reply);
     if (!principal) return null;
-    if (principal.role !== 'ADMIN' && principal.role !== 'DEPARTMENT_LEAD') {
+    if (!isManagementRole(principal.role)) {
       reply.status(403).send({ ok: false, error: { code: 'FORBIDDEN', message: '权限不足' } });
       return null;
     }
@@ -213,8 +213,8 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   function requireAdmin(request: FastifyRequest, reply: FastifyReply): Principal | null {
     const principal = requireMember(request, reply);
     if (!principal) return null;
-    if (principal.role !== 'ADMIN') {
-      reply.status(403).send({ ok: false, error: { code: 'FORBIDDEN', message: '仅管理员可执行此操作' } });
+    if (!isExecutiveRole(principal.role)) {
+      reply.status(403).send({ ok: false, error: { code: 'FORBIDDEN', message: '仅社长层可执行此操作' } });
       return null;
     }
     return principal;
@@ -222,6 +222,76 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
   function scopeDepartment(principal: Principal, departmentId: string): void {
     if (!canAccessDepartment(principal, departmentId)) throw new HttpError(403, 'FORBIDDEN', '不可管理其他部门资源');
+  }
+
+  const assignableRoleSchema = z.enum(['VICE_PRESIDENT', 'DEPARTMENT_HEAD', 'DEPARTMENT_ADMIN']);
+
+  function canGrantRole(actor: Principal, role: Role, departmentId: string | null): boolean {
+    if (role === 'VICE_PRESIDENT') return actor.role === 'PRESIDENT';
+    if (role === 'DEPARTMENT_HEAD') return isExecutiveRole(actor.role);
+    if (role === 'DEPARTMENT_ADMIN') return actor.role === 'DEPARTMENT_HEAD' && actor.departmentId === departmentId;
+    return false;
+  }
+
+  function memberBelongsToDepartment(userId: string, departmentId: string): boolean {
+    return Boolean(sqlite.prepare(`SELECT 1 FROM users u WHERE u.id=? AND (u.department_id=? OR EXISTS(
+      SELECT 1 FROM user_departments ud WHERE ud.user_id=u.id AND ud.department_id=?
+    ))`).get(userId, departmentId, departmentId));
+  }
+
+  function assignHierarchyRole(actor: Principal, userId: string, role: 'VICE_PRESIDENT' | 'DEPARTMENT_HEAD' | 'DEPARTMENT_ADMIN', departmentId: string | null): string {
+    const target = sqlite.prepare('SELECT id,role,department_id,is_active FROM users WHERE id=?').get(userId) as { id: string; role: Role; department_id: string | null; is_active: number } | undefined;
+    if (!target) throw new HttpError(404, 'NOT_FOUND', '成员不存在');
+    if (!target.is_active) throw new HttpError(409, 'INACTIVE_MEMBER', '不能向已停用成员授权');
+    if (target.id === actor.id) throw new HttpError(409, 'CANNOT_ASSIGN_SELF', '不能给自己授予管理角色');
+    if (target.role !== 'MEMBER') throw new HttpError(409, 'ROLE_REVOCATION_REQUIRED', '请先撤销该成员当前的管理角色');
+    const scopedDepartmentId = role === 'VICE_PRESIDENT' ? null : departmentId;
+    if (!canGrantRole(actor, role, scopedDepartmentId)) throw new HttpError(403, 'FORBIDDEN', '不能授予该级别或跨部门授权');
+    if (role !== 'VICE_PRESIDENT') {
+      if (!scopedDepartmentId) throw new HttpError(400, 'DEPARTMENT_REQUIRED', '部门管理角色必须指定部门');
+      if (!memberBelongsToDepartment(userId, scopedDepartmentId)) throw new HttpError(400, 'VALIDATION_ERROR', '被授权成员必须属于目标部门');
+    }
+    if (role === 'VICE_PRESIDENT') {
+      const count = (sqlite.prepare("SELECT COUNT(*) count FROM users WHERE role='VICE_PRESIDENT' AND is_active=1").get() as { count: number }).count;
+      if (count >= 4) throw new HttpError(409, 'VICE_PRESIDENT_LIMIT', '副社长最多只能有四人');
+    }
+
+    const assignmentId = newId('role');
+    const timestamp = now();
+    sqlite.transaction(() => {
+      if (role === 'DEPARTMENT_HEAD') {
+        const previous = sqlite.prepare("SELECT id FROM users WHERE role='DEPARTMENT_HEAD' AND department_id=? AND id!=?").get(scopedDepartmentId, userId) as { id: string } | undefined;
+        if (previous) {
+          sqlite.prepare('UPDATE role_assignments SET revoked_by=?,revoked_at=? WHERE user_id=? AND revoked_at IS NULL').run(actor.id, timestamp, previous.id);
+          sqlite.prepare("UPDATE users SET role='MEMBER',updated_at=? WHERE id=?").run(timestamp, previous.id);
+          audit(sqlite, actor.id, 'ROLE_REVOKED', 'role_assignment', newId('role-revoke'), previous.id, { role: 'DEPARTMENT_HEAD', departmentId: scopedDepartmentId, reason: 'replaced' });
+        }
+      }
+      sqlite.prepare('INSERT INTO role_assignments(id,user_id,role,department_id,granted_by,granted_at) VALUES (?,?,?,?,?,?)')
+        .run(assignmentId, userId, role, scopedDepartmentId, actor.id, timestamp);
+      sqlite.prepare('UPDATE users SET role=?,department_id=CASE WHEN ? IS NULL THEN department_id ELSE ? END,updated_at=? WHERE id=?')
+        .run(role, scopedDepartmentId, scopedDepartmentId, timestamp, userId);
+      if (role === 'DEPARTMENT_HEAD') sqlite.prepare('UPDATE departments SET leader_id=?,updated_at=? WHERE id=?').run(userId, timestamp, scopedDepartmentId);
+      audit(sqlite, actor.id, 'ROLE_GRANTED', 'role_assignment', assignmentId, userId, { role, departmentId: scopedDepartmentId });
+    })();
+    return assignmentId;
+  }
+
+  function revokeHierarchyRole(actor: Principal, userId: string): Role {
+    const target = sqlite.prepare('SELECT id,role,department_id FROM users WHERE id=?').get(userId) as { id: string; role: Role; department_id: string | null } | undefined;
+    if (!target) throw new HttpError(404, 'NOT_FOUND', '成员不存在');
+    if (target.role === 'PRESIDENT') throw new HttpError(409, 'PRESIDENT_PROTECTED', '社长身份不能通过普通授权流程撤销');
+    if (target.role === 'MEMBER') throw new HttpError(409, 'NO_MANAGEMENT_ROLE', '该成员没有可撤销的管理角色');
+    if (target.id === actor.id) throw new HttpError(409, 'CANNOT_REVOKE_SELF', '不能撤销自己的管理角色');
+    if (!canGrantRole(actor, target.role, target.department_id)) throw new HttpError(403, 'FORBIDDEN', '不能撤销该级别或其他部门的角色');
+    const timestamp = now();
+    sqlite.transaction(() => {
+      sqlite.prepare('UPDATE role_assignments SET revoked_by=?,revoked_at=? WHERE user_id=? AND revoked_at IS NULL').run(actor.id, timestamp, userId);
+      sqlite.prepare("UPDATE users SET role='MEMBER',updated_at=? WHERE id=?").run(timestamp, userId);
+      if (target.role === 'DEPARTMENT_HEAD') sqlite.prepare('UPDATE departments SET leader_id=NULL,updated_at=? WHERE id=? AND leader_id=?').run(timestamp, target.department_id, userId);
+      audit(sqlite, actor.id, 'ROLE_REVOKED', 'role_assignment', newId('role-revoke'), userId, { role: target.role, departmentId: target.department_id });
+    })();
+    return target.role;
   }
 
   app.get('/api/health', async () => successResponse({ status: 'ok', timestamp: now() }));
@@ -758,11 +828,11 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.get('/api/admin/members', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const paging = getPaging(request.query);
-    const where = principal.role === 'ADMIN' ? '' : 'WHERE department_id=?';
-    const params = principal.role === 'ADMIN' ? [paging.pageSize, paging.offset] : [principal.departmentId, paging.pageSize, paging.offset];
+    const where = isExecutiveRole(principal.role) ? '' : 'WHERE department_id=?';
+    const params = isExecutiveRole(principal.role) ? [paging.pageSize, paging.offset] : [principal.departmentId, paging.pageSize, paging.offset];
     const rows = sqlite.prepare(`SELECT id,username,display_name,email,role,department_id,is_active,created_at FROM users ${where} ORDER BY created_at LIMIT ? OFFSET ?`).all(...params) as Array<Record<string, unknown>>;
     const items = rows.map((row) => ({ ...row, departmentId: row.department_id }));
-    const totalParams = principal.role === 'ADMIN' ? [] : [principal.departmentId];
+    const totalParams = isExecutiveRole(principal.role) ? [] : [principal.departmentId];
     const total = (sqlite.prepare(`SELECT COUNT(*) count FROM users ${where}`).get(...totalParams) as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
@@ -771,12 +841,11 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const id = (request.params as { id: string }).id;
     const target = sqlite.prepare('SELECT department_id,role FROM users WHERE id=?').get(id) as { department_id: string | null; role: Role } | undefined;
     if (!target) throw new HttpError(404, 'NOT_FOUND', '成员不存在');
-    if (principal.role !== 'ADMIN') scopeDepartment(principal, target.department_id ?? '');
+    if (!isExecutiveRole(principal.role)) scopeDepartment(principal, target.department_id ?? '');
     const body = parse(z.object({ displayName: z.string().min(2).max(60).optional(), role: RoleSchema.optional(), departmentId: z.string().nullable().optional() }).refine((value) => Object.keys(value).length > 0), request.body);
-    if (principal.role !== 'ADMIN' && (body.role || body.departmentId !== undefined)) throw new HttpError(403, 'FORBIDDEN', '部门负责人不可修改角色或部门');
-    if (body.role === 'DEPARTMENT_LEAD' || (target.role === 'DEPARTMENT_LEAD' && (body.role !== undefined || (body.departmentId !== undefined && body.departmentId !== target.department_id)))) throw new HttpError(409, 'LEADER_ASSIGNMENT_REQUIRED', '部门负责人变更必须使用负责人指派接口');
-    sqlite.prepare('UPDATE users SET display_name=COALESCE(?,display_name),role=COALESCE(?,role),department_id=CASE WHEN ? THEN ? ELSE department_id END,updated_at=? WHERE id=?')
-      .run(body.displayName ?? null, body.role ?? null, body.departmentId !== undefined ? 1 : 0, body.departmentId ?? null, now(), id);
+    if (body.role || body.departmentId !== undefined) throw new HttpError(403, 'ROLE_ASSIGNMENT_REQUIRED', '角色和部门变更必须使用分级授权接口');
+    sqlite.prepare('UPDATE users SET display_name=COALESCE(?,display_name),updated_at=? WHERE id=?')
+      .run(body.displayName ?? null, now(), id);
     audit(sqlite, principal.id, 'MEMBER_UPDATED', 'user', id, id, body);
     return successResponse({ updated: true });
   });
@@ -785,15 +854,48 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       const principal = requireManager(request, reply); if (!principal) return;
       const id = (request.params as { id: string }).id;
       if (!active && id === principal.id) throw new HttpError(409, 'CANNOT_DEACTIVATE_SELF', '不能停用当前登录账号');
-      const target = sqlite.prepare('SELECT department_id FROM users WHERE id=?').get(id) as { department_id: string | null } | undefined;
+      const target = sqlite.prepare('SELECT department_id,role FROM users WHERE id=?').get(id) as { department_id: string | null; role: Role } | undefined;
       if (!target) throw new HttpError(404, 'NOT_FOUND', '成员不存在');
-      if (principal.role !== 'ADMIN') scopeDepartment(principal, target.department_id ?? '');
+      if (!isExecutiveRole(principal.role)) scopeDepartment(principal, target.department_id ?? '');
+      if (!active && target.role !== 'MEMBER') throw new HttpError(409, 'ROLE_REVOCATION_REQUIRED', '停用管理人员前必须先撤销其管理角色');
       sqlite.prepare('UPDATE users SET is_active=?,updated_at=? WHERE id=?').run(active, now(), id);
       if (!active) sqlite.prepare('DELETE FROM sessions WHERE user_id=?').run(id);
       audit(sqlite, principal.id, action, 'user', id, id);
       return successResponse({ active: Boolean(active) });
     });
   }
+
+  app.get('/api/admin/role-hierarchy', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const scope = isExecutiveRole(principal.role) ? 'WHERE ra.revoked_at IS NULL' : 'WHERE ra.department_id=? AND ra.revoked_at IS NULL';
+    const parameters = isExecutiveRole(principal.role) ? [] : [principal.departmentId];
+    const items = sqlite.prepare(`SELECT ra.id,ra.user_id userId,ra.role,ra.department_id departmentId,
+      ra.granted_by grantedBy,ra.granted_at grantedAt,u.display_name displayName,
+      d.name departmentName,g.display_name grantedByName
+      FROM role_assignments ra
+      JOIN users u ON u.id=ra.user_id
+      LEFT JOIN departments d ON d.id=ra.department_id
+      LEFT JOIN users g ON g.id=ra.granted_by
+      ${scope}
+      ORDER BY CASE ra.role WHEN 'PRESIDENT' THEN 1 WHEN 'VICE_PRESIDENT' THEN 2 WHEN 'DEPARTMENT_HEAD' THEN 3 ELSE 4 END,
+      d.rowid,u.display_name`).all(...parameters);
+    return successResponse({ items, limits: { vicePresidents: 4, departmentHeads: 6, departmentAdminsPerDepartment: null } });
+  });
+
+  app.post('/api/admin/roles/:id/assign', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const userId = (request.params as { id: string }).id;
+    const body = parse(z.object({ role: assignableRoleSchema, departmentId: z.string().nullable().optional() }), request.body);
+    const assignmentId = assignHierarchyRole(principal, userId, body.role, body.departmentId ?? null);
+    return reply.status(201).send(successResponse({ assignmentId, userId, role: body.role }));
+  });
+
+  app.post('/api/admin/roles/:id/revoke', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const userId = (request.params as { id: string }).id;
+    const role = revokeHierarchyRole(principal, userId);
+    return successResponse({ revoked: true, userId, role });
+  });
 
   app.post('/api/admin/departments', async (request, reply) => {
     const principal = requireAdmin(request, reply); if (!principal) return;
@@ -811,14 +913,8 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const principal = requireAdmin(request, reply); if (!principal) return;
     const departmentId = (request.params as { id: string }).id;
     const { userId } = parse(z.object({ userId: z.string() }), request.body);
-    const user = sqlite.prepare('SELECT department_id FROM users WHERE id=?').get(userId) as { department_id: string | null } | undefined;
-    if (!user || user.department_id !== departmentId) throw new HttpError(400, 'VALIDATION_ERROR', '负责人必须属于该部门');
-    sqlite.transaction(() => {
-      sqlite.prepare("UPDATE users SET role='MEMBER',updated_at=? WHERE role='DEPARTMENT_LEAD' AND department_id=?").run(now(), departmentId);
-      sqlite.prepare("UPDATE users SET role='DEPARTMENT_LEAD',updated_at=? WHERE id=?").run(now(), userId);
-      sqlite.prepare('UPDATE departments SET leader_id=?,updated_at=? WHERE id=?').run(userId, now(), departmentId);
-    })();
-    return successResponse({ leaderId: userId });
+    const assignmentId = assignHierarchyRole(principal, userId, 'DEPARTMENT_HEAD', departmentId);
+    return successResponse({ leaderId: userId, assignmentId });
   });
   app.delete('/api/admin/departments/:id', async (request, reply) => {
     const principal = requireAdmin(request, reply); if (!principal) return;
@@ -849,32 +945,32 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.get('/api/admin/activities', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const paging = getPaging(request.query);
-    const where = principal.role === 'ADMIN' ? '' : 'WHERE department_id=?';
-    const parameters = principal.role === 'ADMIN' ? [paging.pageSize, paging.offset] : [principal.departmentId, paging.pageSize, paging.offset];
+    const where = isExecutiveRole(principal.role) ? '' : 'WHERE department_id=?';
+    const parameters = isExecutiveRole(principal.role) ? [paging.pageSize, paging.offset] : [principal.departmentId, paging.pageSize, paging.offset];
     const rows = sqlite.prepare(`SELECT * FROM activities ${where} ORDER BY starts_at DESC LIMIT ? OFFSET ?`).all(...parameters) as Array<Record<string, unknown>>;
     const items = rows.map((row) => ({ ...row, departmentId: row.department_id }));
-    const totalParameters = principal.role === 'ADMIN' ? [] : [principal.departmentId];
+    const totalParameters = isExecutiveRole(principal.role) ? [] : [principal.departmentId];
     const total = (sqlite.prepare(`SELECT COUNT(*) count FROM activities ${where}`).get(...totalParameters) as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
   app.post('/api/admin/activities', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
-    const body = parse(activityBody, request.body); if (principal.role !== 'ADMIN') scopeDepartment(principal, body.departmentId ?? '');
+    const body = parse(activityBody, request.body); if (!isExecutiveRole(principal.role)) scopeDepartment(principal, body.departmentId ?? '');
     const id = newId('activity'); sqlite.prepare('INSERT INTO activities(id,department_id,title,description,location,status,capacity,starts_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, body.departmentId, body.title, body.description, body.location, 'PREPARING', body.capacity, body.startsAt, now(), now());
     return reply.status(201).send(successResponse({ id, status: 'PREPARING' }));
   });
   app.get('/api/admin/activities/:id', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const activity = sqlite.prepare('SELECT * FROM activities WHERE id=?').get((request.params as { id: string }).id) as { department_id: string | null } | undefined;
-    if (!activity) throw new HttpError(404, 'NOT_FOUND', '活动不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, activity.department_id ?? '');
+    if (!activity) throw new HttpError(404, 'NOT_FOUND', '活动不存在'); if (!isExecutiveRole(principal.role)) scopeDepartment(principal, activity.department_id ?? '');
     return successResponse({ activity: { ...activity, checkInCode: (activity as { check_in_code?: string | null }).check_in_code } });
   });
   app.put('/api/admin/activities/:id', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const id = (request.params as { id: string }).id; const activity = sqlite.prepare('SELECT * FROM activities WHERE id=?').get(id) as { department_id: string | null } | undefined;
-    if (!activity) throw new HttpError(404, 'NOT_FOUND', '活动不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, activity.department_id ?? '');
+    if (!activity) throw new HttpError(404, 'NOT_FOUND', '活动不存在'); if (!isExecutiveRole(principal.role)) scopeDepartment(principal, activity.department_id ?? '');
     const body = parse(activityUpdateBody, request.body);
-    if (principal.role !== 'ADMIN' && body.departmentId !== undefined && body.departmentId !== principal.departmentId) throw new HttpError(403, 'FORBIDDEN', '不可将活动迁移到其他部门');
+    if (!isExecutiveRole(principal.role) && body.departmentId !== undefined && body.departmentId !== principal.departmentId) throw new HttpError(403, 'FORBIDDEN', '不可将活动迁移到其他部门');
     sqlite.prepare('UPDATE activities SET department_id=COALESCE(?,department_id),title=COALESCE(?,title),description=COALESCE(?,description),location=COALESCE(?,location),capacity=COALESCE(?,capacity),starts_at=COALESCE(?,starts_at),result_summary=COALESCE(?,result_summary),updated_at=? WHERE id=?')
       .run(body.departmentId ?? null, body.title ?? null, body.description ?? null, body.location ?? null, body.capacity ?? null, body.startsAt ?? null, body.resultSummary ?? null, now(), id);
     return successResponse({ updated: true });
@@ -884,7 +980,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const id = (request.params as { id: string }).id;
     const activity = sqlite.prepare('SELECT department_id,status FROM activities WHERE id=?').get(id) as { department_id: string | null; status: ActivityStatus } | undefined;
     if (!activity) throw new HttpError(404, 'NOT_FOUND', '活动不存在');
-    if (principal.role !== 'ADMIN') scopeDepartment(principal, activity.department_id ?? '');
+    if (!isExecutiveRole(principal.role)) scopeDepartment(principal, activity.department_id ?? '');
     if (activity.status !== 'PREPARING') throw new HttpError(409, 'INVALID_STATE', '仅筹备中的活动可删除');
     sqlite.prepare('DELETE FROM activities WHERE id=?').run(id);
     audit(sqlite, principal.id, 'ACTIVITY_DELETED', 'activity', id);
@@ -895,7 +991,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const activityId = (request.params as { id: string }).id;
     const activity = sqlite.prepare('SELECT department_id,status FROM activities WHERE id=?').get(activityId) as { department_id: string | null; status: ActivityStatus } | undefined;
     if (!activity) throw new HttpError(404, 'NOT_FOUND', '活动不存在');
-    if (principal.role !== 'ADMIN') scopeDepartment(principal, activity.department_id ?? '');
+    if (!isExecutiveRole(principal.role)) scopeDepartment(principal, activity.department_id ?? '');
     if (activity.status !== 'ENDED') throw new HttpError(409, 'INVALID_STATE', '仅已结束活动可上传成果');
     const fields: Record<string, string> = {};
     let uploaded: { name: string; mimeType: string; storageKey: string; path: string; size: number } | null = null;
@@ -943,7 +1039,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const principal = requireManager(request, reply); if (!principal) return;
     const id = (request.params as { id: string }).id; const { status } = parse(z.object({ status: ActivityStatusSchema }), request.body);
     const activity = sqlite.prepare('SELECT * FROM activities WHERE id=?').get(id) as { status: ActivityStatus; department_id: string | null; result_summary: string | null } | undefined;
-    if (!activity) throw new HttpError(404, 'NOT_FOUND', '活动不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, activity.department_id ?? '');
+    if (!activity) throw new HttpError(404, 'NOT_FOUND', '活动不存在'); if (!isExecutiveRole(principal.role)) scopeDepartment(principal, activity.department_id ?? '');
     if (!canTransitionActivity(activity.status, status)) throw new HttpError(409, 'INVALID_TRANSITION', `不允许从 ${activity.status} 转为 ${status}`);
     if (status === 'ARCHIVED' && !activity.result_summary && !sqlite.prepare('SELECT 1 FROM activity_results WHERE activity_id=?').get(id)) throw new HttpError(409, 'ARCHIVE_REQUIRES_RESULT', '归档前必须填写成果总结');
     const checkInCode = status === 'IN_PROGRESS' ? randomBytes(4).toString('hex').toUpperCase() : null;
@@ -1000,7 +1096,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const status = rawStatus === undefined ? undefined : parse(WorkStatusSchema, rawStatus);
     const conditions: string[] = [];
     const parameters: Array<string | number> = [];
-    if (principal.role !== 'ADMIN') {
+    if (!isExecutiveRole(principal.role)) {
       conditions.push('department_id=?');
       parameters.push(principal.departmentId ?? '');
     }
@@ -1018,7 +1114,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.post('/api/admin/works/:id/review', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id;
     const body = parse(z.object({ status: WorkStatusSchema.refine((value) => value !== 'PENDING'), note: z.string().max(500).optional() }), request.body);
-    const work = sqlite.prepare('SELECT * FROM works WHERE id=?').get(id) as { department_id: string; user_id: string; status: string } | undefined; if (!work) throw new HttpError(404, 'NOT_FOUND', '作品不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, work.department_id); if (work.status !== 'PENDING') throw new HttpError(409, 'INVALID_STATE', '作品已审核');
+    const work = sqlite.prepare('SELECT * FROM works WHERE id=?').get(id) as { department_id: string; user_id: string; status: string } | undefined; if (!work) throw new HttpError(404, 'NOT_FOUND', '作品不存在'); if (!isExecutiveRole(principal.role)) scopeDepartment(principal, work.department_id); if (work.status !== 'PENDING') throw new HttpError(409, 'INVALID_STATE', '作品已审核');
     sqlite.prepare('UPDATE works SET status=?,review_note=?,updated_at=? WHERE id=?').run(body.status, body.note ?? null, now(), id); if (body.status === 'PUBLISHED') audit(sqlite, principal.id, 'WORK_PUBLISHED', 'work', id, work.user_id); else audit(sqlite, principal.id, 'WORK_REJECTED', 'work', id, work.user_id);
     return successResponse({ status: body.status });
   });
@@ -1026,8 +1122,8 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.get('/api/admin/files', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const paging = getPaging(request.query);
-    const where = principal.role === 'ADMIN' ? '' : 'WHERE department_id=?';
-    const parameters = principal.role === 'ADMIN' ? [] : [principal.departmentId];
+    const where = isExecutiveRole(principal.role) ? '' : 'WHERE department_id=?';
+    const parameters = isExecutiveRole(principal.role) ? [] : [principal.departmentId];
     const items = sqlite.prepare(`SELECT * FROM files ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...parameters, paging.pageSize, paging.offset);
     const total = (sqlite.prepare(`SELECT COUNT(*) count FROM files ${where}`).get(...parameters) as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
@@ -1059,7 +1155,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     try {
       visibility = parse(FileVisibilitySchema, fields.visibility ?? 'MEMBERS');
       category = parse(fileCategorySchema, fields.category ?? 'OTHER');
-      if (principal.role !== 'ADMIN') scopeDepartment(principal, departmentId ?? '');
+      if (!isExecutiveRole(principal.role)) scopeDepartment(principal, departmentId ?? '');
     } catch (error) {
       await unlink(file.path).catch(() => undefined);
       throw error;
@@ -1076,15 +1172,15 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     audit(sqlite, principal.id, 'FILE_UPLOADED', 'file', id, null, { visibility, category, departmentId });
     return reply.status(201).send(successResponse({ id, name: file.name, mimeType: file.mimeType, size: file.size, visibility, category, departmentId, storageKey: file.storageKey }));
   });
-  app.post('/api/admin/files', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const body = parse(z.object({ name: z.string().min(1), storageKey: z.string().min(1), mimeType: z.string().min(1), size: z.number().int().nonnegative(), visibility: FileVisibilitySchema, category: fileCategorySchema.default('OTHER'), departmentId: z.string().nullable().default(null) }), request.body); if (principal.role !== 'ADMIN') scopeDepartment(principal, body.departmentId ?? ''); const id = newId('file'); sqlite.prepare('INSERT INTO files(id,owner_id,department_id,name,storage_key,mime_type,size,visibility,category,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(id, principal.id, body.departmentId, body.name, body.storageKey, body.mimeType, body.size, body.visibility, body.category, now(), now()); return reply.status(201).send(successResponse({ id })); });
+  app.post('/api/admin/files', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const body = parse(z.object({ name: z.string().min(1), storageKey: z.string().min(1), mimeType: z.string().min(1), size: z.number().int().nonnegative(), visibility: FileVisibilitySchema, category: fileCategorySchema.default('OTHER'), departmentId: z.string().nullable().default(null) }), request.body); if (!isExecutiveRole(principal.role)) scopeDepartment(principal, body.departmentId ?? ''); const id = newId('file'); sqlite.prepare('INSERT INTO files(id,owner_id,department_id,name,storage_key,mime_type,size,visibility,category,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(id, principal.id, body.departmentId, body.name, body.storageKey, body.mimeType, body.size, body.visibility, body.category, now(), now()); return reply.status(201).send(successResponse({ id })); });
   app.patch('/api/admin/files/:id', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const id = (request.params as { id: string }).id;
     const file = sqlite.prepare('SELECT department_id FROM files WHERE id=?').get(id) as { department_id: string | null } | undefined;
     if (!file) throw new HttpError(404, 'NOT_FOUND', '文件不存在');
-    if (principal.role !== 'ADMIN') scopeDepartment(principal, file.department_id ?? '');
+    if (!isExecutiveRole(principal.role)) scopeDepartment(principal, file.department_id ?? '');
     const body = parse(z.object({ name: z.string().trim().min(1).max(180).optional(), visibility: FileVisibilitySchema.optional(), category: fileCategorySchema.optional(), departmentId: z.string().nullable().optional() }).refine((value) => Object.keys(value).length > 0, '至少提供一个修改字段'), request.body);
-    if (principal.role !== 'ADMIN') {
+    if (!isExecutiveRole(principal.role)) {
       if (body.departmentId !== undefined && body.departmentId !== principal.departmentId) throw new HttpError(403, 'FORBIDDEN', '不可移动到其他部门');
       if (body.visibility === 'PUBLIC' || body.visibility === 'ADMINS') throw new HttpError(403, 'FORBIDDEN', '负责人不可设置该可见范围');
     }
@@ -1093,20 +1189,20 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     audit(sqlite, principal.id, 'FILE_UPDATED', 'file', id, null, body);
     return successResponse({ updated: true });
   });
-  app.post('/api/admin/files/:id/recycle', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id; const file = sqlite.prepare('SELECT department_id,deleted_at FROM files WHERE id=?').get(id) as { department_id: string | null; deleted_at: string | null } | undefined; if (!file) throw new HttpError(404, 'NOT_FOUND', '文件不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, file.department_id ?? ''); if (file.deleted_at) throw new HttpError(409, 'ALREADY_DELETED', '文件已在回收站'); sqlite.prepare('UPDATE files SET deleted_at=?,updated_at=? WHERE id=?').run(now(), now(), id); return successResponse({ recycled: true }); });
-  app.post('/api/admin/files/:id/restore', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id; const file = sqlite.prepare('SELECT department_id,deleted_at FROM files WHERE id=?').get(id) as { department_id: string | null; deleted_at: string | null } | undefined; if (!file) throw new HttpError(404, 'NOT_FOUND', '文件不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, file.department_id ?? ''); if (!file.deleted_at) throw new HttpError(409, 'NOT_DELETED', '文件不在回收站'); sqlite.prepare('UPDATE files SET deleted_at=NULL,updated_at=? WHERE id=?').run(now(), id); return successResponse({ restored: true }); });
+  app.post('/api/admin/files/:id/recycle', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id; const file = sqlite.prepare('SELECT department_id,deleted_at FROM files WHERE id=?').get(id) as { department_id: string | null; deleted_at: string | null } | undefined; if (!file) throw new HttpError(404, 'NOT_FOUND', '文件不存在'); if (!isExecutiveRole(principal.role)) scopeDepartment(principal, file.department_id ?? ''); if (file.deleted_at) throw new HttpError(409, 'ALREADY_DELETED', '文件已在回收站'); sqlite.prepare('UPDATE files SET deleted_at=?,updated_at=? WHERE id=?').run(now(), now(), id); return successResponse({ recycled: true }); });
+  app.post('/api/admin/files/:id/restore', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id; const file = sqlite.prepare('SELECT department_id,deleted_at FROM files WHERE id=?').get(id) as { department_id: string | null; deleted_at: string | null } | undefined; if (!file) throw new HttpError(404, 'NOT_FOUND', '文件不存在'); if (!isExecutiveRole(principal.role)) scopeDepartment(principal, file.department_id ?? ''); if (!file.deleted_at) throw new HttpError(409, 'NOT_DELETED', '文件不在回收站'); sqlite.prepare('UPDATE files SET deleted_at=NULL,updated_at=? WHERE id=?').run(now(), id); return successResponse({ restored: true }); });
 
   app.get('/api/admin/tasks', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const paging = getPaging(request.query);
-    const where = principal.role === 'ADMIN' ? '' : 'WHERE department_id=?';
-    const parameters = principal.role === 'ADMIN' ? [] : [principal.departmentId];
+    const where = isExecutiveRole(principal.role) ? '' : 'WHERE department_id=?';
+    const parameters = isExecutiveRole(principal.role) ? [] : [principal.departmentId];
     const items = sqlite.prepare(`SELECT * FROM department_tasks ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...parameters, paging.pageSize, paging.offset);
     const total = (sqlite.prepare(`SELECT COUNT(*) count FROM department_tasks ${where}`).get(...parameters) as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
-  app.post('/api/admin/tasks', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const body = parse(z.object({ departmentId: z.string(), assigneeId: z.string(), title: z.string().min(2), description: z.string().default(''), dueAt: z.iso.datetime().optional() }), request.body); if (principal.role !== 'ADMIN') scopeDepartment(principal, body.departmentId); const assignee = sqlite.prepare('SELECT department_id FROM users WHERE id=?').get(body.assigneeId) as { department_id: string | null } | undefined; if (!assignee || assignee.department_id !== body.departmentId) throw new HttpError(400, 'VALIDATION_ERROR', '任务成员必须属于目标部门'); const id = newId('task'); sqlite.prepare('INSERT INTO department_tasks(id,department_id,assignee_id,title,description,due_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(id, body.departmentId, body.assigneeId, body.title, body.description, body.dueAt ?? null, now(), now()); return reply.status(201).send(successResponse({ id })); });
-  app.post('/api/admin/tasks/:id/confirm', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id; const task = sqlite.prepare('SELECT department_id,assignee_id,completed_at,confirmed_at FROM department_tasks WHERE id=?').get(id) as { department_id: string; assignee_id: string; completed_at: string | null; confirmed_at: string | null } | undefined; if (!task) throw new HttpError(404, 'NOT_FOUND', '任务不存在'); if (principal.role !== 'ADMIN') scopeDepartment(principal, task.department_id); if (!task.completed_at) throw new HttpError(409, 'NOT_COMPLETED', '成员尚未完成任务'); if (task.confirmed_at) throw new HttpError(409, 'ALREADY_CONFIRMED', '任务贡献已确认'); sqlite.transaction(() => { sqlite.prepare('UPDATE department_tasks SET confirmed_at=?,updated_at=? WHERE id=? AND confirmed_at IS NULL').run(now(), now(), id); audit(sqlite, principal.id, 'TASK_CONFIRMED', 'task', id, task.assignee_id); })(); return successResponse({ confirmed: true, contributionPoints: 5 }); });
+  app.post('/api/admin/tasks', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const body = parse(z.object({ departmentId: z.string(), assigneeId: z.string(), title: z.string().min(2), description: z.string().default(''), dueAt: z.iso.datetime().optional() }), request.body); if (!isExecutiveRole(principal.role)) scopeDepartment(principal, body.departmentId); const assignee = sqlite.prepare('SELECT department_id FROM users WHERE id=?').get(body.assigneeId) as { department_id: string | null } | undefined; if (!assignee || assignee.department_id !== body.departmentId) throw new HttpError(400, 'VALIDATION_ERROR', '任务成员必须属于目标部门'); const id = newId('task'); sqlite.prepare('INSERT INTO department_tasks(id,department_id,assignee_id,title,description,due_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(id, body.departmentId, body.assigneeId, body.title, body.description, body.dueAt ?? null, now(), now()); return reply.status(201).send(successResponse({ id })); });
+  app.post('/api/admin/tasks/:id/confirm', async (request, reply) => { const principal = requireManager(request, reply); if (!principal) return; const id = (request.params as { id: string }).id; const task = sqlite.prepare('SELECT department_id,assignee_id,completed_at,confirmed_at FROM department_tasks WHERE id=?').get(id) as { department_id: string; assignee_id: string; completed_at: string | null; confirmed_at: string | null } | undefined; if (!task) throw new HttpError(404, 'NOT_FOUND', '任务不存在'); if (!isExecutiveRole(principal.role)) scopeDepartment(principal, task.department_id); if (!task.completed_at) throw new HttpError(409, 'NOT_COMPLETED', '成员尚未完成任务'); if (task.confirmed_at) throw new HttpError(409, 'ALREADY_CONFIRMED', '任务贡献已确认'); sqlite.transaction(() => { sqlite.prepare('UPDATE department_tasks SET confirmed_at=?,updated_at=? WHERE id=? AND confirmed_at IS NULL').run(now(), now(), id); audit(sqlite, principal.id, 'TASK_CONFIRMED', 'task', id, task.assignee_id); })(); return successResponse({ confirmed: true, contributionPoints: 5 }); });
 
   app.get('/api/admin/site-settings', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; return successResponse({ settings: Object.fromEntries((sqlite.prepare('SELECT key,value FROM site_settings').all() as Array<{ key: string; value: string }>).map((entry) => [entry.key, entry.value])) }); });
   app.put('/api/admin/site-settings', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; const body = parse(z.record(z.string(), z.string().max(2000)), request.body); const statement = sqlite.prepare('INSERT INTO site_settings(key,value,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at'); sqlite.transaction(() => { for (const [key, value] of Object.entries(body)) statement.run(key, value, now()); })(); audit(sqlite, principal.id, 'SITE_SETTINGS_UPDATED', 'settings', 'site'); return successResponse({ updated: Object.keys(body) }); });

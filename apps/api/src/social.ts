@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { resolveAvatarConfig, type MemberProfileUpdate, type Role } from '@guild/contracts';
+import { isExecutiveRole, isManagementRole, resolveAvatarConfig, type MemberProfileUpdate, type Role } from '@guild/contracts';
 
 export interface SocialPrincipal {
   id: string;
@@ -84,8 +84,8 @@ export class GuildSocialRepository {
 
   listDirectory(principal: SocialPrincipal, query: string, page: number, pageSize: number) {
     const search = `%${query.trim()}%`;
-    const privacy = principal.role === 'ADMIN' ? '1=1' : "(u.profile_visibility='MEMBERS' OR u.id=?)";
-    const parameters: unknown[] = principal.role === 'ADMIN' ? [] : [principal.id];
+    const privacy = isExecutiveRole(principal.role) ? '1=1' : "(u.profile_visibility='MEMBERS' OR u.id=?)";
+    const parameters: unknown[] = isExecutiveRole(principal.role) ? [] : [principal.id];
     const where = `u.is_active=1 AND ${privacy} AND (?='' OR u.display_name LIKE ? OR u.guild_title LIKE ? OR d.name LIKE ?)`;
     parameters.push(query.trim(), search, search, search);
     const total = (this.sqlite.prepare(`SELECT COUNT(*) count FROM users u LEFT JOIN departments d ON d.id=u.department_id WHERE ${where}`).get(...parameters) as { count: number }).count;
@@ -98,7 +98,7 @@ export class GuildSocialRepository {
 
   getMemberHomepage(principal: SocialPrincipal, userId: string) {
     const row = this.getProfileRow(userId);
-    if (row.profile_visibility === 'PRIVATE' && principal.id !== userId && principal.role !== 'ADMIN') throw new SocialError(404, 'NOT_FOUND', '成员主页不可见');
+    if (row.profile_visibility === 'PRIVATE' && principal.id !== userId && !isExecutiveRole(principal.role)) throw new SocialError(404, 'NOT_FOUND', '成员主页不可见');
     const publishedWorks = (this.sqlite.prepare("SELECT COUNT(*) count FROM works WHERE user_id=? AND status='PUBLISHED'").get(userId) as { count: number }).count;
     const attendedActivities = (this.sqlite.prepare('SELECT COUNT(*) count FROM activity_registrations WHERE user_id=? AND checked_in_at IS NOT NULL').get(userId) as { count: number }).count;
     const contributionPoints = (this.sqlite.prepare(`SELECT COALESCE(SUM(CASE action WHEN 'TASK_CONFIRMED' THEN 5 WHEN 'ACTIVITY_CHECK_IN' THEN 3 WHEN 'WORK_PUBLISHED' THEN 10 ELSE 0 END),0) points
@@ -111,7 +111,7 @@ export class GuildSocialRepository {
 
   private ensureDepartmentParticipation(principal: SocialPrincipal): void {
     const joinedAt = this.timestamp();
-    const rows = principal.role === 'ADMIN'
+    const rows = isExecutiveRole(principal.role)
       ? this.sqlite.prepare("SELECT id FROM conversations WHERE type='DEPARTMENT'").all()
       : this.sqlite.prepare(`SELECT c.id FROM conversations c JOIN user_departments ud ON ud.department_id=c.department_id
           WHERE c.type='DEPARTMENT' AND ud.user_id=?`).all(principal.id);
@@ -294,7 +294,7 @@ export class GuildSocialRepository {
   deletePost(principal: SocialPrincipal, postId: string): { ownerId: string; moderated: boolean } {
     const post = this.sqlite.prepare('SELECT user_id,deleted_at FROM posts WHERE id=?').get(postId) as { user_id: string; deleted_at: string | null } | undefined;
     if (!post || post.deleted_at) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
-    const manager = principal.role === 'ADMIN' || principal.role === 'DEPARTMENT_LEAD';
+    const manager = isManagementRole(principal.role);
     if (post.user_id !== principal.id && !manager) throw new SocialError(403, 'FORBIDDEN', '只能删除自己的帖子');
     this.sqlite.prepare('UPDATE posts SET deleted_at=?,updated_at=? WHERE id=?').run(this.timestamp(), this.timestamp(), postId);
     return { ownerId: post.user_id, moderated: post.user_id !== principal.id };
@@ -303,7 +303,7 @@ export class GuildSocialRepository {
   deleteComment(principal: SocialPrincipal, commentId: string): { ownerId: string; moderated: boolean } {
     const comment = this.sqlite.prepare('SELECT user_id,deleted_at FROM post_comments WHERE id=?').get(commentId) as { user_id: string; deleted_at: string | null } | undefined;
     if (!comment || comment.deleted_at) throw new SocialError(404, 'NOT_FOUND', '评论不存在或已被删除');
-    const manager = principal.role === 'ADMIN' || principal.role === 'DEPARTMENT_LEAD';
+    const manager = isManagementRole(principal.role);
     if (comment.user_id !== principal.id && !manager) throw new SocialError(403, 'FORBIDDEN', '只能删除自己的评论');
     this.sqlite.prepare('UPDATE post_comments SET deleted_at=? WHERE id=?').run(this.timestamp(), commentId);
     return { ownerId: comment.user_id, moderated: comment.user_id !== principal.id };
@@ -323,7 +323,7 @@ export class GuildSocialRepository {
     const mine = new Map<string, number>();
     myAttributes.forEach((attribute) => mine.set(`attr:${attribute}`, 2));
     myTags.forEach((tag) => mine.set(`tag:${tag}`, 1));
-    const privacy = principal.role === 'ADMIN' ? '1=1' : "u.profile_visibility='MEMBERS'";
+    const privacy = isExecutiveRole(principal.role) ? '1=1' : "u.profile_visibility='MEMBERS'";
     const rows = this.sqlite.prepare(`SELECT ${PROFILE_COLUMNS}
       FROM users u LEFT JOIN departments d ON d.id=u.department_id WHERE u.is_active=1 AND u.id<>? AND ${privacy}`).all(principal.id) as ProfileRow[];
     const items = rows.map((row) => {

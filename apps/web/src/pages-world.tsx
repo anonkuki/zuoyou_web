@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { useReducedMotion } from 'framer-motion';
 import { ArrowLeft, MessageCircle, Send, Trash2, Users } from 'lucide-react';
-import { deriveAvatarConfig, worldAreas, type AvatarConfig, type WorldDirection } from '@guild/contracts';
+import { deriveAvatarConfig, isExecutiveRole, worldAreas, type AvatarConfig, type WorldDirection } from '@guild/contracts';
 import { api, json } from './api';
 import { useAuth } from './auth';
 import { EmptyPanel, ErrorPanel, LoadingPanel, PageHero } from './components';
@@ -276,7 +276,7 @@ export function WorldAreaPage() {
         {messages.length ? messages.slice(-30).map((message) => <p key={message.id}>
           <b style={{ color: message.sender.avatarColor }}>{message.sender.displayName}</b>
           <span>{message.content}</span>
-          {(user?.role === 'ADMIN' || user?.id === message.sender.id) && <button aria-label={`删除 ${message.sender.displayName} 的区域消息`} onClick={() => removeMessage(message.id)}><Trash2 /></button>}
+          {(Boolean(user&&isExecutiveRole(user.role)) || user?.id === message.sender.id) && <button aria-label={`删除 ${message.sender.displayName} 的区域消息`} onClick={() => removeMessage(message.id)}><Trash2 /></button>}
         </p>) : <p className="world-chat-empty">还没有人说话，打声招呼吧。</p>}
       </div>
       <form onSubmit={send}>

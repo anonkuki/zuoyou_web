@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, MessageCircle, Pin, PinOff, Send, Sparkles, Trash2 } from 'lucide-react';
-import { memberAttributePool } from '@guild/contracts';
+import { isManagementRole, memberAttributePool } from '@guild/contracts';
 import { api, json, type PageData } from './api';
 import { useAuth } from './auth';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero } from './components';
@@ -33,7 +33,7 @@ export function PostsPage() {
   });
   const pin = useMutation({ mutationFn: (post: TavernPost) => api(`/api/member/posts/${post.id}/pin`, json('PATCH', { pinned: !post.pinned })), onSuccess: refresh });
   const remove = useMutation({ mutationFn: (id: string) => api(`/api/member/posts/${id}`, json('DELETE')), onSuccess: refresh });
-  const manager = user?.role === 'ADMIN' || user?.role === 'DEPARTMENT_LEAD';
+  const manager = Boolean(user && isManagementRole(user.role));
   const submit = (event: FormEvent) => { event.preventDefault(); create.mutate(); };
   return <main className="social-page tavern-page">
     <PageHero eyebrow="ADVENTURER TAVERN" title="冒险者酒馆" description="成员公开的交流区：分享进度、招募搭档、约团约展，真实写入公会档案。">
@@ -83,7 +83,7 @@ export function PostDetailPage() {
   if (query.isLoading) return <main><LoadingPanel label="正在读取帖子" /></main>;
   if (query.error || !query.data) return <main className="social-profile-error"><ErrorPanel error={query.error} /><Link to="/portal/tavern">返回冒险者酒馆</Link></main>;
   const { post, comments } = query.data;
-  const manager = user?.role === 'ADMIN' || user?.role === 'DEPARTMENT_LEAD';
+  const manager = Boolean(user && isManagementRole(user.role));
   return <main className="social-page tavern-page">
     <section className="shell tavern-detail">
       <Link className="tavern-back" to="/portal/tavern"><ArrowLeft />返回酒馆</Link>

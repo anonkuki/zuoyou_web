@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { api, json } from '../../api';
 import { useAuth } from '../../auth';
 import { PixelAvatar } from '../avatar/PixelAvatar';
+import { roleLabels } from '@guild/contracts';
 
 const navigation = [
   ['/', '首页'],
@@ -69,7 +70,7 @@ function UserMenu() {
       >
         <div className="pixel-user-dropdown-head">
           <PixelAvatar config={user.avatarConfig} seed={user.id} size={40} label={`${user.displayName} 的像素小人`} />
-          <div><strong>{user.displayName}</strong><small>{user.role === 'ADMIN' ? '社长 / 管理员' : user.role === 'DEPARTMENT_LEAD' ? '部门负责人' : '正式成员'}</small></div>
+          <div><strong>{user.displayName}</strong><small>{roleLabels[user.role]}</small></div>
         </div>
         <Link role="menuitem" to={`/portal/members/${user.id}`} onClick={close}><UserRound />个人主页</Link>
         <Link role="menuitem" to="/portal/avatar" onClick={close}><Palette />形象工房 · 捏脸</Link>

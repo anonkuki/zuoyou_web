@@ -406,9 +406,39 @@ describe.sequential('Adventurer Guild API', () => {
     expect((await app.inject({ method: 'PUT', url: '/api/admin/activities/activity-open', headers: { cookie: leadCookie }, payload: { departmentId: 'dept-tech' } })).statusCode).toBe(403);
   });
 
-  it('routes department-leader changes through the invariant-preserving endpoint', async () => {
-    expect((await app.inject({ method: 'PATCH', url: '/api/admin/members/user-member', headers: { cookie: adminCookie }, payload: { role: 'DEPARTMENT_LEAD' } })).statusCode).toBe(409);
-    expect((await app.inject({ method: 'PATCH', url: '/api/admin/members/user-lead', headers: { cookie: adminCookie }, payload: { departmentId: 'dept-tech' } })).statusCode).toBe(409);
+  it('routes hierarchy changes through the invariant-preserving endpoints', async () => {
+    expect((await app.inject({ method: 'PATCH', url: '/api/admin/members/user-member', headers: { cookie: adminCookie }, payload: { role: 'DEPARTMENT_HEAD' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PATCH', url: '/api/admin/members/user-lead', headers: { cookie: adminCookie }, payload: { departmentId: 'dept-tech' } })).statusCode).toBe(403);
+  });
+
+  it('enforces the four-level delegation tree and allows multiple department admins', async () => {
+    for (const id of ['user-fiction-007', 'user-fiction-013']) {
+      const granted = await app.inject({ method: 'POST', url: `/api/admin/roles/${id}/assign`, headers: { cookie: leadCookie }, payload: { role: 'DEPARTMENT_ADMIN', departmentId: 'dept-cos' } });
+      expect(granted.statusCode).toBe(201);
+    }
+    const hierarchy = await app.inject({ method: 'GET', url: '/api/admin/role-hierarchy', headers: { cookie: leadCookie } });
+    expect(hierarchy.statusCode).toBe(200);
+    expect(hierarchy.json().data.items.filter((item: { role: string }) => item.role === 'DEPARTMENT_ADMIN')).toHaveLength(2);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-008/assign', headers: { cookie: leadCookie }, payload: { role: 'DEPARTMENT_ADMIN', departmentId: 'dept-tech' } })).statusCode).toBe(403);
+    for (const id of ['user-fiction-007', 'user-fiction-013']) {
+      expect((await app.inject({ method: 'POST', url: `/api/admin/roles/${id}/revoke`, headers: { cookie: leadCookie } })).statusCode).toBe(200);
+    }
+
+    const vicePresidents = ['user-member', 'user-fiction-007', 'user-fiction-013', 'user-fiction-008'];
+    for (const id of vicePresidents) {
+      expect((await app.inject({ method: 'POST', url: `/api/admin/roles/${id}/assign`, headers: { cookie: adminCookie }, payload: { role: 'VICE_PRESIDENT' } })).statusCode).toBe(201);
+    }
+    expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-014/assign', headers: { cookie: adminCookie }, payload: { role: 'VICE_PRESIDENT' } })).json().error.code).toBe('VICE_PRESIDENT_LIMIT');
+
+    const appointed = await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-019/assign', headers: { cookie: memberCookie }, payload: { role: 'DEPARTMENT_HEAD', departmentId: 'dept-cos' } });
+    expect(appointed.statusCode).toBe(201);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-014/assign', headers: { cookie: memberCookie }, payload: { role: 'VICE_PRESIDENT' } })).statusCode).toBe(403);
+
+    expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-019/revoke', headers: { cookie: adminCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/departments/dept-cos/leader', headers: { cookie: adminCookie }, payload: { userId: 'user-lead' } })).statusCode).toBe(200);
+    for (const id of vicePresidents) {
+      expect((await app.inject({ method: 'POST', url: `/api/admin/roles/${id}/revoke`, headers: { cookie: adminCookie } })).statusCode).toBe(200);
+    }
   });
 
   it('provides a paged and department-scoped work review queue', async () => {

@@ -285,10 +285,17 @@ export class GuildSocialRepository {
     return this.getPost(id).post;
   }
 
+  private canModerateDepartment(principal: SocialPrincipal, departmentId: string | null): boolean {
+    if (isExecutiveRole(principal.role)) return true;
+    return isManagementRole(principal.role) && Boolean(departmentId) && departmentId === principal.departmentId;
+  }
+
   editPost(principal: SocialPrincipal, postId: string, input: PostCreate) {
-    if (!isManagementRole(principal.role)) throw new SocialError(403, 'FORBIDDEN', '只有管理员可以编辑帖子');
-    const post = this.sqlite.prepare('SELECT id FROM posts WHERE id=? AND deleted_at IS NULL').get(postId);
+    const post = this.sqlite.prepare('SELECT id,department_id FROM posts WHERE id=? AND deleted_at IS NULL').get(postId) as { id: string; department_id: string | null } | undefined;
     if (!post) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    if (!this.canModerateDepartment(principal, post.department_id) || (!isExecutiveRole(principal.role) && input.departmentId !== post.department_id)) {
+      throw new SocialError(403, 'FORBIDDEN', '只能编辑本部门帖子，且不可改变所属部门');
+    }
     if (input.departmentId && !this.sqlite.prepare('SELECT 1 FROM departments WHERE id=?').get(input.departmentId)) throw new SocialError(400, 'INVALID_DEPARTMENT', '所属部门不存在');
     const body = input.body?.length ? input.body : [{ type: 'PARAGRAPH' as const, text: input.content }];
     this.sqlite.prepare('UPDATE posts SET title=?,subtitle=?,content=?,body_json=?,department_id=?,updated_at=? WHERE id=?')
@@ -328,26 +335,26 @@ export class GuildSocialRepository {
   }
 
   deletePost(principal: SocialPrincipal, postId: string): { ownerId: string; moderated: boolean } {
-    const post = this.sqlite.prepare('SELECT user_id,deleted_at FROM posts WHERE id=?').get(postId) as { user_id: string; deleted_at: string | null } | undefined;
+    const post = this.sqlite.prepare('SELECT user_id,department_id,deleted_at FROM posts WHERE id=?').get(postId) as { user_id: string; department_id: string | null; deleted_at: string | null } | undefined;
     if (!post || post.deleted_at) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
-    const manager = isManagementRole(principal.role);
-    if (post.user_id !== principal.id && !manager) throw new SocialError(403, 'FORBIDDEN', '只能删除自己的帖子');
+    if (post.user_id !== principal.id && !this.canModerateDepartment(principal, post.department_id)) throw new SocialError(403, 'FORBIDDEN', '只能删除自己的帖子或管理范围内的帖子');
     this.sqlite.prepare('UPDATE posts SET deleted_at=?,updated_at=? WHERE id=?').run(this.timestamp(), this.timestamp(), postId);
     return { ownerId: post.user_id, moderated: post.user_id !== principal.id };
   }
 
   deleteComment(principal: SocialPrincipal, commentId: string): { ownerId: string; moderated: boolean } {
-    const comment = this.sqlite.prepare('SELECT user_id,deleted_at FROM post_comments WHERE id=?').get(commentId) as { user_id: string; deleted_at: string | null } | undefined;
+    const comment = this.sqlite.prepare(`SELECT c.user_id,c.deleted_at,p.department_id
+      FROM post_comments c JOIN posts p ON p.id=c.post_id WHERE c.id=?`).get(commentId) as { user_id: string; department_id: string | null; deleted_at: string | null } | undefined;
     if (!comment || comment.deleted_at) throw new SocialError(404, 'NOT_FOUND', '评论不存在或已被删除');
-    const manager = isManagementRole(principal.role);
-    if (comment.user_id !== principal.id && !manager) throw new SocialError(403, 'FORBIDDEN', '只能删除自己的评论');
+    if (comment.user_id !== principal.id && !this.canModerateDepartment(principal, comment.department_id)) throw new SocialError(403, 'FORBIDDEN', '只能删除自己的评论或管理范围内的评论');
     this.sqlite.prepare('UPDATE post_comments SET deleted_at=? WHERE id=?').run(this.timestamp(), commentId);
     return { ownerId: comment.user_id, moderated: comment.user_id !== principal.id };
   }
 
-  pinPost(postId: string, pinned: boolean) {
-    const post = this.sqlite.prepare('SELECT id,deleted_at FROM posts WHERE id=?').get(postId) as { id: string; deleted_at: string | null } | undefined;
+  pinPost(principal: SocialPrincipal, postId: string, pinned: boolean) {
+    const post = this.sqlite.prepare('SELECT id,department_id,deleted_at FROM posts WHERE id=?').get(postId) as { id: string; department_id: string | null; deleted_at: string | null } | undefined;
     if (!post || post.deleted_at) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    if (!this.canModerateDepartment(principal, post.department_id)) throw new SocialError(403, 'FORBIDDEN', '只能置顶管理范围内的帖子');
     this.sqlite.prepare('UPDATE posts SET pinned=?,updated_at=? WHERE id=?').run(pinned ? 1 : 0, this.timestamp(), postId);
     return this.getPost(postId).post;
   }

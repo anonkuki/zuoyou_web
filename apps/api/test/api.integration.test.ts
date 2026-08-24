@@ -659,6 +659,7 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
   let root: string;
   let adminCookie: string;
   let leadCookie: string;
+  let techLeadCookie: string;
   let memberCookie: string;
 
   beforeAll(async () => {
@@ -671,6 +672,11 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     });
     adminCookie = await login(app, 'admin', 'DemoAdmin!2026');
     leadCookie = await login(app, 'cos.lead', 'DemoLead!2026');
+    const { sqlite } = await openDatabase(`${root}/guild.sqlite`);
+    const leadPassword = sqlite.prepare("SELECT password_hash FROM users WHERE id='user-lead'").get() as { password_hash: string };
+    sqlite.prepare("UPDATE users SET username='tech.lead',password_hash=? WHERE id='user-tech-01'").run(leadPassword.password_hash);
+    sqlite.close();
+    techLeadCookie = await login(app, 'tech.lead', 'DemoLead!2026');
     memberCookie = await login(app, 'cos.member', 'DemoMember!2026');
   });
 
@@ -720,6 +726,7 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: {
       title: '周末道具修补互助',
       content: '周六下午在活动室修补巡游道具，需要帮忙的同学可以过来。',
+      departmentId: 'dept-cos',
     } });
     expect(created.statusCode).toBe(201);
     const postId = created.json().data.post.id as string;
@@ -748,18 +755,22 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
   });
 
   it('forbids members from deleting or pinning others posts while leads can moderate', async () => {
-    expect((await app.inject({ method: 'DELETE', url: '/api/member/posts/post-cos-progress', headers: { cookie: memberCookie } })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'PATCH', url: '/api/member/posts/post-cos-progress/pin', headers: { cookie: memberCookie }, payload: { pinned: true } })).statusCode).toBe(403);
+    const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: leadCookie }, payload: {
+      title: 'COS 部部长工作贴', content: '用于验证本部门管理边界。', departmentId: 'dept-cos',
+    } });
+    const postId = created.json().data.post.id as string;
+    expect((await app.inject({ method: 'DELETE', url: `/api/member/posts/${postId}`, headers: { cookie: memberCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}/pin`, headers: { cookie: memberCookie }, payload: { pinned: true } })).statusCode).toBe(403);
 
-    const pinned = await app.inject({ method: 'PATCH', url: '/api/member/posts/post-cos-progress/pin', headers: { cookie: leadCookie }, payload: { pinned: true } });
+    const pinned = await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}/pin`, headers: { cookie: leadCookie }, payload: { pinned: true } });
     expect(pinned.statusCode).toBe(200);
     expect(pinned.json().data.post.pinned).toBe(true);
     const list = await app.inject({ method: 'GET', url: '/api/member/posts?page=1&pageSize=50', headers: { cookie: memberCookie } });
     const ids = list.json().data.items.map((post: { id: string }) => post.id);
-    expect(ids.indexOf('post-cos-progress')).toBeLessThan(ids.indexOf('post-photo-recruit'));
+    expect(ids.indexOf(postId)).toBeLessThan(ids.indexOf('post-photo-recruit'));
 
     const audit = await app.inject({ method: 'GET', url: '/api/admin/audit-log?page=1&pageSize=100', headers: { cookie: adminCookie } });
-    expect(audit.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'POST_PINNED', entity_id: 'post-cos-progress' })]));
+    expect(audit.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'POST_PINNED', entity_id: postId })]));
   });
 
   it('publishes structured blog posts with scoped placement, editing and member voting', async () => {
@@ -823,6 +834,67 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const guildPostId = guildPost.json().data.post.id as string;
     expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${guildPostId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${guildPostId}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(200);
+  });
+
+  it('forbids a department head from editing another departments post', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: {
+      title: 'COS 部跨部门编辑边界', content: '这篇帖子只能由 COS 部管理层校对。', departmentId: 'dept-cos',
+    } });
+    const postId = created.json().data.post.id as string;
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}`, headers: { cookie: techLeadCookie }, payload: {
+      title: '技术部越权编辑', content: '不应允许跨部门修改。', departmentId: 'dept-cos',
+    } });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('forbids a department manager from moving a post into another department', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: {
+      title: 'COS 部归属边界', content: '帖子所属部门不能被部门管理者跨区迁移。', departmentId: 'dept-cos',
+    } });
+    const postId = created.json().data.post.id as string;
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}`, headers: { cookie: leadCookie }, payload: {
+      title: '尝试迁入技术部', content: '不应允许改变所属部门。', departmentId: 'dept-tech',
+    } });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('forbids a department head from deleting another departments post', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: {
+      title: 'COS 部跨部门删除边界', content: '这篇帖子不能由技术部删除。', departmentId: 'dept-cos',
+    } });
+    const postId = created.json().data.post.id as string;
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/member/posts/${postId}`, headers: { cookie: techLeadCookie } });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('forbids a department head from deleting comments on another departments post', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: {
+      title: 'COS 部评论管理边界', content: '评论应由帖子所属部门管理。', departmentId: 'dept-cos',
+    } });
+    const postId = created.json().data.post.id as string;
+    const comment = await app.inject({ method: 'POST', url: `/api/member/posts/${postId}/comments`, headers: { cookie: leadCookie }, payload: { content: 'COS 部内部校对意见。' } });
+    const commentId = comment.json().data.comment.id as string;
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/member/comments/${commentId}`, headers: { cookie: techLeadCookie } });
+
+    expect(response.statusCode).toBe(403);
+  });
+
+  it('forbids the legacy pin endpoint from bypassing department scope', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: {
+      title: 'COS 部置顶权限边界', content: '旧接口也必须遵守部门范围。', departmentId: 'dept-cos',
+    } });
+    const postId = created.json().data.post.id as string;
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}/pin`, headers: { cookie: techLeadCookie }, payload: { pinned: true } });
+
+    expect(response.statusCode).toBe(403);
   });
 
   it('round-trips profile attributes and ranks resonance matches', async () => {

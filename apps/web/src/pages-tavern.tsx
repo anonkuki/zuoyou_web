@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, ChevronDown, Edit3, ImagePlus, Link2, MessageCircle, Pin, Plus, Send, Sparkles, Star, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react';
 import { isExecutiveRole, isManagementRole, memberAttributePool } from '@guild/contracts';
-import { api, json, type PageData } from './api';
+import { api, json, type PageData, type User } from './api';
 import { useAuth } from './auth';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero } from './components';
 import { PixelFrame, PixelSprite } from './components/departments/pixel';
@@ -16,6 +16,10 @@ interface TavernComment { id: string; postId: string; content: string; author: P
 interface DepartmentOption { id: string; name: string }
 interface MatchProfile { id: string; displayName: string; avatarColor: string; guildTitle: string; departmentName?: string | null; bio: string; presence?: 'ONLINE' | 'AWAY' | 'OFFLINE' }
 interface MatchItem { score: number; sharedAttributes: string[]; sharedTags: string[]; profile: MatchProfile }
+
+const canModeratePost = (user: User | null, post: TavernPost): boolean => Boolean(user && (
+  isExecutiveRole(user.role) || (isManagementRole(user.role) && Boolean(post.departmentId) && post.departmentId === user.departmentId)
+));
 
 type EditorBlock =
   | { key: string; type: 'PARAGRAPH'; text: string }
@@ -218,7 +222,7 @@ export function PostsPage() {
             {manager && post.departmentId && (isExecutiveRole(user!.role) || post.departmentId === user?.departmentId) && <button onClick={() => place.mutate({ post, scope: 'DEPARTMENT', visible: !post.visibleOnDepartment })}><Star/>{post.visibleOnDepartment ? '撤下部门页' : '展示在部门页'}</button>}
             {manager && (isExecutiveRole(user!.role) || post.departmentId === user?.departmentId) && <button onClick={() => place.mutate({ post, scope: post.departmentId ? 'DEPARTMENT' : 'GUILD', pinned: !post.pinned })}><Pin/>{post.pinned ? '取消置顶' : '置顶'}</button>}
             {manager && (isExecutiveRole(user!.role) || post.departmentId === user?.departmentId) && <button onClick={() => place.mutate({ post, scope: post.departmentId ? 'DEPARTMENT' : 'GUILD', featured: !post.featured })}><Sparkles/>{post.featured ? '取消精选' : '精选'}</button>}
-            {(manager || user?.id === post.author.id) && <button className="danger" aria-label={`删除 ${post.title}`} onClick={() => { remove.reset(); setDeletePost(post); }}><Trash2 />删除</button>}
+            {(canModeratePost(user, post) || user?.id === post.author.id) && <button className="danger" aria-label={`删除 ${post.title}`} onClick={() => { remove.reset(); setDeletePost(post); }}><Trash2 />删除</button>}
           </div>
         </PixelFrame>)}
       </div>}
@@ -253,9 +257,9 @@ export function PostDetailPage() {
   });
   const navigate = useNavigate();
   if (query.isLoading) return <main><LoadingPanel label="正在读取帖子" /></main>;
-  if (query.error || !query.data) return <main className="social-profile-error"><ErrorPanel error={query.error} /><Link to="/portal/tavern">返回冒险者酒馆</Link></main>;
-  const { post, comments, supporters = [] } = query.data;
-  const manager = Boolean(user && isManagementRole(user.role));
+    if (query.error || !query.data) return <main className="social-profile-error"><ErrorPanel error={query.error} /><Link to="/portal/tavern">返回冒险者酒馆</Link></main>;
+    const { post, comments, supporters = [] } = query.data;
+    const canModerate = canModeratePost(user, post);
   return <main className="social-page tavern-page">
     <section className="shell tavern-detail">
       <Link className="tavern-back" to="/portal/tavern"><ArrowLeft />返回酒馆</Link>
@@ -281,8 +285,8 @@ export function PostDetailPage() {
             <strong>{post.score > 0 ? `+${post.score}` : post.score}</strong>
             <button className={post.myRating === -1 ? 'active down' : ''} aria-label={`反对，当前 ${post.downvoteCount} 人`} onClick={() => rate.mutate(post.myRating === -1 ? 0 : -1)}><ThumbsDown/>{post.downvoteCount}</button>
           </div>
-          {manager && <button onClick={() => setEditForm({ title: post.title, subtitle: post.subtitle, blocks: blocksFromPost(post) })}><Edit3/>编辑帖子</button>}
-          {(manager || user?.id === post.author.id) && <button className="danger" onClick={() => { removePost.reset(); setDeleteTarget({ kind: '帖子', id: post.id }); }}><Trash2 />删除帖子</button>}
+          {canModerate && <button onClick={() => setEditForm({ title: post.title, subtitle: post.subtitle, blocks: blocksFromPost(post) })}><Edit3/>编辑帖子</button>}
+          {(canModerate || user?.id === post.author.id) && <button className="danger" onClick={() => { removePost.reset(); setDeleteTarget({ kind: '帖子', id: post.id }); }}><Trash2 />删除帖子</button>}
         </div>
         <details className="post-supporters"><summary><ChevronDown/>查看赞成这篇帖子的成员（{post.upvoteCount}）</summary>{supporters.length ? <ul>{supporters.map((supporter) => <li key={supporter.id}><span className="social-avatar small" style={{ '--avatar-color': supporter.avatarColor } as React.CSSProperties}><b>{supporter.displayName.slice(0, 1)}</b></span>{supporter.displayName}</li>)}</ul> : <p>还没有成员赞成这篇帖子。</p>}</details>
       </PixelFrame>
@@ -291,7 +295,7 @@ export function PostDetailPage() {
         {comments.map((item) => <article key={item.id}>
           <span className="social-avatar small" style={{ '--avatar-color': item.author.avatarColor } as React.CSSProperties}><b>{item.author.displayName.slice(0, 1)}</b></span>
           <div><strong>{item.author.displayName}<time>{formatDate(item.createdAt)}</time></strong><p>{item.content}</p></div>
-          {(manager || user?.id === item.author.id) && <button className="danger" aria-label={`删除 ${item.author.displayName} 的评论`} onClick={() => { removeComment.reset(); setDeleteTarget({ kind: '评论', id: item.id }); }}><Trash2 /></button>}
+          {(canModerate || user?.id === item.author.id) && <button className="danger" aria-label={`删除 ${item.author.displayName} 的评论`} onClick={() => { removeComment.reset(); setDeleteTarget({ kind: '评论', id: item.id }); }}><Trash2 /></button>}
         </article>)}
         <form onSubmit={(event: FormEvent) => { event.preventDefault(); comment.mutate(); }}>
           <label><span className="sr-only">写下评论</span><input required minLength={1} maxLength={1000} value={content} onChange={(e) => setContent(e.target.value)} placeholder="写下你的回复…" /></label>

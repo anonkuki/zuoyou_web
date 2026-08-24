@@ -434,6 +434,25 @@ describe('Adventurer Guild app', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/comments/comment-mine', expect.objectContaining({ method: 'DELETE' })));
   });
 
+  it('hides cross-department moderation controls from department managers', async () => {
+    const authUser = { id: 'user-tech-lead', username: 'tech.lead', displayName: '技术部部长', email: 'tech@example.com', role: 'DEPARTMENT_HEAD', departmentId: 'dept-tech', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: [], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const post = { id: 'post-cos', title: 'COS 部内部日志', subtitle: '', content: '跨部门管理员只能阅读。', body: [{ type: 'PARAGRAPH', text: '跨部门管理员只能阅读。' }], departmentId: 'dept-cos', departmentName: 'COS部', pinned: false, featured: false, visibleOnGuild: true, visibleOnDepartment: true, upvoteCount: 0, downvoteCount: 0, score: 0, myRating: 0, commentCount: 1, author: { id: 'cos-author', displayName: 'COS 部成员', avatarColor: '#765584' }, createdAt: '2026-08-20T08:00:00.000Z', updatedAt: '2026-08-20T08:00:00.000Z' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/posts/post-cos') return new Response(JSON.stringify({ ok: true, data: { post, comments: [{ id: 'comment-cos', postId: post.id, content: 'COS 部评论', author: { id: 'cos-commenter', displayName: '评论成员', avatarColor: '#c75f88' }, createdAt: post.createdAt }], supporters: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/portal/tavern/post-cos');
+
+    expect(await screen.findByRole('heading', { name: 'COS 部内部日志' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '编辑帖子' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除帖子' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除 评论成员 的评论' })).not.toBeInTheDocument();
+  });
+
   it('shows resonance matches with shared attributes and guides unset members', async () => {
     const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: ['cosplay', 'photography'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
     const match = { myAttributes: ['cosplay', 'photography'], items: [

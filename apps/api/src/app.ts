@@ -573,7 +573,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const principal = requireManager(request, reply); if (!principal) return;
     const id = (request.params as { id: string }).id;
     const { pinned } = parse(z.object({ pinned: z.boolean() }), request.body);
-    const post = social.pinPost(id, pinned);
+    const post = social.pinPost(principal, id, pinned);
     audit(sqlite, principal.id, pinned ? 'POST_PINNED' : 'POST_UNPINNED', 'post', id);
     return successResponse({ post });
   });

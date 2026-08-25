@@ -72,6 +72,12 @@ export const applications = sqliteTable('applications', {
   college: text('college').notNull().default('未填写'), reason: text('reason').notNull(), status: text('status').notNull(), userId: text('user_id').references(() => users.id), activationCodeEncrypted: text('activation_code_encrypted'), rejectionReason: text('rejection_reason'), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
 
+export const registrationRequests = sqliteTable('registration_requests', {
+  id: text('id').primaryKey(), username: text('username').notNull(), passwordHash: text('password_hash').notNull(), contact: text('contact').notNull(), note: text('note').notNull().default(''),
+  status: text('status').notNull().default('PENDING'), reviewedBy: text('reviewed_by').references(() => users.id), reviewedAt: text('reviewed_at'), userId: text('user_id').references(() => users.id),
+  createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
+}, (table) => [index('registration_request_status_time_idx').on(table.status, table.createdAt)]);
+
 export const applicationDepartments = sqliteTable('application_departments', {
   applicationId: text('application_id').notNull().references(() => applications.id, { onDelete: 'cascade' }),
   departmentId: text('department_id').notNull().references(() => departments.id),
@@ -153,4 +159,4 @@ export const auditLogs = sqliteTable('audit_logs', {
   id: text('id').primaryKey(), actorId: text('actor_id').references(() => users.id), targetUserId: text('target_user_id').references(() => users.id), action: text('action').notNull(), entityType: text('entity_type').notNull(), entityId: text('entity_id').notNull(), details: text('details'), createdAt: utcText('created_at'),
 }, (table) => [uniqueIndex('contribution_event_unique').on(table.action, table.entityType, table.entityId, table.targetUserId)]);
 
-export const schema = { departments, users, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postPlacements, postVotes, postAssets, postComments, areaMessages, auditLogs };
+export const schema = { departments, users, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, registrationRequests, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postPlacements, postVotes, postAssets, postComments, areaMessages, auditLogs };

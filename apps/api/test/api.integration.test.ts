@@ -363,6 +363,41 @@ describe.sequential('Adventurer Guild API', () => {
     expect((await app.inject({ method: 'POST', url: `/api/admin/applications/${id}/regenerate-activation`, headers: { cookie: adminCookie } })).statusCode).toBe(409);
   });
 
+  it('lets guests request accounts and limits approval data and actions to the president layer', async () => {
+    const password = 'GuestStrong!2026';
+    const submitted = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
+      username: 'guest.alpha', password, contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。',
+    } });
+    expect(submitted.statusCode).toBe(201);
+    const requestId = submitted.json().data.id as string;
+
+    const database = await openDatabase(`${root}/guild.sqlite`);
+    const stored = database.sqlite.prepare('SELECT username,password_hash,contact,note,status FROM registration_requests WHERE id=?').get(requestId) as Record<string, string>;
+    database.sqlite.close();
+    expect(stored).toMatchObject({ username: 'guest.alpha', contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。', status: 'PENDING' });
+    expect(stored.password_hash).not.toBe(password);
+    expect(stored.password_hash).toMatch(/^scrypt\$/);
+
+    expect((await app.inject({ method: 'GET', url: '/api/admin/registration-requests', headers: { cookie: memberCookie } })).statusCode).toBe(403);
+    const presidentList = await app.inject({ method: 'GET', url: '/api/admin/registration-requests?page=1&pageSize=100', headers: { cookie: adminCookie } });
+    const visible = presidentList.json().data.items.find((item: { id: string }) => item.id === requestId);
+    expect(visible).toMatchObject({ username: 'guest.alpha', contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。', status: 'PENDING' });
+    expect(visible).not.toHaveProperty('password_hash');
+    expect(visible).not.toHaveProperty('passwordHash');
+
+    expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-member/assign', headers: { cookie: adminCookie }, payload: { role: 'VICE_PRESIDENT' } })).statusCode).toBe(201);
+    expect((await app.inject({ method: 'GET', url: '/api/admin/registration-requests', headers: { cookie: memberCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${requestId}/approve`, headers: { cookie: memberCookie } })).statusCode).toBe(200);
+    expect(await login(app, 'guest.alpha', password)).toContain('guild_session=');
+
+    const rejected = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
+      username: 'guest.beta', password: 'OtherStrong!2026', contact: '13800000002', note: '',
+    } });
+    expect(rejected.statusCode).toBe(201);
+    expect((await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${rejected.json().data.id}/reject`, headers: { cookie: memberCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-member/revoke', headers: { cookie: adminCookie } })).statusCode).toBe(200);
+  });
+
   it('makes registration capacity-safe and non-duplicate', async () => {
     const first = await app.inject({ method: 'POST', url: '/api/member/activities/activity-open/register', headers: { cookie: memberCookie } });
     expect(first.statusCode).toBe(201);

@@ -56,6 +56,23 @@ describe('Adventurer Guild app', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/applications/example/approve', expect.objectContaining({ headers: undefined }));
   });
 
+  it('submits a guest account registration from the login page', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.mocked(fetch);
+    renderAt('/login?mode=register');
+    expect(await screen.findByRole('tab', { name: '注册' })).toHaveAttribute('aria-selected', 'true');
+    await user.type(screen.getByLabelText('注册用户名'), 'new.member');
+    await user.type(screen.getByLabelText('密码'), 'NewMember!2026');
+    await user.type(screen.getByLabelText('联系方式'), 'new.member@example.test');
+    await user.type(screen.getByLabelText('备注'), '希望加入社团线上社区');
+    await user.click(screen.getByRole('button', { name: '提交注册请求' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('注册请求已提交');
+    expect(fetchMock).toHaveBeenCalledWith('/api/public/registration-requests', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ username: 'new.member', password: 'NewMember!2026', contact: 'new.member@example.test', note: '希望加入社团线上社区' }),
+    }));
+  });
+
   it('renders the high-fidelity guild hall with live summary', async () => {
     renderAt('/');
     expect(await screen.findByRole('heading', { name: '创作型社团' })).toBeInTheDocument();

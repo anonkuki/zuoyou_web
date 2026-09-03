@@ -19,7 +19,7 @@ export function GuildHero({ stats, loading = false, onSelectSpeaker, selectedSpe
         <strong className="hero-we-are">WE ARE</strong>
         <h1 className="hero-creative-title">创作型社团</h1>
         <div className="hero-title-plaque">自由度高 · 综合性强</div>
-        <b>ZOUYOU ANIME GUILD</b>
+        <b>SAYUU ANIME GUILD</b>
         <p><span>画面、舞台、声音、技术与记录在这里交织，</span><span>每一种兴趣，都能成为共同创作的起点。</span></p>
         <div><Link className="hero-pixel-button gold" to="/departments">逛逛各部门 <ArrowRight /></Link><Link className="hero-pixel-button blue" to="/join">来认识我们 <ArrowRight /></Link></div>
       </motion.div>

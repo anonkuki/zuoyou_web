@@ -21,7 +21,7 @@ export function HomePage() {
     <BlogPostBoard />
     <section className="home-entry-zone" id="guild-passages">
       <header className="entry-zone-heading">
-        <small>WELCOME TO ZOUYOU</small>
+        <small>WELCOME TO SAYUU</small>
         <h2>慢慢逛，总会找到喜欢的角落</h2>
         <p>从社团往事、六个部门到最近的活动记录，先挑一处感兴趣的看看吧。</p>
       </header>

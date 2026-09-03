@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Integrate the official Zouyou logo and mascot into the homepage, add game-like character dialogue, improve pixel-character presentation, and replace overdramatic copy with warm fantasy-flavoured Chinese.
+**Goal:** Integrate the official Sayuu logo and mascot into the homepage, add game-like character dialogue, improve pixel-character presentation, and replace overdramatic copy with warm fantasy-flavoured Chinese.
 
 **Architecture:** Keep the existing layered guild scene and parallax hook intact. Add deterministic, non-AI processed brand assets under the public asset tree, introduce a focused `MascotGuide` interaction component, and connect scene characters to it through accessible buttons. Put the final visual overrides in a dedicated CSS file loaded last so the previous responsive system remains recoverable.
 

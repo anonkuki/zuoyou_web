@@ -28,7 +28,7 @@ export function BlogPostBoard({ departmentSlug }: { departmentSlug?: string }) {
   const suffix = departmentSlug ? `?departmentSlug=${encodeURIComponent(departmentSlug)}` : '';
   const query = useQuery({ queryKey: ['public-post-board', departmentSlug ?? 'guild'], queryFn: () => api<BoardData>(`/api/public/posts/board${suffix}`) });
   return <section className="retro-blog-board" aria-label={departmentSlug ? '部门帖子' : '社团帖子'}>
-    <header><div><small>★ ZOUYOU WEBLOG / SINCE 2018 ★</small><h2>{departmentSlug ? '部门日志交换站' : '社团日志交换站'}</h2><p>公告、成员创作与新鲜见闻，都收录在这块复古网络留言板。</p></div><span className="retro-counter">VISIT<br/><b>000327</b></span></header>
+    <header><div><small>★ SAYUU WEBLOG / SINCE 2018 ★</small><h2>{departmentSlug ? '部门日志交换站' : '社团日志交换站'}</h2><p>公告、成员创作与新鲜见闻，都收录在这块复古网络留言板。</p></div><span className="retro-counter">VISIT<br/><b>000327</b></span></header>
     {query.isLoading ? <p className="retro-blog-status">正在连接日志服务器……</p> : query.error ? <p className="retro-blog-status error">日志服务器暂时没有响应</p> : <div className="retro-blog-grid">
       <BoardColumn title="置顶帖" icon={<Pin />} posts={query.data?.pinned ?? []} empty="尚无置顶公告" />
       <BoardColumn title="精选帖" icon={<Sparkles />} posts={query.data?.featured ?? []} empty="赞成与反对将共同决定精选" />

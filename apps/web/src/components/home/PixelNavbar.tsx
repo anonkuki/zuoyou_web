@@ -98,7 +98,7 @@ export function PixelNavbar() {
     <header className="pixel-navbar">
       <Link className="pixel-brand" to="/" aria-label="佐佑动漫社首页">
         <span className="official-brand-mark"><img src="/assets/brand/zuoyou-logo-pixel.png" alt="佐佑动漫社标志" draggable={false}/></span>
-        <span><strong>佐佑动漫社</strong><small>Zouyou Anime Guild</small></span>
+        <span><strong>佐佑动漫社</strong><small>Sayuu Anime Guild</small></span>
       </Link>
       <nav className={menuOpen ? 'open' : ''} aria-label="主导航">
         {navigation.map(([to, label]) => <NavLink end={to === '/'} key={to} to={to} onClick={() => setMenuOpen(false)}>{label}</NavLink>)}

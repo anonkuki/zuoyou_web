@@ -64,7 +64,7 @@ export function HomePage() {
         <PixelGuildScene />
         <div className="home-hero-content">
           <motion.span className="hero-kicker" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>FANTASY ANIME GUILD</motion.span>
-          <motion.h1 initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }}>佐佑动漫社<span>ZOUYOU ADVENTURER GUILD</span></motion.h1>
+          <motion.h1 initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }}>佐佑动漫社<span>SAYUU ADVENTURER GUILD</span></motion.h1>
           <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: .2 }}>欢迎来到冒险者公会</motion.p>
           <motion.div className="hero-actions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: .3 }}>
             <Link className="guild-button primary" to="/departments">探索公会 <ArrowRight /></Link>

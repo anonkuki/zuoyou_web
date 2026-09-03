@@ -18,7 +18,7 @@ RPG元素作为视觉包装和交互体验
 
 英文：
 
-ZOUYOU Anime Guild System
+SAYUU Anime Guild System
 
 产品定位
 
@@ -167,7 +167,7 @@ UI布局
 
         佐佑动漫社
 
-      ZOUYOU GUILD
+      SAYUU GUILD
 
 
     欢迎来到冒险者公会

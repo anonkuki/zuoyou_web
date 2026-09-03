@@ -120,6 +120,16 @@ describe('Adventurer Guild app', () => {
     expect(document.querySelectorAll('[data-visual-priority="primary"]')).toHaveLength(1);
   });
 
+  it('uses Sayuu as the English club name throughout the homepage', async () => {
+    renderAt('/');
+    await screen.findByTestId('layered-guild-scene');
+    expect(document.querySelector('.pixel-brand small')).toHaveTextContent('Sayuu Anime Guild');
+    expect(document.querySelector('.hero-season')).toHaveTextContent('SAYUU ANIMATION CLUB · SINCE 1999');
+    expect(document.querySelector('.guild-hero-copy > b')).toHaveTextContent('SAYUU ANIME GUILD');
+    expect(document.querySelector('.entry-zone-heading > small')).toHaveTextContent('WELCOME TO SAYUU');
+    expect(document.body).not.toHaveTextContent(/zouyou/i);
+  });
+
   it('adds a dedicated atmospheric depth pass over the independent art layers', async () => {
     renderAt('/');
     const scene = await screen.findByTestId('layered-guild-scene');

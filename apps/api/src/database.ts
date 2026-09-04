@@ -74,12 +74,66 @@ function ensureGuildTavernData(sqlite: Database.Database): void {
   insertPost.run('post-trpg-recruit', 'user-fiction-003', '周五晚跑团缺一pl', '周五晚上的团缺一位玩家。\n规则是轻量奇幻，新手也完全欢迎，车卡会现场协助。', 0, '2026-08-10T13:00:00.000Z', '2026-08-10T13:00:00.000Z');
   insertPost.run('post-expo-plan', 'user-fiction-004', '秋日逛展同行召集', '计划结伴去秋日的同人展。\n打算上午集合，下午自由逛，想一起的请在评论里报名。', 0, '2026-08-11T14:00:00.000Z', '2026-08-11T14:00:00.000Z');
 
+  const insertSubboard = sqlite.prepare('INSERT OR IGNORE INTO post_subboards(id,department_id,name,description,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?)');
+  const subboards = [
+    ['subboard-cos-props', 'dept-cos', '道具与妆造', '服装、妆面、假发与道具制作交流'],
+    ['subboard-cos-photo', 'dept-cos', '外拍约伴', '摄影招募、场地交流与正片计划'],
+    ['subboard-tech-photo', 'dept-tech', '摄影与后期', '摄影器材、调色剪辑与成片复盘'],
+    ['subboard-tech-stage', 'dept-tech', '舞台技术', '灯光、直播、音视频与互动装置'],
+    ['subboard-music-rehearsal', 'dept-music', '排练与歌单', '排练安排、曲目推荐与演出歌单'],
+    ['subboard-music-gear', 'dept-music', '设备交流', '乐器、效果器与现场设备经验'],
+    ['subboard-original-drawing', 'dept-original', '绘画交流', '草图、插画、漫画与绘画练习'],
+    ['subboard-original-project', 'dept-original', '设定与企划', '原创角色、世界观与联合企划'],
+    ['subboard-dance-practice', 'dept-dance', '舞蹈练习', '扒舞、基本功与练习记录'],
+    ['subboard-dance-stage', 'dept-dance', '舞台编排', '队形、服装与舞台呈现讨论'],
+    ['subboard-publicity-anime', 'dept-publicity', '番剧吐槽', '当季动画、补番心得与作品讨论'],
+    ['subboard-publicity-news', 'dept-publicity', '宣传速报', '活动预告、推送排期与宣传复盘'],
+  ] as const;
+  for (const [id, departmentId, name, description] of subboards) {
+    insertSubboard.run(id, departmentId, name, description, 'user-admin', '2026-08-01T08:00:00.000Z', '2026-08-01T08:00:00.000Z');
+  }
+
+  const updatePostScope = sqlite.prepare('UPDATE posts SET department_id=?,subboard_id=? WHERE id=?');
+  updatePostScope.run('dept-cos', 'subboard-cos-props', 'post-cos-progress');
+  updatePostScope.run('dept-cos', 'subboard-cos-photo', 'post-photo-recruit');
+  updatePostScope.run('dept-tech', 'subboard-tech-stage', 'post-tech-share');
+  updatePostScope.run('dept-music', 'subboard-music-rehearsal', 'post-band-setlist');
+  updatePostScope.run('dept-publicity', 'subboard-publicity-anime', 'post-trpg-recruit');
+  updatePostScope.run('dept-publicity', 'subboard-publicity-news', 'post-expo-plan');
+
+  const insertScopedPost = sqlite.prepare('INSERT OR IGNORE INTO posts(id,user_id,title,subtitle,content,body_json,department_id,subboard_id,pinned,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,0,?,?)');
+  const scopedPosts = [
+    ['post-cos-wig', 'user-fiction-007', '长发假发防打结整理心得', '从收纳到出毛的完整流程', '最近整理了三顶长发假发，记录一些减少打结和静电的小技巧。', 'dept-cos', 'subboard-cos-props', '2026-08-12T09:00:00.000Z'],
+    ['post-tech-color', 'user-tech-01', '夜景舞台录像调色小记', '低照度素材也能保留气氛', '分享本次舞台录像的降噪、白平衡和肤色处理顺序。', 'dept-tech', 'subboard-tech-photo', '2026-08-13T10:00:00.000Z'],
+    ['post-music-pedal', 'user-fiction-003', '第一次排练该怎样调效果器', '', '整理了适合新人的效果器连接顺序和排练前检查清单。', 'dept-music', 'subboard-music-gear', '2026-08-14T11:00:00.000Z'],
+    ['post-original-sketch', 'user-fiction-004', '每日速写接龙：九月第一周', '每天十五分钟也算完成', '把本周速写贴在这里，题材不限，欢迎互相留下建议。', 'dept-original', 'subboard-original-drawing', '2026-08-15T12:00:00.000Z'],
+    ['post-original-setting', 'user-fiction-010', '原创世界观共创企划征集', '', '准备做一个短篇共创企划，现征集角色设定和场景概念。', 'dept-original', 'subboard-original-project', '2026-08-16T13:00:00.000Z'],
+    ['post-dance-practice', 'user-fiction-005', '宅舞练习室本周开放时段', '', '本周三和周五晚可以使用练习室，请在评论中登记时间。', 'dept-dance', 'subboard-dance-practice', '2026-08-17T14:00:00.000Z'],
+    ['post-dance-formation', 'user-fiction-011', '六人舞台队形调整记录', '附走位口令与复盘重点', '记录彩排后调整的入场顺序、中心位交换和谢幕队形。', 'dept-dance', 'subboard-dance-stage', '2026-08-18T15:00:00.000Z'],
+    ['post-anime-weekly', 'user-fiction-006', '本周番剧讨论：演出与分镜', '', '集中聊聊本周更新里印象深刻的演出、作画和分镜设计。', 'dept-publicity', 'subboard-publicity-anime', '2026-08-19T16:00:00.000Z'],
+    ['post-publicity-calendar', 'user-fiction-012', '九月宣传内容排期认领', '请各活动负责人确认素材截止日', '九月推送与短视频排期已经整理，欢迎在评论区认领和补充。', 'dept-publicity', 'subboard-publicity-news', '2026-08-20T17:00:00.000Z'],
+  ] as const;
+  for (const [id, userId, title, subtitle, content, departmentId, subboardId, createdAt] of scopedPosts) {
+    insertScopedPost.run(id, userId, title, subtitle || null, content, JSON.stringify([{ type: 'PARAGRAPH', text: content }]), departmentId, subboardId, createdAt, createdAt);
+  }
+
+  const insertPlacement = sqlite.prepare('INSERT OR IGNORE INTO post_placements(id,post_id,scope_type,department_id,pinned,featured,placed_by,placed_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)');
+  const seedPostIds = ['post-welcome', 'post-cos-progress', 'post-photo-recruit', 'post-tech-share', 'post-band-setlist', 'post-trpg-recruit', 'post-expo-plan', ...scopedPosts.map(([id]) => id)];
+  const readSeedPost = sqlite.prepare('SELECT id,department_id,pinned,created_at FROM posts WHERE id=?');
+  const publicPosts = seedPostIds.map((id) => readSeedPost.get(id)).filter(Boolean) as Array<{ id: string; department_id: string | null; pinned: number; created_at: string }>;
+  for (const post of publicPosts) {
+    insertPlacement.run(`seed-placement-guild-${post.id}`, post.id, 'GUILD', null, post.id === 'post-welcome' ? 1 : 0, 0, 'user-admin', post.created_at, post.created_at);
+    if (post.department_id) insertPlacement.run(`seed-placement-department-${post.id}`, post.id, 'DEPARTMENT', post.department_id, post.id === 'post-cos-progress' ? 1 : 0, 0, 'user-admin', post.created_at, post.created_at);
+  }
+
   const insertComment = sqlite.prepare('INSERT OR IGNORE INTO post_comments(id,post_id,user_id,content,created_at) VALUES (?,?,?,?,?)');
   insertComment.run('comment-cos-1', 'post-cos-progress', 'user-member', '尺寸表我今晚核对后回复。', '2026-08-05T10:00:00.000Z');
   insertComment.run('comment-cos-2', 'post-cos-progress', 'user-tech-01', '道具运输我来协调推车。', '2026-08-05T11:00:00.000Z');
   insertComment.run('comment-photo-1', 'post-photo-recruit', 'user-lead', '我可以带反光板，周六上午有空。', '2026-08-07T12:00:00.000Z');
   insertComment.run('comment-trpg-1', 'post-trpg-recruit', 'user-member', '新手想试试，私信你啦。', '2026-08-10T15:00:00.000Z');
   insertComment.run('comment-band-1', 'post-band-setlist', 'user-fiction-005', '投 3 号和 7 号曲目一票。', '2026-08-09T13:00:00.000Z');
+  insertComment.run('comment-anime-1', 'post-anime-weekly', 'user-member', '这周的长镜头设计很有意思，想单独拆一段聊聊。', '2026-08-19T17:00:00.000Z');
+  insertComment.run('comment-original-1', 'post-original-sketch', 'user-lead', '我来参加，下周可以整理成一张合集。', '2026-08-15T13:00:00.000Z');
 
   const insertAreaMessage = sqlite.prepare('INSERT OR IGNORE INTO area_messages(id,area_id,sender_id,content,created_at) VALUES (?,?,?,?,?)');
   insertAreaMessage.run('area-message-hall-1', 'hall', 'user-admin', '欢迎来到公会大厅广场，用方向键四处走走吧。', '2026-08-10T08:00:00.000Z');
@@ -153,7 +207,7 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config', '0011_publicity_fantasy_lab', '0012_four_level_admin_hierarchy', '0013_blog_post_publishing', '0014_post_ratings', '0015_user_uid', '0016_guest_registration_requests', '0017_post_attachments']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config', '0011_publicity_fantasy_lab', '0012_four_level_admin_hierarchy', '0013_blog_post_publishing', '0014_post_ratings', '0015_user_uid', '0016_guest_registration_requests', '0017_post_attachments', '0018_post_subboards']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');

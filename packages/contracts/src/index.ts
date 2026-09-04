@@ -147,10 +147,18 @@ export const postCreateSchema = z.object({
   subtitle: z.string().trim().max(160).optional().default(''),
   content: z.string().trim().min(1).max(12000),
   departmentId: z.string().trim().min(1).nullable().default(null),
+  subboardId: z.string().trim().min(1).nullable().default(null),
   body: z.array(postBodyBlockSchema).min(1).max(80).optional(),
   attachmentIds: z.array(z.string().trim().min(1).max(100)).max(10).optional(),
 });
 export type PostCreate = z.infer<typeof postCreateSchema>;
+
+export const postSubboardCreateSchema = z.object({
+  departmentId: z.string().trim().min(1),
+  name: z.string().trim().min(2).max(40),
+  description: z.string().trim().max(160).optional().default(''),
+});
+export type PostSubboardCreate = z.infer<typeof postSubboardCreateSchema>;
 
 export const postPlacementSchema = z.object({
   scope: z.enum(['GUILD', 'DEPARTMENT']),

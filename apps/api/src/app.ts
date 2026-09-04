@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 import {
-  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, isExecutiveRole, isManagementRole, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, postPlacementSchema, postRatingSchema, resolveAvatarConfig, successResponse, worldMoveSchema,
+  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, isExecutiveRole, isManagementRole, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, postPlacementSchema, postRatingSchema, postSubboardCreateSchema, resolveAvatarConfig, successResponse, worldMoveSchema,
   type ActivityStatus, type AvatarConfig, type Role,
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
@@ -955,6 +955,13 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     sqlite.prepare("INSERT INTO post_assets(id,owner_id,post_id,storage_key,file_name,asset_kind,mime_type,size,created_at) VALUES (?,?,NULL,?,?,'IMAGE',?,?,?)").run(id, principal.id, storageKey, part.filename, part.mimetype, info.size, now());
     return reply.status(201).send(successResponse({ asset: { id, url: `/api/public/post-assets/${id}`, mimeType: part.mimetype, size: info.size } }));
   });
+  app.post('/api/member/post-subboards', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const body = parse(postSubboardCreateSchema, request.body);
+    const subboard = social.createSubboard(principal, body);
+    audit(sqlite, principal.id, 'POST_SUBBOARD_CREATED', 'post_subboard', String((subboard as { id: string }).id), null, { departmentId: body.departmentId, name: body.name });
+    return reply.status(201).send(successResponse({ subboard }));
+  });
 
   app.post('/api/member/post-attachments', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
@@ -992,8 +999,20 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
 
   app.get('/api/public/posts/board', async (request) => {
-    const { departmentSlug } = parse(z.object({ departmentSlug: z.string().trim().min(1).optional() }), request.query);
-    return successResponse(social.publicBoard(departmentSlug));
+    const { departmentSlug, subboardId } = parse(z.object({ departmentSlug: z.string().trim().min(1).optional(), subboardId: z.string().trim().min(1).optional() }), request.query);
+    return successResponse(social.publicBoard(departmentSlug, subboardId));
+  });
+  app.get('/api/public/post-subboards', async (request) => {
+    const { departmentSlug, q } = parse(z.object({ departmentSlug: z.string().trim().min(1).optional(), q: z.string().trim().max(80).optional() }), request.query);
+    return successResponse(social.listSubboards(departmentSlug, q));
+  });
+  app.get('/api/public/forum/categories', async () => successResponse(social.forumDirectory()));
+  app.get('/api/public/forum/topics', async (request) => {
+    const { departmentSlug, subboardId, page, pageSize } = parse(z.object({
+      departmentSlug: z.string().trim().min(1), subboardId: z.string().trim().min(1).optional(),
+      page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(50).default(20),
+    }), request.query);
+    return successResponse(social.publicTopics(departmentSlug, subboardId, page, pageSize));
   });
   app.get('/api/public/posts/:id', async (request) => successResponse({ post: social.publicPost((request.params as { id: string }).id) }));
 

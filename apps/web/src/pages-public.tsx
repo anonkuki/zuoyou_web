@@ -2,11 +2,12 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, BookOpen, CalendarDays, Camera, Castle, ChevronRight, Crown, FileQuestion, Flame, Map, Scroll, Shield, Sparkles, Users } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, Camera, Castle, ChevronRight, Crown, FileQuestion, Flame, Map, Scroll, Shield, Users } from 'lucide-react';
 import { api, json, type PageData } from './api';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero, RuneIcon, StatusBadge } from './components';
 import { DepartmentsHub } from './components/departments/DepartmentsHub';
 import { DeptShowcasePage } from './components/departments/DeptShowcasePage';
+import { BlogPostBoard, ForumDirectory } from './components/blog/BlogPostBoard';
 import type { Announcement } from '@guild/contracts';
 
 export interface Department {
@@ -22,7 +23,6 @@ export interface Department {
 interface Summary { memberCount: number; departmentCount: number; activityCount: number; workCount: number }
 interface Chronicle { id: string; title: string; content: string; occurred_at: string }
 export interface Activity { id: string; department_id: string; title: string; description: string; location: string; status: string; capacity: number; result_summary?: string; starts_at: string }
-interface Work { id: string; title: string; description: string; status: string; department_id: string }
 
 function PixelGuildScene() {
   return (
@@ -176,8 +176,12 @@ export function AnnouncementDetailPage() {
 }
 
 export function WorksPage() {
-  const query=useQuery({queryKey:['works'],queryFn:()=>api<PageData<Work>>('/api/public/works?page=1&pageSize=20')});
-  return <main><PageHero eyebrow="COLLECTION ATLAS" title="作品图鉴" description="收录绘画、COS、摄影、视频与舞台成果。"/><section className="shell">{query.isLoading?<LoadingPanel/>:query.error?<ErrorPanel error={query.error}/>:!query.data?.items.length?<EmptyPanel/>:<div className="works-grid">{query.data.items.map((work,index)=><motion.article className="work-card" key={work.id} whileHover={{y:-8}}><div className={`work-art work-art-${index%4}`}><span>{index===0?'SSR':index%2?'SR':'R'}</span><Sparkles/></div><div><small>GUILD CREATION</small><h2>{work.title}</h2><p>{work.description}</p><button onClick={()=>navigator.clipboard?.writeText(`${location.origin}/works#${work.id}`)}>收藏链接</button></div></motion.article>)}</div>}</section></main>;
+  return <main><PageHero eyebrow="ADVENTURER TAVERN" title="冒险者酒馆" description="从六个部门进入不同主题板块，找到感兴趣的讨论。"/><ForumDirectory/></main>;
+}
+
+export function ForumBoardPage() {
+  const { departmentSlug = '', subboardId } = useParams();
+  return <main><PageHero eyebrow="FORUM BOARD" title="酒馆主题列表" description="置顶主题与普通主题统一排列，最新回复会把主题带回列表前方。"/><BlogPostBoard departmentSlug={departmentSlug} initialSubboardId={subboardId}/></main>;
 }
 
 export function JoinPage() {

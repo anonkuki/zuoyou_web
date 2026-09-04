@@ -18,7 +18,7 @@ export function HomePage() {
     <MascotGuide speaker={speaker} onClearSpeaker={() => setSpeaker(null)}/>
     <GuildScrollStory />
     <HomeSocialOutposts />
-    <BlogPostBoard />
+    <BlogPostBoard compact sections={['pinned', 'latest']} title="冒险者酒馆" />
     <section className="home-entry-zone" id="guild-passages">
       <header className="entry-zone-heading">
         <small>WELCOME TO SAYUU</small>

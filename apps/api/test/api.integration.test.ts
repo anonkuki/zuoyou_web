@@ -756,6 +756,20 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     expect(posts.json().data.total).toBeGreaterThanOrEqual(7);
     expect(posts.json().data.items[0]).toMatchObject({ id: 'post-welcome', pinned: true });
     expect(posts.json().data.items[0].author.displayName).toBe('星门总管');
+    const directory = await app.inject({ method: 'GET', url: '/api/public/forum/categories' });
+    expect(directory.statusCode).toBe(200);
+    expect(directory.json().data.groups).toHaveLength(6);
+    expect(directory.json().data.groups.find((group: { slug: string }) => group.slug === 'publicity')).toEqual(expect.objectContaining({
+      name: '外宣&幻想研', topicCount: expect.any(Number), replyCount: expect.any(Number),
+      subboards: expect.arrayContaining([expect.objectContaining({ id: 'subboard-publicity-anime', name: '番剧吐槽', topicCount: expect.any(Number) })]),
+    }));
+    const topics = await app.inject({ method: 'GET', url: '/api/public/forum/topics?departmentSlug=publicity&page=1&pageSize=20' });
+    expect(topics.statusCode).toBe(200);
+    expect(topics.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'post-anime-weekly', latestAuthorName: '白羽见习者' })]));
+    const homepage = await app.inject({ method: 'GET', url: '/api/public/posts/board' });
+    expect(homepage.statusCode).toBe(200);
+    expect(homepage.json().data.pinned).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'post-welcome' })]));
+    expect(homepage.json().data.latest.length).toBeGreaterThan(0);
   });
 
   it('stores and serves announcement body content', async () => {
@@ -916,6 +930,40 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const guildPostId = guildPost.json().data.post.id as string;
     expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${guildPostId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${guildPostId}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(200);
+  });
+
+  it('creates department subboards with scoped management and filters their public posts', async () => {
+    const payload = { departmentId: 'dept-cos', name: '番剧吐槽', description: '交流当季动画与补番心得' };
+    expect((await app.inject({ method: 'POST', url: '/api/member/post-subboards', headers: { cookie: memberCookie }, payload })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/api/member/post-subboards', headers: { cookie: techLeadCookie }, payload })).statusCode).toBe(403);
+
+    const deputyCookie = await login(app, 'cos.deputy', 'DemoDeputy!2026');
+    const createdSubboard = await app.inject({ method: 'POST', url: '/api/member/post-subboards', headers: { cookie: deputyCookie }, payload });
+    expect(createdSubboard.statusCode).toBe(201);
+    const subboardId = createdSubboard.json().data.subboard.id as string;
+    expect(createdSubboard.json().data.subboard).toMatchObject({ name: '番剧吐槽', departmentId: 'dept-cos', departmentSlug: 'cos' });
+    expect((await app.inject({ method: 'POST', url: '/api/member/post-subboards', headers: { cookie: leadCookie }, payload })).statusCode).toBe(409);
+
+    const invalidPost = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: { title: '跨部门子板块', content: '不应允许跨部门选择子板块。', departmentId: 'dept-tech', subboardId } });
+    expect(invalidPost.statusCode).toBe(400);
+    expect(invalidPost.json().error.code).toBe('INVALID_SUBBOARD');
+
+    const createdPost = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: { title: '本周番剧讨论', content: '来聊聊本周更新的动画内容。', departmentId: 'dept-cos', subboardId } });
+    expect(createdPost.statusCode).toBe(201);
+    const postId = createdPost.json().data.post.id as string;
+    expect(createdPost.json().data.post).toMatchObject({ subboardId, subboardName: '番剧吐槽', departmentId: 'dept-cos' });
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'DEPARTMENT', departmentId: 'dept-cos', visible: true } })).statusCode).toBe(200);
+
+    const search = await app.inject({ method: 'GET', url: '/api/public/post-subboards?departmentSlug=cos&q=%E7%95%AA%E5%89%A7' });
+    expect(search.statusCode).toBe(200);
+    expect(search.json().data.items).toEqual([expect.objectContaining({ id: subboardId, name: '番剧吐槽', postCount: 1 })]);
+    const filtered = await app.inject({ method: 'GET', url: `/api/public/posts/board?departmentSlug=cos&subboardId=${subboardId}` });
+    expect(filtered.statusCode).toBe(200);
+    expect(filtered.json().data.latest).toEqual(expect.arrayContaining([expect.objectContaining({ id: postId, subboardName: '番剧吐槽' })]));
+    const topicList = await app.inject({ method: 'GET', url: `/api/public/forum/topics?departmentSlug=cos&subboardId=${subboardId}` });
+    expect(topicList.statusCode).toBe(200);
+    expect(topicList.json().data).toMatchObject({ total: 1, subboard: { id: subboardId, name: '番剧吐槽' } });
+    expect(topicList.json().data.items[0]).toMatchObject({ id: postId, subboardName: '番剧吐槽' });
   });
 
   it('limits every public board section to five posts and rejects a sixth manual pin or feature', async () => {

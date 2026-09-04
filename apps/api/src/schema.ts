@@ -123,9 +123,15 @@ export const announcements = sqliteTable('announcements', {
   updatedAt: utcText('updated_at'),
 });
 
+export const postSubboards = sqliteTable('post_subboards', {
+  id: text('id').primaryKey(), departmentId: text('department_id').notNull().references(() => departments.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(), description: text('description').notNull().default(''), createdBy: text('created_by').notNull().references(() => users.id),
+  createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
+}, (table) => [uniqueIndex('post_subboard_department_name_unique').on(table.departmentId, table.name), index('post_subboard_department_idx').on(table.departmentId, table.createdAt)]);
+
 export const posts = sqliteTable('posts', {
   id: text('id').primaryKey(), userId: text('user_id').notNull().references(() => users.id),
-  title: text('title').notNull(), subtitle: text('subtitle'), content: text('content').notNull(), bodyJson: text('body_json').notNull().default('[]'), departmentId: text('department_id').references(() => departments.id),
+  title: text('title').notNull(), subtitle: text('subtitle'), content: text('content').notNull(), bodyJson: text('body_json').notNull().default('[]'), departmentId: text('department_id').references(() => departments.id), subboardId: text('subboard_id').references(() => postSubboards.id, { onDelete: 'set null' }),
   pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false), deletedAt: text('deleted_at'),
   createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 }, (table) => [index('post_list_idx').on(table.deletedAt, table.pinned, table.createdAt)]);

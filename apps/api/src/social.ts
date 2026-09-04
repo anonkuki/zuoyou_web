@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { isExecutiveRole, isManagementRole, resolveAvatarConfig, type MemberProfileUpdate, type PostCreate, type Role } from '@guild/contracts';
+import { isExecutiveRole, isManagementRole, resolveAvatarConfig, type MemberProfileUpdate, type PostCreate, type PostSubboardCreate, type Role } from '@guild/contracts';
 
 export interface SocialPrincipal {
   id: string;
@@ -244,8 +244,9 @@ export class GuildSocialRepository {
     try { body = JSON.parse(String(row.body_json ?? '[]')) as unknown[]; } catch { body = []; }
     if (!Array.isArray(body) || !body.length) body = [{ type: 'PARAGRAPH', text: String(row.content ?? '') }];
     const attachments = this.sqlite.prepare(`SELECT id,file_name name,mime_type mimeType,size FROM post_assets WHERE post_id=? AND asset_kind='ATTACHMENT' ORDER BY created_at,id`).all(String(row.id)) as Array<{ id: string; name: string; mimeType: string; size: number }>;
+    const subboard = row.subboard_id ? this.sqlite.prepare('SELECT name FROM post_subboards WHERE id=?').get(row.subboard_id) as { name: string } | undefined : undefined;
     return {
-      id: row.id, title: row.title, subtitle: row.subtitle ?? '', content: row.content, body, departmentId: row.department_id ?? null, departmentName: row.department_name ?? null,
+      id: row.id, title: row.title, subtitle: row.subtitle ?? '', content: row.content, body, departmentId: row.department_id ?? null, departmentName: row.department_name ?? null, subboardId: row.subboard_id ?? null, subboardName: subboard?.name ?? null,
       pinned: Boolean(row.placement_pinned) || Boolean(row.pinned), featured: Boolean(row.placement_featured), visibleOnGuild: Boolean(row.visible_on_guild), visibleOnDepartment: Boolean(row.visible_on_department),
       upvoteCount: Number(row.upvote_count ?? 0), downvoteCount: Number(row.downvote_count ?? 0), score: Number(row.rating_score ?? 0), myRating: Number(row.my_rating ?? 0), voteCount: Number(row.upvote_count ?? row.vote_count ?? 0), commentCount: Number(row.comment_count ?? 0),
       author: { id: row.user_id, displayName: row.author_name, avatarColor: row.author_color },
@@ -282,9 +283,10 @@ export class GuildSocialRepository {
     const id = this.makeId('post');
     const createdAt = this.timestamp();
     if (input.departmentId && !this.sqlite.prepare('SELECT 1 FROM departments WHERE id=?').get(input.departmentId)) throw new SocialError(400, 'INVALID_DEPARTMENT', '所属部门不存在');
+    this.assertSubboard(input.departmentId, input.subboardId);
     const body = input.body?.length ? input.body : [{ type: 'PARAGRAPH' as const, text: input.content }];
-    this.sqlite.prepare('INSERT INTO posts(id,user_id,title,subtitle,content,body_json,department_id,pinned,created_at,updated_at) VALUES (?,?,?,?,?,?,?,0,?,?)')
-      .run(id, principal.id, input.title, input.subtitle || null, input.content, JSON.stringify(body), input.departmentId, createdAt, createdAt);
+    this.sqlite.prepare('INSERT INTO posts(id,user_id,title,subtitle,content,body_json,department_id,subboard_id,pinned,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,0,?,?)')
+      .run(id, principal.id, input.title, input.subtitle || null, input.content, JSON.stringify(body), input.departmentId, input.subboardId, createdAt, createdAt);
     return this.getPost(id).post;
   }
 
@@ -300,9 +302,10 @@ export class GuildSocialRepository {
       throw new SocialError(403, 'FORBIDDEN', '只能编辑本部门帖子，且不可改变所属部门');
     }
     if (input.departmentId && !this.sqlite.prepare('SELECT 1 FROM departments WHERE id=?').get(input.departmentId)) throw new SocialError(400, 'INVALID_DEPARTMENT', '所属部门不存在');
+    this.assertSubboard(input.departmentId, input.subboardId);
     const body = input.body?.length ? input.body : [{ type: 'PARAGRAPH' as const, text: input.content }];
-    this.sqlite.prepare('UPDATE posts SET title=?,subtitle=?,content=?,body_json=?,department_id=?,updated_at=? WHERE id=?')
-      .run(input.title, input.subtitle || null, input.content, JSON.stringify(body), input.departmentId, this.timestamp(), postId);
+    this.sqlite.prepare('UPDATE posts SET title=?,subtitle=?,content=?,body_json=?,department_id=?,subboard_id=?,updated_at=? WHERE id=?')
+      .run(input.title, input.subtitle || null, input.content, JSON.stringify(body), input.departmentId, input.subboardId, this.timestamp(), postId);
     return this.getPost(postId).post;
   }
 
@@ -409,23 +412,67 @@ export class GuildSocialRepository {
     return { visible: true };
   }
 
-  publicBoard(departmentSlug?: string) {
+  publicBoard(departmentSlug?: string, subboardId?: string) {
     let departmentId: string | null = null;
     if (departmentSlug) {
       const department = this.sqlite.prepare('SELECT id FROM departments WHERE slug=?').get(departmentSlug) as { id: string } | undefined;
       if (!department) throw new SocialError(404, 'NOT_FOUND', '部门不存在');
       departmentId = department.id;
     }
+    if (subboardId) this.assertSubboard(departmentId, subboardId);
     const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,x.pinned placement_pinned,x.featured placement_featured,
       (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,
       (SELECT COALESCE(SUM(v.value),0) FROM post_votes v WHERE v.post_id=p.id) rating_score
       FROM post_placements x JOIN posts p ON p.id=x.post_id JOIN users u ON u.id=p.user_id LEFT JOIN departments d ON d.id=p.department_id
-      WHERE p.deleted_at IS NULL AND x.scope_type=? AND COALESCE(x.department_id,'')=COALESCE(?,'')
-      ORDER BY x.pinned DESC,x.featured DESC,p.created_at DESC,p.id`).all(departmentId ? 'DEPARTMENT' : 'GUILD', departmentId) as Array<Record<string, unknown>>;
+      WHERE p.deleted_at IS NULL AND x.scope_type=? AND COALESCE(x.department_id,'')=COALESCE(?,'') AND (? IS NULL OR p.subboard_id=?)
+      ORDER BY x.pinned DESC,x.featured DESC,p.created_at DESC,p.id`).all(departmentId ? 'DEPARTMENT' : 'GUILD', departmentId, subboardId ?? null, subboardId ?? null) as Array<Record<string, unknown>>;
     const items = rows.map((row) => this.serializePost(row));
     return { pinned: items.filter((item) => item.pinned).slice(0, POST_BOARD_SECTION_LIMIT), featured: items.filter((item) => item.featured || item.score > 0).sort((a, b) => Number(b.featured) - Number(a.featured) || b.score - a.score || b.upvoteCount - a.upvoteCount).slice(0, POST_BOARD_SECTION_LIMIT), latest: items.slice(0, POST_BOARD_SECTION_LIMIT) };
+  }
+
+  publicTopics(departmentSlug: string, subboardId: string | undefined, page: number, pageSize: number) {
+    const department = this.sqlite.prepare('SELECT id,name,slug FROM departments WHERE slug=?').get(departmentSlug) as { id: string; name: string; slug: string } | undefined;
+    if (!department) throw new SocialError(404, 'NOT_FOUND', '部门不存在');
+    if (subboardId) this.assertSubboard(department.id, subboardId);
+    const filter = `p.deleted_at IS NULL AND x.scope_type='DEPARTMENT' AND x.department_id=? AND (? IS NULL OR p.subboard_id=?)`;
+    const total = (this.sqlite.prepare(`SELECT COUNT(*) count FROM post_placements x JOIN posts p ON p.id=x.post_id WHERE ${filter}`).get(department.id, subboardId ?? null, subboardId ?? null) as { count: number }).count;
+    const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,x.pinned placement_pinned,x.featured placement_featured,
+      (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
+      (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,
+      (SELECT COALESCE(SUM(v.value),0) FROM post_votes v WHERE v.post_id=p.id) rating_score,
+      COALESCE((SELECT c.created_at FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL ORDER BY c.created_at DESC,c.id DESC LIMIT 1),p.created_at) last_activity_at,
+      COALESCE((SELECT cu.display_name FROM post_comments c JOIN users cu ON cu.id=c.user_id WHERE c.post_id=p.id AND c.deleted_at IS NULL ORDER BY c.created_at DESC,c.id DESC LIMIT 1),u.display_name) latest_author_name
+      FROM post_placements x JOIN posts p ON p.id=x.post_id JOIN users u ON u.id=p.user_id LEFT JOIN departments d ON d.id=p.department_id
+      WHERE ${filter} ORDER BY x.pinned DESC,last_activity_at DESC,p.id LIMIT ? OFFSET ?`).all(department.id, subboardId ?? null, subboardId ?? null, pageSize, (page - 1) * pageSize) as Array<Record<string, unknown>>;
+    const items = rows.map((row) => ({ ...this.serializePost(row), lastActivityAt: row.last_activity_at, latestAuthorName: row.latest_author_name }));
+    const subboard = subboardId ? this.sqlite.prepare('SELECT id,name,description FROM post_subboards WHERE id=?').get(subboardId) : null;
+    return { department, subboard, items, page, pageSize, total };
+  }
+
+  forumDirectory() {
+    const departments = this.sqlite.prepare('SELECT id,slug,name,title,description FROM departments ORDER BY rowid').all() as Array<{ id: string; slug: string; name: string; title: string; description: string }>;
+    const subboards = this.sqlite.prepare('SELECT id,department_id departmentId,name,description FROM post_subboards ORDER BY created_at,name').all() as Array<{ id: string; departmentId: string; name: string; description: string }>;
+    const stats = this.sqlite.prepare(`SELECT COUNT(*) topicCount,COALESCE(SUM((SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL)),0) replyCount
+      FROM posts p WHERE p.deleted_at IS NULL AND p.department_id=? AND (? IS NULL OR p.subboard_id=?)
+      AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='DEPARTMENT' AND x.department_id=p.department_id)`);
+    const latest = this.sqlite.prepare(`SELECT p.id,p.title,u.display_name authorName,
+      COALESCE((SELECT c.created_at FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL ORDER BY c.created_at DESC,c.id DESC LIMIT 1),p.created_at) createdAt,
+      COALESCE((SELECT cu.display_name FROM post_comments c JOIN users cu ON cu.id=c.user_id WHERE c.post_id=p.id AND c.deleted_at IS NULL ORDER BY c.created_at DESC,c.id DESC LIMIT 1),u.display_name) latestAuthorName
+      FROM posts p JOIN users u ON u.id=p.user_id WHERE p.deleted_at IS NULL AND p.department_id=? AND (? IS NULL OR p.subboard_id=?)
+      AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='DEPARTMENT' AND x.department_id=p.department_id)
+      ORDER BY createdAt DESC,p.id LIMIT 1`);
+    const summarize = (departmentId: string, subboardId: string | null) => {
+      const count = stats.get(departmentId, subboardId, subboardId) as { topicCount: number; replyCount: number };
+      return { topicCount: Number(count.topicCount), replyCount: Number(count.replyCount), latestPost: latest.get(departmentId, subboardId, subboardId) ?? null };
+    };
+    return { groups: departments.map((department) => ({
+      ...department,
+      ...summarize(department.id, null),
+      subboards: subboards.filter((item) => item.departmentId === department.id).map((item) => ({ ...item, ...summarize(department.id, item.id) })),
+    })) };
   }
 
   publicPost(postId: string) {
@@ -455,6 +502,35 @@ export class GuildSocialRepository {
       if (!asset || asset.asset_kind !== expectedKind || (asset.post_id !== postId && asset.owner_id !== principal.id) || (asset.post_id && asset.post_id !== postId)) throw new SocialError(400, 'INVALID_POST_ASSET', '帖子图片或附件无效，或不属于当前账户');
       this.sqlite.prepare('UPDATE post_assets SET post_id=? WHERE id=?').run(postId, assetId);
     }
+  }
+
+  private assertSubboard(departmentId: string | null, subboardId: string | null): void {
+    if (!subboardId) return;
+    if (!departmentId) throw new SocialError(400, 'SUBBOARD_REQUIRES_DEPARTMENT', '选择子板块前必须先选择所属部门');
+    const subboard = this.sqlite.prepare('SELECT department_id FROM post_subboards WHERE id=?').get(subboardId) as { department_id: string } | undefined;
+    if (!subboard || subboard.department_id !== departmentId) throw new SocialError(400, 'INVALID_SUBBOARD', '子板块不存在或不属于所选部门');
+  }
+
+  listSubboards(departmentSlug?: string, query = '') {
+    const search = `%${query.trim()}%`;
+    const rows = this.sqlite.prepare(`SELECT s.id,s.name,s.description,s.department_id departmentId,d.name departmentName,d.slug departmentSlug,
+      (SELECT COUNT(DISTINCT p.id) FROM posts p JOIN post_placements x ON x.post_id=p.id WHERE p.subboard_id=s.id AND p.deleted_at IS NULL AND x.scope_type='DEPARTMENT' AND x.department_id=s.department_id) postCount
+      FROM post_subboards s JOIN departments d ON d.id=s.department_id
+      WHERE (?='' OR d.slug=?) AND (?='' OR s.name LIKE ? OR s.description LIKE ?)
+      ORDER BY d.rowid,s.created_at,s.name`).all(departmentSlug ?? '', departmentSlug ?? '', query.trim(), search, search);
+    return { items: rows };
+  }
+
+  createSubboard(principal: SocialPrincipal, input: PostSubboardCreate) {
+    if (!isManagementRole(principal.role)) throw new SocialError(403, 'FORBIDDEN', '只有管理层可以创建子板块');
+    if (!isExecutiveRole(principal.role) && input.departmentId !== principal.departmentId) throw new SocialError(403, 'FORBIDDEN', '部长和副部长只能在自己所属部门创建子板块');
+    if (!this.sqlite.prepare('SELECT 1 FROM departments WHERE id=?').get(input.departmentId)) throw new SocialError(404, 'NOT_FOUND', '部门不存在');
+    if (this.sqlite.prepare('SELECT 1 FROM post_subboards WHERE department_id=? AND name=?').get(input.departmentId, input.name)) throw new SocialError(409, 'SUBBOARD_EXISTS', '该部门已经有同名子板块');
+    const id = this.makeId('subboard');
+    const timestamp = this.timestamp();
+    this.sqlite.prepare('INSERT INTO post_subboards(id,department_id,name,description,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
+      .run(id, input.departmentId, input.name, input.description, principal.id, timestamp, timestamp);
+    return this.sqlite.prepare(`SELECT s.id,s.name,s.description,s.department_id departmentId,d.name departmentName,d.slug departmentSlug,0 postCount FROM post_subboards s JOIN departments d ON d.id=s.department_id WHERE s.id=?`).get(id);
   }
 
   matchMembers(principal: SocialPrincipal, limit = 12) {

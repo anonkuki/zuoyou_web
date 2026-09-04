@@ -126,18 +126,29 @@ test('首页故事卡与公告进入各自的真实内容页', async ({ page }) 
   await page.screenshot({ path: `${qaRoot}/announcements-1440x900.png`, fullPage: true });
 });
 
-test('部门视频使用清单中的 B站作品链接打开', async ({ page }) => {
+test('部门视频通过官方播放器预览并保留清单中的完整 B站分享链接', async ({ page }) => {
   await page.goto('/departments/cos');
-  const videoLink = page.locator('a[href^="https://www.bilibili.com/video/"]');
-  await expect(videoLink).toHaveCount(5);
-  const [destination] = await Promise.all([
-    page.waitForEvent('popup'),
-    videoLink.first().click(),
-  ]);
-  await destination.waitForLoadState('domcontentloaded');
-  await expect(destination).toHaveURL(/www\.bilibili\.com\/video\/BV1Vr7YzLE1R/);
-  await expect(destination.getByText('错误号:412')).toHaveCount(0);
-  await destination.close();
+  const previewButtons = page.getByRole('button', { name: /站内预览/ });
+  await expect(previewButtons).toHaveCount(5);
+  const playerResponsePromise = page.waitForResponse((response) =>
+    response.url() === 'https://player.bilibili.com/player.html?bvid=BV1Vr7YzLE1R&autoplay=0'
+      && response.request().resourceType() === 'document',
+  );
+  await previewButtons.first().click();
+  const playerResponse = await playerResponsePromise;
+  expect(playerResponse.ok()).toBe(true);
+  const dialog = page.getByRole('dialog', { name: /那一天的cos，接力起来/ });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('iframe')).toHaveAttribute(
+    'src',
+    'https://player.bilibili.com/player.html?bvid=BV1Vr7YzLE1R&autoplay=0',
+  );
+  await expect(dialog.getByRole('link', { name: '仍要前往 B站作品页' })).toHaveAttribute(
+    'href',
+    'https://www.bilibili.com/video/BV1Vr7YzLE1R/?share_source=copy_web&vd_source=24ea5eb803d51b94ae2092cd7a170281',
+  );
+  await dialog.getByRole('button', { name: '关闭视频预览' }).click();
+  await expect(dialog).toBeHidden();
 });
 
 test('外宣与幻想研只展示公众号和年度总结入口', async ({ page }) => {

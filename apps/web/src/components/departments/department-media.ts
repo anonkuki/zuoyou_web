@@ -37,6 +37,8 @@ type VideoSeed = readonly [
   views: number,
 ];
 
+const bilibiliShareSuffix = '/?share_source=copy_web&vd_source=24ea5eb803d51b94ae2092cd7a170281';
+
 const video = (entry: VideoSeed, note: string): DepartmentVideo => ({
   bvid: entry[0],
   title: entry[1],
@@ -45,7 +47,7 @@ const video = (entry: VideoSeed, note: string): DepartmentVideo => ({
   duration: entry[4],
   views: entry[5],
   note,
-  href: `https://www.bilibili.com/video/${entry[0]}`,
+  href: `https://www.bilibili.com/video/${entry[0]}${bilibiliShareSuffix}`,
 });
 
 const videos = (entries: VideoSeed[], note: string) => entries.map(entry => video(entry, note));
@@ -53,7 +55,7 @@ const videos = (entries: VideoSeed[], note: string) => entries.map(entry => vide
 /**
  * 2026-08-21 审核快照：BVID 取自用户提供的《视频列表.txt》，标题、封面、
  * 日期、时长与播放量通过 Bilibili view API 复核。跳转地址保留清单提供的
- * www.bilibili.com/video/BVID 形式；外宣&幻想研不展示 B站内容。
+ * 完整分享参数；外宣&幻想研不展示 B站内容。
  */
 export const departmentMediaBySlug: Record<string, DepartmentMedia> = {
   cos: {

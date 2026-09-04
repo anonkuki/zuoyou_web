@@ -35,7 +35,7 @@ describe('HomeSocialOutposts', () => {
     );
     expect(within(dialog).getByRole('link', { name: /前往 B站观看完整视频/ })).toHaveAttribute(
       'href',
-      'https://www.bilibili.com/video/BV1NA8G6REDQ',
+      'https://www.bilibili.com/video/BV1NA8G6REDQ/?share_source=copy_web&vd_source=24ea5eb803d51b94ae2092cd7a170281',
     );
 
     await user.click(within(dialog).getByRole('button', { name: '关闭视频预览' }));

@@ -26,6 +26,8 @@ const publicityArticleLinks = [
   'https://mp.weixin.qq.com/s/slEZZgjRLXICgG5mKQ3MXA',
 ] as const;
 
+const bilibiliShareSuffix = '/?share_source=copy_web&vd_source=24ea5eb803d51b94ae2092cd7a170281';
+
 describe('department social media shelf', () => {
   it('indexes real and fallback photos for all six departments', () => {
     expect(Object.keys(departmentPhotosBySlug).sort()).toEqual(['cos', 'dance', 'music', 'original', 'publicity', 'tech']);
@@ -92,12 +94,30 @@ describe('department social media shelf', () => {
       const entry = departmentMediaBySlug[slug];
       expect(entry.videos?.map(video => video.bvid)).toEqual(bvids);
       for (const video of entry.videos ?? []) {
-        expect(video.href).toBe(`https://www.bilibili.com/video/${video.bvid}`);
+        expect(video.href).toBe(`https://www.bilibili.com/video/${video.bvid}${bilibiliShareSuffix}`);
         expect(video.cover).toMatch(/^https:\/\/i\d\.hdslb\.com\/bfs\/archive\//);
         expect(video.title.length).toBeGreaterThan(8);
       }
     }
     expect(departmentMediaBySlug.publicity.videos).toBeUndefined();
+  });
+
+  it('opens the reliable official player before offering the original Bilibili share link', async () => {
+    const user = userEvent.setup();
+    const video = departmentMediaBySlug.tech.videos![1];
+    render(<DepartmentMediaShelf slug="tech" />);
+
+    await user.click(screen.getByRole('button', { name: `${video.title} · 站内预览` }));
+
+    const dialog = screen.getByRole('dialog', { name: video.title });
+    expect(within(dialog).getByTitle(`${video.title} · B站播放器`)).toHaveAttribute(
+      'src',
+      `https://player.bilibili.com/player.html?bvid=${video.bvid}&autoplay=0`,
+    );
+    expect(within(dialog).getByRole('link', { name: '仍要前往 B站作品页' })).toHaveAttribute('href', video.href);
+
+    await user.click(within(dialog).getByRole('button', { name: '关闭视频预览' }));
+    expect(screen.queryByRole('dialog', { name: video.title })).not.toBeInTheDocument();
   });
 
   it('keeps publicity and Fantasy Lab articles together without pretending QQ is a public feed', async () => {
@@ -125,7 +145,7 @@ describe('department social media shelf', () => {
       dept={{ slug: 'cos', name: 'COS部', title: '幻术师', description: '服装、妆造与角色演绎', memberCount: 14 }}
       show={show}
     /></MemoryRouter>);
-    expect(screen.getByRole('link', { name: /那一天的cos，接力起来/ })).toHaveAttribute('href', `https://www.bilibili.com/video/${expectedBvids.cos[0]}`);
+    expect(screen.getByRole('button', { name: /那一天的cos，接力起来.*站内预览/ })).toBeInTheDocument();
   });
 
   it('turns footer social actions into real external destinations', () => {

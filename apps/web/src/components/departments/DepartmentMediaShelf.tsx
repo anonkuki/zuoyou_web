@@ -1,12 +1,31 @@
-import { useState } from 'react';
-import { BookOpen, Check, Copy, ExternalLink, MessageCircle, Play, Radio } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { BookOpen, Check, Copy, ExternalLink, MessageCircle, Play, Radio, X } from 'lucide-react';
+import type { DepartmentVideo } from './department-media';
 import { departmentMediaBySlug, officialSocialLinks } from './department-media';
 
 const formatViews = (views: number) => views >= 10000 ? `${(views / 10000).toFixed(1)}万` : String(views);
+const bilibiliPlayerUrl = (bvid: string) => `https://player.bilibili.com/player.html?bvid=${bvid}&autoplay=0`;
 
 export function DepartmentMediaShelf({ slug }: { slug: string }) {
   const media = departmentMediaBySlug[slug];
   const [copied, setCopied] = useState(false);
+  const [previewVideo, setPreviewVideo] = useState<DepartmentVideo | null>(null);
+
+  useEffect(() => {
+    if (!previewVideo) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewVideo(null);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [previewVideo]);
+
   if (!media) return null;
 
   const copyChannel = async () => {
@@ -21,16 +40,15 @@ export function DepartmentMediaShelf({ slug }: { slug: string }) {
         <span><Radio aria-hidden="true" /> GUILD CHANNEL</span>
         <h2>{media.videos?.length ? '看看我们真的做过什么' : '读一读我们留下的记录'}</h2>
         <p>{media.videos?.length
-          ? `收录清单中的 ${media.videos.length} 部部门作品，点击后前往 B站作品页观看。`
+          ? `收录清单中的 ${media.videos.length} 部部门作品，点击即可在站内预览，也可前往 B站作品页。`
           : '外宣与幻想研的内容以公众号文章和年度总结网站为主。'}</p>
       </header>
       {media.videos && <div className="department-video-grid">
-        {media.videos.map((item, index) => <a
+        {media.videos.map((item, index) => <button
+          type="button"
           className={`department-video-card${index === 0 ? ' is-featured' : ''}`}
-          href={item.href}
-          target="_blank"
-          rel="noreferrer"
-          aria-label={`${item.title} · 在哔哩哔哩观看`}
+          onClick={() => setPreviewVideo(item)}
+          aria-label={`${item.title} · 站内预览`}
           key={item.bvid}
         >
           <span className="department-video-cover">
@@ -42,9 +60,9 @@ export function DepartmentMediaShelf({ slug }: { slug: string }) {
             <small>BILIBILI · {item.publishedAt}</small>
             <strong>{item.title}</strong>
             <span>{item.note}</span>
-            <b>{formatViews(item.views)} 次播放（采集时） <ExternalLink aria-hidden="true" /></b>
+            <b>{formatViews(item.views)} 次播放（采集时） <Play aria-hidden="true" /></b>
           </span>
-        </a>)}
+        </button>)}
       </div>}
 
       {media.annualReport && <a
@@ -84,6 +102,39 @@ export function DepartmentMediaShelf({ slug }: { slug: string }) {
           </button>
         </div>
       </div>}
+
+      {previewVideo && createPortal(
+        <div
+          className="home-video-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={previewVideo.title}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPreviewVideo(null);
+          }}
+        >
+          <div className="home-video-modal-panel">
+            <header>
+              <span><Radio aria-hidden="true" /> BILIBILI PREVIEW</span>
+              <button type="button" onClick={() => setPreviewVideo(null)} aria-label="关闭视频预览"><X aria-hidden="true" /></button>
+            </header>
+            <div className="home-video-player">
+              <iframe
+                src={bilibiliPlayerUrl(previewVideo.bvid)}
+                title={`${previewVideo.title} · B站播放器`}
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowFullScreen
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <footer>
+              <div><small>{previewVideo.publishedAt} · {previewVideo.duration}</small><strong>{previewVideo.title}</strong></div>
+              <a href={previewVideo.href} target="_blank" rel="noreferrer">仍要前往 B站作品页 <ExternalLink aria-hidden="true" /></a>
+            </footer>
+          </div>
+        </div>,
+        document.body,
+      )}
     </section>
   );
 }

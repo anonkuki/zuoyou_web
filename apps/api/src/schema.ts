@@ -140,7 +140,7 @@ export const postVotes = sqliteTable('post_votes', {
 }, (table) => [primaryKey({ columns: [table.postId, table.userId] })]);
 
 export const postAssets = sqliteTable('post_assets', {
-  id: text('id').primaryKey(), ownerId: text('owner_id').notNull().references(() => users.id), postId: text('post_id').references(() => posts.id, { onDelete: 'cascade' }), storageKey: text('storage_key').notNull().unique(), mimeType: text('mime_type').notNull(), size: integer('size').notNull(), createdAt: utcText('created_at'),
+  id: text('id').primaryKey(), ownerId: text('owner_id').notNull().references(() => users.id), postId: text('post_id').references(() => posts.id, { onDelete: 'cascade' }), storageKey: text('storage_key').notNull().unique(), fileName: text('file_name').notNull().default(''), assetKind: text('asset_kind').notNull().default('IMAGE'), mimeType: text('mime_type').notNull(), size: integer('size').notNull(), createdAt: utcText('created_at'),
 }, (table) => [index('post_asset_post_idx').on(table.postId)]);
 
 export const postComments = sqliteTable('post_comments', {

@@ -22,6 +22,26 @@
 .tavern-inline-upload input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 .tavern-inline-upload:focus-within { outline: 2px solid #5e4181; }
 .tavern-block-actions .danger { margin-left: auto; background: #f3dada; color: #7a2525; }
+.post-attachment-editor { display: grid; gap: 11px; min-width: 0; margin: 0; padding: 15px; background: #e9e4d5; border: 2px solid #766578; }
+.post-attachment-editor legend { display: inline-flex; align-items: center; gap: 6px; padding: 0 7px; font-weight: 800; }
+.post-attachment-editor legend svg, .post-attachment-picker svg { width: 17px; }
+.post-attachment-editor > p { margin: 0; color: #6f626c; font-size: .75rem; line-height: 1.55; }
+.post-attachment-picker { display: inline-flex !important; width: fit-content !important; align-items: center; gap: 7px; padding: 9px 12px; border: 2px solid #766578; background: #fff8e8; cursor: pointer; font-weight: 700; }
+.post-attachment-picker input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.post-attachment-picker:focus-within { outline: 2px solid #5e4181; outline-offset: 2px; }
+.post-attachment-editor ul, .post-attachment-appendix ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.post-attachment-editor li, .post-attachment-appendix li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 9px 11px; background: #fffdf5; border: 1px dashed #90798f; }
+.post-attachment-editor li > svg, .post-attachment-appendix li > svg { width: 20px; color: #765584; }
+.post-attachment-editor li span, .post-attachment-appendix li span { display: grid; min-width: 0; gap: 2px; }
+.post-attachment-editor li strong, .post-attachment-appendix li strong { overflow-wrap: anywhere; }
+.post-attachment-editor li small, .post-attachment-appendix li small { color: #756a73; font-size: .68rem; }
+.post-attachment-editor li button { display: grid; width: 32px; height: 32px; place-items: center; padding: 0; border: 1px solid #9b6c75; background: #f5dfe1; color: #7a2525; }
+.post-attachment-editor li button svg { width: 15px; }
+.post-attachment-appendix { display: grid; gap: 10px; margin-top: 20px; padding: 15px; background: #f2eee2; border: 2px solid #867688; }
+.post-attachment-appendix h2 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 1rem; }
+.post-attachment-appendix h2 svg { width: 18px; }
+.post-attachment-appendix li a { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; border: 1px solid #6d5870; background: #fff; color: #503e55; font-weight: 700; text-decoration: none; }
+.post-attachment-appendix li a svg { width: 15px; }
 .delete-confirm-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 20px; background: #211a27aa; backdrop-filter: blur(2px); }
 .delete-confirm-dialog { display: grid; width: min(430px, 100%); grid-template-columns: auto 1fr; gap: 10px 13px; padding: 24px; background: #fff8e8; border: 4px ridge #d7b4d5; box-shadow: 12px 14px #17101966; color: #392f3d; }
 .delete-confirm-dialog > svg { grid-row: 1 / 3; width: 30px; height: 30px; color: #a23d3d; }
@@ -38,4 +58,6 @@
   .tavern-block-actions .danger { margin-left: 0; }
   .delete-confirm-dialog > svg { display: none; }
   .delete-confirm-dialog h2, .delete-confirm-dialog > p { grid-column: 1 / 3; }
+  .post-attachment-editor li, .post-attachment-appendix li { grid-template-columns: auto minmax(0, 1fr); }
+  .post-attachment-editor li button, .post-attachment-appendix li a { grid-column: 2; justify-self: start; }
 }

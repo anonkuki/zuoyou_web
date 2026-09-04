@@ -243,11 +243,13 @@ export class GuildSocialRepository {
     let body: unknown[] = [];
     try { body = JSON.parse(String(row.body_json ?? '[]')) as unknown[]; } catch { body = []; }
     if (!Array.isArray(body) || !body.length) body = [{ type: 'PARAGRAPH', text: String(row.content ?? '') }];
+    const attachments = this.sqlite.prepare(`SELECT id,file_name name,mime_type mimeType,size FROM post_assets WHERE post_id=? AND asset_kind='ATTACHMENT' ORDER BY created_at,id`).all(String(row.id)) as Array<{ id: string; name: string; mimeType: string; size: number }>;
     return {
       id: row.id, title: row.title, subtitle: row.subtitle ?? '', content: row.content, body, departmentId: row.department_id ?? null, departmentName: row.department_name ?? null,
       pinned: Boolean(row.placement_pinned) || Boolean(row.pinned), featured: Boolean(row.placement_featured), visibleOnGuild: Boolean(row.visible_on_guild), visibleOnDepartment: Boolean(row.visible_on_department),
       upvoteCount: Number(row.upvote_count ?? 0), downvoteCount: Number(row.downvote_count ?? 0), score: Number(row.rating_score ?? 0), myRating: Number(row.my_rating ?? 0), voteCount: Number(row.upvote_count ?? row.vote_count ?? 0), commentCount: Number(row.comment_count ?? 0),
       author: { id: row.user_id, displayName: row.author_name, avatarColor: row.author_color },
+      attachments,
       createdAt: row.created_at, updatedAt: row.updated_at,
     };
   }
@@ -440,13 +442,17 @@ export class GuildSocialRepository {
     return this.serializePost(row);
   }
 
-  syncAssets(principal: SocialPrincipal, postId: string, assetIds: string[]) {
-    const uniqueIds = [...new Set(assetIds)];
-    const attached = this.sqlite.prepare('SELECT id FROM post_assets WHERE post_id=?').all(postId) as Array<{ id: string }>;
-    for (const asset of attached) if (!uniqueIds.includes(asset.id)) this.sqlite.prepare('UPDATE post_assets SET post_id=NULL WHERE id=?').run(asset.id);
-    for (const assetId of uniqueIds) {
-      const asset = this.sqlite.prepare('SELECT owner_id,post_id FROM post_assets WHERE id=?').get(assetId) as { owner_id: string; post_id: string | null } | undefined;
-      if (!asset || (asset.post_id !== postId && asset.owner_id !== principal.id) || (asset.post_id && asset.post_id !== postId)) throw new SocialError(400, 'INVALID_POST_ASSET', '帖子图片无效或不属于当前账户');
+  syncAssets(principal: SocialPrincipal, postId: string, imageAssetIds: string[], attachmentAssetIds?: string[]) {
+    const uniqueImages = [...new Set(imageAssetIds)];
+    const uniqueAttachments = attachmentAssetIds === undefined ? undefined : [...new Set(attachmentAssetIds)];
+    const attached = this.sqlite.prepare('SELECT id,asset_kind FROM post_assets WHERE post_id=?').all(postId) as Array<{ id: string; asset_kind: 'IMAGE' | 'ATTACHMENT' }>;
+    for (const asset of attached) {
+      const requested = asset.asset_kind === 'IMAGE' ? uniqueImages.includes(asset.id) : uniqueAttachments === undefined || uniqueAttachments.includes(asset.id);
+      if (!requested) this.sqlite.prepare('UPDATE post_assets SET post_id=NULL WHERE id=?').run(asset.id);
+    }
+    for (const [assetId, expectedKind] of [...uniqueImages.map((id) => [id, 'IMAGE'] as const), ...(uniqueAttachments ?? []).map((id) => [id, 'ATTACHMENT'] as const)]) {
+      const asset = this.sqlite.prepare('SELECT owner_id,post_id,asset_kind FROM post_assets WHERE id=?').get(assetId) as { owner_id: string; post_id: string | null; asset_kind: string } | undefined;
+      if (!asset || asset.asset_kind !== expectedKind || (asset.post_id !== postId && asset.owner_id !== principal.id) || (asset.post_id && asset.post_id !== postId)) throw new SocialError(400, 'INVALID_POST_ASSET', '帖子图片或附件无效，或不属于当前账户');
       this.sqlite.prepare('UPDATE post_assets SET post_id=? WHERE id=?').run(postId, assetId);
     }
   }

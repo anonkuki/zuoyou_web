@@ -550,8 +550,8 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const body = parse(postCreateSchema, request.body);
     const post = sqlite.transaction(() => {
       const created = social.createPost(principal, body);
-      social.syncAssets(principal, String(created.id), body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? []);
-      return created;
+      social.syncAssets(principal, String(created.id), body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? [], body.attachmentIds);
+      return social.getPost(String(created.id), principal.id).post;
     })();
     return reply.status(201).send(successResponse({ post }));
   });
@@ -561,8 +561,8 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const body = parse(postCreateSchema, request.body);
     const post = sqlite.transaction(() => {
       const edited = social.editPost(principal, id, body);
-      social.syncAssets(principal, id, body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? []);
-      return edited;
+      social.syncAssets(principal, id, body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? [], body.attachmentIds);
+      return social.getPost(String(edited.id), principal.id).post;
     })();
     audit(sqlite, principal.id, 'POST_EDITED', 'post', id);
     return successResponse({ post });
@@ -952,8 +952,43 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     await pipeline(part.file, createWriteStream(path, { flags: 'wx' }));
     const info = await stat(path);
     if (part.file.truncated || info.size > 8 * 1024 * 1024) { await unlink(path); throw new HttpError(413, 'IMAGE_TOO_LARGE', '单张图片不能超过 8MB'); }
-    sqlite.prepare('INSERT INTO post_assets(id,owner_id,post_id,storage_key,mime_type,size,created_at) VALUES (?,?,NULL,?,?,?,?)').run(id, principal.id, storageKey, part.mimetype, info.size, now());
+    sqlite.prepare("INSERT INTO post_assets(id,owner_id,post_id,storage_key,file_name,asset_kind,mime_type,size,created_at) VALUES (?,?,NULL,?,?,'IMAGE',?,?,?)").run(id, principal.id, storageKey, part.filename, part.mimetype, info.size, now());
     return reply.status(201).send(successResponse({ asset: { id, url: `/api/public/post-assets/${id}`, mimeType: part.mimetype, size: info.size } }));
+  });
+
+  app.post('/api/member/post-attachments', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const part = await request.file();
+    if (!part) throw new HttpError(400, 'FILE_REQUIRED', '请选择要作为附录上传的文件');
+    const originalName = [...part.filename].filter((character) => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127).join('').trim().slice(0, 180) || '未命名附件';
+    const extension = extname(originalName).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
+    const blockedExtensions = new Set(['.exe', '.msi', '.bat', '.cmd', '.com', '.scr', '.ps1', '.vbs', '.js', '.jar', '.dll']);
+    if (blockedExtensions.has(extension)) throw new HttpError(415, 'UNSAFE_ATTACHMENT_TYPE', '不支持上传可执行文件或脚本文件');
+    const id = newId('post-attachment');
+    const storageKey = `post-attachments/${id}${extension}`;
+    const path = resolve(options.uploadRoot, storageKey);
+    await mkdir(resolve(options.uploadRoot, 'post-attachments'), { recursive: true });
+    await pipeline(part.file, createWriteStream(path, { flags: 'wx' }));
+    const info = await stat(path);
+    const maxSize = part.mimetype.startsWith('video/') ? 200 * 1024 * 1024 : part.mimetype.startsWith('image/') ? 10 * 1024 * 1024 : 30 * 1024 * 1024;
+    if (part.file.truncated || info.size > maxSize) {
+      await unlink(path);
+      const sizeLabel = part.mimetype.startsWith('video/') ? '200MB' : part.mimetype.startsWith('image/') ? '10MB' : '30MB';
+      throw new HttpError(413, 'ATTACHMENT_TOO_LARGE', `该类附件不能超过 ${sizeLabel}`);
+    }
+    sqlite.prepare("INSERT INTO post_assets(id,owner_id,post_id,storage_key,file_name,asset_kind,mime_type,size,created_at) VALUES (?,?,NULL,?,?,'ATTACHMENT',?,?,?)").run(id, principal.id, storageKey, originalName, part.mimetype || 'application/octet-stream', info.size, now());
+    return reply.status(201).send(successResponse({ attachment: { id, name: originalName, mimeType: part.mimetype || 'application/octet-stream', size: info.size } }));
+  });
+
+  app.get('/api/member/post-attachments/:id/content', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const attachment = sqlite.prepare(`SELECT a.storage_key,a.file_name,a.mime_type FROM post_assets a JOIN posts p ON p.id=a.post_id WHERE a.id=? AND a.asset_kind='ATTACHMENT' AND p.deleted_at IS NULL`).get((request.params as { id: string }).id) as { storage_key: string; file_name: string; mime_type: string } | undefined;
+    if (!attachment) throw new HttpError(404, 'NOT_FOUND', '附件不存在');
+    const uploadRoot = resolve(options.uploadRoot);
+    const filePath = resolve(uploadRoot, attachment.storage_key);
+    if (!filePath.startsWith(`${uploadRoot}${sep}`)) throw new HttpError(400, 'INVALID_STORAGE_KEY', '文件路径无效');
+    reply.type(attachment.mime_type).header('X-Content-Type-Options', 'nosniff').header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(attachment.file_name)}`);
+    return reply.send(createReadStream(filePath));
   });
 
   app.get('/api/public/posts/board', async (request) => {
@@ -963,12 +998,22 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.get('/api/public/posts/:id', async (request) => successResponse({ post: social.publicPost((request.params as { id: string }).id) }));
 
   app.get('/api/public/post-assets/:id', async (request, reply) => {
-    const asset = sqlite.prepare(`SELECT a.storage_key,a.mime_type FROM post_assets a JOIN posts p ON p.id=a.post_id WHERE a.id=? AND p.deleted_at IS NULL AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id)`).get((request.params as { id: string }).id) as { storage_key: string; mime_type: string } | undefined;
+    const asset = sqlite.prepare(`SELECT a.storage_key,a.mime_type FROM post_assets a JOIN posts p ON p.id=a.post_id WHERE a.id=? AND a.asset_kind='IMAGE' AND p.deleted_at IS NULL AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id)`).get((request.params as { id: string }).id) as { storage_key: string; mime_type: string } | undefined;
     if (!asset) throw new HttpError(404, 'NOT_FOUND', '图片不存在');
     const uploadRoot = resolve(options.uploadRoot);
     const filePath = resolve(uploadRoot, asset.storage_key);
     if (!filePath.startsWith(`${uploadRoot}${sep}`)) throw new HttpError(400, 'INVALID_STORAGE_KEY', '文件路径无效');
     reply.type(asset.mime_type).header('Cache-Control', 'public, max-age=3600');
+    return reply.send(createReadStream(filePath));
+  });
+
+  app.get('/api/public/post-attachments/:id/content', async (request, reply) => {
+    const attachment = sqlite.prepare(`SELECT a.storage_key,a.file_name,a.mime_type FROM post_assets a JOIN posts p ON p.id=a.post_id WHERE a.id=? AND a.asset_kind='ATTACHMENT' AND p.deleted_at IS NULL AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id)`).get((request.params as { id: string }).id) as { storage_key: string; file_name: string; mime_type: string } | undefined;
+    if (!attachment) throw new HttpError(404, 'NOT_FOUND', '附件不存在');
+    const uploadRoot = resolve(options.uploadRoot);
+    const filePath = resolve(uploadRoot, attachment.storage_key);
+    if (!filePath.startsWith(`${uploadRoot}${sep}`)) throw new HttpError(400, 'INVALID_STORAGE_KEY', '文件路径无效');
+    reply.type(attachment.mime_type).header('X-Content-Type-Options', 'nosniff').header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(attachment.file_name)}`);
     return reply.send(createReadStream(filePath));
   });
 

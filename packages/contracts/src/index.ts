@@ -148,6 +148,7 @@ export const postCreateSchema = z.object({
   content: z.string().trim().min(1).max(12000),
   departmentId: z.string().trim().min(1).nullable().default(null),
   body: z.array(postBodyBlockSchema).min(1).max(80).optional(),
+  attachmentIds: z.array(z.string().trim().min(1).max(100)).max(10).optional(),
 });
 export type PostCreate = z.infer<typeof postCreateSchema>;
 

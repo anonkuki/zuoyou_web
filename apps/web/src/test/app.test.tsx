@@ -423,6 +423,7 @@ describe('Adventurer Guild app', () => {
       const path = typeof input === 'string' ? input : input.toString();
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path.startsWith('/api/member/posts?')) return new Response(JSON.stringify({ ok: true, data: { items: posts, page: 1, pageSize: 50, total: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/post-attachments' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { attachment: { id: 'attachment-1', name: '道具说明.pdf', mimeType: 'application/pdf', size: 2048 } } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/posts' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { post: { ...posts[1], id: 'post-new' } } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/posts/post-photo' && init?.method === 'DELETE') return new Response(JSON.stringify({ ok: true, data: { deleted: true } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -438,10 +439,12 @@ describe('Adventurer Guild app', () => {
     await user.type(screen.getByLabelText('帖子标题'), '周末道具修补互助');
     await user.type(screen.getByLabelText('帖子内容'), '周六下午在活动室修补巡游道具。 https://www.bilibili.com/video/BV1test');
     expect(screen.getByRole('link', { name: /哔哩哔哩视频/ })).toBeInTheDocument();
+    await user.upload(screen.getByLabelText('选择帖子附件'), new File(['pdf'], '道具说明.pdf', { type: 'application/pdf' }));
+    expect(await screen.findByText('道具说明.pdf')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '发布到酒馆' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/posts', expect.objectContaining({ method: 'POST' })));
     const call = fetchMock.mock.calls.find(([path, init]) => path === '/api/member/posts' && (init as RequestInit)?.method === 'POST');
-    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ title: '周末道具修补互助', body: [{ type: 'PARAGRAPH', text: expect.stringContaining('https://www.bilibili.com/video/BV1test') }] });
+    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ title: '周末道具修补互助', body: [{ type: 'PARAGRAPH', text: expect.stringContaining('https://www.bilibili.com/video/BV1test') }], attachmentIds: ['attachment-1'] });
     await user.click(screen.getByRole('button', { name: '删除 招募摄影搭档拍正片' }));
     expect(screen.getByRole('alertdialog', { name: '确认删除该帖子吗？' })).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([path, init]) => path === '/api/member/posts/post-photo' && init?.method === 'DELETE')).toBe(false);
@@ -451,7 +454,7 @@ describe('Adventurer Guild app', () => {
 
   it('rates a post up or down and reveals only supporters', async () => {
     const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: [], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
-    const post = { id: 'post-rating', title: 'SCP式评分测试帖', subtitle: '', content: '评分正文', body: [{ type: 'PARAGRAPH', text: '评分正文' }], departmentId: 'dept-cos', departmentName: 'COS部', pinned: false, featured: false, visibleOnGuild: true, visibleOnDepartment: true, upvoteCount: 2, downvoteCount: 1, score: 1, myRating: 0, commentCount: 0, author: { id: 'author-1', displayName: '作者', avatarColor: '#765584' }, createdAt: '2026-08-20T08:00:00.000Z', updatedAt: '2026-08-20T08:00:00.000Z' };
+    const post = { id: 'post-rating', title: 'SCP式评分测试帖', subtitle: '', content: '评分正文', body: [{ type: 'PARAGRAPH', text: '评分正文' }], attachments: [{ id: 'attachment-1', name: '道具说明.pdf', mimeType: 'application/pdf', size: 2048 }], departmentId: 'dept-cos', departmentName: 'COS部', pinned: false, featured: false, visibleOnGuild: true, visibleOnDepartment: true, upvoteCount: 2, downvoteCount: 1, score: 1, myRating: 0, commentCount: 0, author: { id: 'author-1', displayName: '作者', avatarColor: '#765584' }, createdAt: '2026-08-20T08:00:00.000Z', updatedAt: '2026-08-20T08:00:00.000Z' };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === 'string' ? input : input.toString();
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -465,6 +468,10 @@ describe('Adventurer Guild app', () => {
     renderAt('/portal/tavern/post-rating');
     expect(await screen.findByRole('heading', { name: 'SCP式评分测试帖' })).toBeInTheDocument();
     expect(screen.getByLabelText('帖子综合评分 1')).toHaveTextContent('+1');
+    const appendix = screen.getByRole('heading', { name: '帖子附录' }).closest('section')!;
+    const supporters = screen.getByText('查看赞成这篇帖子的成员（2）').closest('details')!;
+    expect(appendix.compareDocumentPosition(supporters) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('link', { name: '下载' })).toHaveAttribute('href', '/api/member/post-attachments/attachment-1/content');
     expect(screen.getByText('赞成者甲')).not.toBeVisible();
     await user.click(screen.getByText('查看赞成这篇帖子的成员（2）'));
     expect(screen.getByText('赞成者甲')).toBeVisible();

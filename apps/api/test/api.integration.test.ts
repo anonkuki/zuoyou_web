@@ -845,6 +845,15 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const uploaded = await app.inject({ method: 'POST', url: '/api/member/post-assets', headers: { cookie: memberCookie, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: imageBody });
     expect(uploaded.statusCode).toBe(201);
     const assetId = uploaded.json().data.asset.id as string;
+    const attachmentBoundary = '----guild-post-attachment-boundary';
+    const attachmentBody = Buffer.from([
+      `--${attachmentBoundary}\r\nContent-Disposition: form-data; name="file"; filename="道具制作说明.pdf"\r\nContent-Type: application/pdf\r\n\r\nfake-pdf-bytes\r\n`,
+      `--${attachmentBoundary}--\r\n`,
+    ].join(''));
+    const attachmentUpload = await app.inject({ method: 'POST', url: '/api/member/post-attachments', headers: { cookie: memberCookie, 'content-type': `multipart/form-data; boundary=${attachmentBoundary}` }, payload: attachmentBody });
+    expect(attachmentUpload.statusCode).toBe(201);
+    const attachmentId = attachmentUpload.json().data.attachment.id as string;
+    expect(attachmentUpload.json().data.attachment).toMatchObject({ name: '道具制作说明.pdf', mimeType: 'application/pdf' });
 
     const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: {
       title: '幻装工坊网络日志', subtitle: '世纪初风格测试页', content: '今天完成了新道具的上色。', departmentId: 'dept-cos',
@@ -853,10 +862,17 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
         { type: 'IMAGE', assetId, alt: '上色后的道具' },
         { type: 'LINK', url: 'https://www.bilibili.com/video/BV1test', label: '查看制作记录' },
       ],
+      attachmentIds: [attachmentId],
     } });
     expect(created.statusCode).toBe(201);
     const postId = created.json().data.post.id as string;
     expect(created.json().data.post).toMatchObject({ subtitle: '世纪初风格测试页', departmentId: 'dept-cos', departmentName: 'COS部' });
+    expect(created.json().data.post.attachments).toEqual([expect.objectContaining({ id: attachmentId, name: '道具制作说明.pdf', mimeType: 'application/pdf' })]);
+    const memberAttachment = await app.inject({ method: 'GET', url: `/api/member/post-attachments/${attachmentId}/content`, headers: { cookie: memberCookie } });
+    expect(memberAttachment.statusCode).toBe(200);
+    expect(memberAttachment.body).toBe('fake-pdf-bytes');
+    expect(memberAttachment.headers['content-disposition']).toContain("filename*=UTF-8''");
+    expect((await app.inject({ method: 'GET', url: `/api/public/post-attachments/${attachmentId}/content` })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: `/api/public/post-assets/${assetId}` })).statusCode).toBe(404);
 
     expect((await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}`, headers: { cookie: memberCookie }, payload: { title: '成员不可编辑', content: '普通成员不可编辑。', departmentId: 'dept-cos' } })).statusCode).toBe(403);
@@ -869,6 +885,9 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const publicImage = await app.inject({ method: 'GET', url: `/api/public/post-assets/${assetId}` });
     expect(publicImage.statusCode).toBe(200);
     expect(publicImage.body).toBe('fake-png-bytes');
+    const publicAttachment = await app.inject({ method: 'GET', url: `/api/public/post-attachments/${attachmentId}/content` });
+    expect(publicAttachment.statusCode).toBe(200);
+    expect(publicAttachment.body).toBe('fake-pdf-bytes');
     expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(200);
 
     const upvote = await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/rating`, headers: { cookie: memberCookie }, payload: { value: 1 } });

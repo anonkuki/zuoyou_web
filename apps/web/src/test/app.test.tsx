@@ -73,6 +73,23 @@ describe('Adventurer Guild app', () => {
     }));
   });
 
+  it('offers one-click credentials for all five demo permission levels', async () => {
+    const user = userEvent.setup();
+    renderAt('/login');
+    const expected = [
+      ['社长', 'admin', 'DemoAdmin!2026'],
+      ['副社长', 'vice.president', 'DemoVice!2026'],
+      ['部长', 'cos.lead', 'DemoLead!2026'],
+      ['副部长', 'cos.deputy', 'DemoDeputy!2026'],
+      ['成员', 'cos.member', 'DemoMember!2026'],
+    ] as const;
+    for (const [role, username, password] of expected) {
+      await user.click(screen.getByRole('button', { name: new RegExp(`^${role}$`) }));
+      expect(screen.getByLabelText('用户名')).toHaveValue(username);
+      expect(screen.getByLabelText('密码')).toHaveValue(password);
+    }
+  });
+
   it('renders the high-fidelity guild hall with live summary', async () => {
     renderAt('/');
     expect(await screen.findByRole('heading', { name: '创作型社团' })).toBeInTheDocument();

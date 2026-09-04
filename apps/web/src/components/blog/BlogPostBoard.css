@@ -1,0 +1,42 @@
+.retro-blog-column article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+  padding: 7px 9px;
+  box-shadow: 1px 1px #dabed7;
+}
+
+.retro-blog-column article > a {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #493052;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retro-blog-column article strong {
+  font-size: .78rem;
+}
+
+.retro-blog-author {
+  overflow: hidden;
+  max-width: 9rem;
+  color: #856f82;
+  font-size: .62rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retro-blog-column > h3 small {
+  min-width: 3.5rem;
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .retro-blog-column article { grid-template-columns: 1fr; gap: 2px; }
+  .retro-blog-author { max-width: 100%; }
+}

@@ -109,6 +109,16 @@ describe('production seed safety', () => {
     });
   });
 
+  it('assigns every account a unique five-digit UID enforced by the database', async () => {
+    await withDevelopmentSeed(async (sqlite) => {
+      const counts = sqlite.prepare("SELECT COUNT(*) total,COUNT(DISTINCT uid) unique_uids,SUM(CASE WHEN length(uid)=5 AND uid NOT GLOB '*[^0-9]*' THEN 1 ELSE 0 END) valid_uids FROM users").get() as { total: number; unique_uids: number; valid_uids: number };
+      expect(counts).toEqual({ total: 84, unique_uids: 84, valid_uids: 84 });
+      const adminUid = (sqlite.prepare("SELECT uid FROM users WHERE id='user-admin'").get() as { uid: string }).uid;
+      expect(() => sqlite.prepare("UPDATE users SET uid=? WHERE id='user-member'").run(adminUid)).toThrow();
+      expect(() => sqlite.prepare("UPDATE users SET uid='ABC12' WHERE id='user-member'").run()).toThrow();
+    });
+  });
+
   it('migrates and backfills multi-department membership records', async () => {
     await withDevelopmentSeed(async (sqlite) => {
       const applicationDepartments = sqlite.prepare("SELECT department_id FROM application_departments WHERE application_id='application-history'").all() as Array<{ department_id: string }>;
@@ -165,7 +175,7 @@ describe.sequential('Adventurer Guild API', () => {
     expect(health.json()).toMatchObject({ ok: true, data: { status: 'ok' } });
 
     const summary = await app.inject({ method: 'GET', url: '/api/public/summary' });
-    expect(summary.json().data).toMatchObject({ memberCount: 82, departmentCount: 6 });
+    expect(summary.json().data).toMatchObject({ memberCount: 84, departmentCount: 6 });
     const departments = await app.inject({ method: 'GET', url: '/api/public/departments' });
     expect(departments.json().data.items).toHaveLength(6);
     expect(departments.json().data.items.map((item: { name: string; title: string }) => [item.name, item.title])).toEqual([
@@ -186,7 +196,7 @@ describe.sequential('Adventurer Guild API', () => {
     expect(home.json().data.stats).toEqual({
       guildLevel: 12,
       levelProgress: { current: 2390, target: 3000 },
-      memberCount: 82,
+      memberCount: 84,
       completedActivityCount: 328,
       honorCount: 56,
       foundedYear: 2018,
@@ -259,7 +269,7 @@ describe.sequential('Adventurer Guild API', () => {
   it('returns database-derived dashboard and chart series', async () => {
     const dashboard = await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: adminCookie } });
     expect(dashboard.json().data).toMatchObject({
-      members: 82,
+      members: 84,
       pendingApplications: expect.any(Number),
       activeActivities: expect.any(Number),
       publishedWorks: expect.any(Number),
@@ -275,7 +285,19 @@ describe.sequential('Adventurer Guild API', () => {
     expect(anonymousSession.statusCode).toBe(200);
     expect(anonymousSession.json().data).toEqual({ user: null });
     const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } });
-    expect(me.json().data.user).toMatchObject({ username: 'cos.member', role: 'MEMBER' });
+    expect(me.json().data.user).toMatchObject({ username: 'cos.member', role: 'MEMBER', uid: expect.stringMatching(/^\d{5}$/) });
+    const expectedRoles = [
+      ['admin', 'DemoAdmin!2026', 'PRESIDENT'],
+      ['vice.president', 'DemoVice!2026', 'VICE_PRESIDENT'],
+      ['cos.lead', 'DemoLead!2026', 'DEPARTMENT_HEAD'],
+      ['cos.deputy', 'DemoDeputy!2026', 'DEPARTMENT_ADMIN'],
+      ['cos.member', 'DemoMember!2026', 'MEMBER'],
+    ] as const;
+    for (const [username, password, role] of expectedRoles) {
+      const cookie = await login(app, username, password);
+      const session = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
+      expect(session.json().data.user).toMatchObject({ username, role, uid: expect.stringMatching(/^\d{5}$/) });
+    }
     expect((await app.inject({ method: 'GET', url: '/api/member/profile' })).statusCode).toBe(401);
     expect((await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: memberCookie } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'POST', url: '/api/admin/members/user-admin/deactivate', headers: { cookie: adminCookie } })).statusCode).toBe(409);
@@ -418,13 +440,13 @@ describe.sequential('Adventurer Guild API', () => {
     }
     const hierarchy = await app.inject({ method: 'GET', url: '/api/admin/role-hierarchy', headers: { cookie: leadCookie } });
     expect(hierarchy.statusCode).toBe(200);
-    expect(hierarchy.json().data.items.filter((item: { role: string }) => item.role === 'DEPARTMENT_ADMIN')).toHaveLength(2);
+    expect(hierarchy.json().data.items.filter((item: { role: string }) => item.role === 'DEPARTMENT_ADMIN')).toHaveLength(3);
     expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-008/assign', headers: { cookie: leadCookie }, payload: { role: 'DEPARTMENT_ADMIN', departmentId: 'dept-tech' } })).statusCode).toBe(403);
     for (const id of ['user-fiction-007', 'user-fiction-013']) {
       expect((await app.inject({ method: 'POST', url: `/api/admin/roles/${id}/revoke`, headers: { cookie: leadCookie } })).statusCode).toBe(200);
     }
 
-    const vicePresidents = ['user-member', 'user-fiction-007', 'user-fiction-013', 'user-fiction-008'];
+    const vicePresidents = ['user-member', 'user-fiction-007', 'user-fiction-013'];
     for (const id of vicePresidents) {
       expect((await app.inject({ method: 'POST', url: `/api/admin/roles/${id}/assign`, headers: { cookie: adminCookie }, payload: { role: 'VICE_PRESIDENT' } })).statusCode).toBe(201);
     }
@@ -602,6 +624,12 @@ describe.sequential('Adventurer Guild API', () => {
     const directory = await app.inject({ method: 'GET', url: '/api/member/directory?q=白羽', headers: { cookie: leadCookie } });
     expect(directory.statusCode).toBe(200);
     expect(directory.json().data.items).toEqual([expect.objectContaining({ id: 'user-member', guildTitle: '幻装见习生', departmentName: 'COS部' })]);
+    const memberUid = directory.json().data.items[0].uid as string;
+    expect(memberUid).toMatch(/^\d{5}$/);
+    const directoryByUid = await app.inject({ method: 'GET', url: `/api/member/directory?q=${memberUid}`, headers: { cookie: leadCookie } });
+    expect(directoryByUid.json().data.items).toEqual([expect.objectContaining({ id: 'user-member', uid: memberUid })]);
+    const adminByUid = await app.inject({ method: 'GET', url: `/api/admin/members?q=${memberUid}`, headers: { cookie: adminCookie } });
+    expect(adminByUid.json().data.items).toEqual([expect.objectContaining({ id: 'user-member', uid: memberUid })]);
     const homepage = await app.inject({ method: 'GET', url: '/api/member/profiles/user-member', headers: { cookie: leadCookie } });
     expect(homepage.statusCode).toBe(200);
     expect(homepage.json().data.profile).toMatchObject({ displayName: '白羽见习者', skills: ['角色塑造', '道具整理'] });
@@ -834,6 +862,36 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const guildPostId = guildPost.json().data.post.id as string;
     expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${guildPostId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${guildPostId}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(200);
+  });
+
+  it('limits every public board section to five posts and rejects a sixth manual pin or feature', async () => {
+    const postIds: string[] = [];
+    for (let index = 1; index <= 6; index += 1) {
+      const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: adminCookie }, payload: {
+        title: `技术部边界日志 ${index}`, content: `用于验证五帖展示上限的正文 ${index}。`, departmentId: 'dept-tech',
+      } });
+      expect(created.statusCode).toBe(201);
+      postIds.push(created.json().data.post.id as string);
+    }
+
+    for (const postId of postIds.slice(0, 5)) {
+      const placement = await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'DEPARTMENT', departmentId: 'dept-tech', visible: true, pinned: true, featured: true } });
+      expect(placement.statusCode).toBe(200);
+    }
+
+    const sixthPinned = await app.inject({ method: 'PUT', url: `/api/member/posts/${postIds[5]}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'DEPARTMENT', departmentId: 'dept-tech', visible: true, pinned: true } });
+    expect(sixthPinned.statusCode).toBe(409);
+    expect(sixthPinned.json().error).toEqual({ code: 'PINNED_POST_LIMIT', message: '置顶贴数量已到上限' });
+
+    const sixthFeatured = await app.inject({ method: 'PUT', url: `/api/member/posts/${postIds[5]}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'DEPARTMENT', departmentId: 'dept-tech', visible: true, featured: true } });
+    expect(sixthFeatured.statusCode).toBe(409);
+    expect(sixthFeatured.json().error).toEqual({ code: 'FEATURED_POST_LIMIT', message: '精选贴数量已到上限' });
+
+    const board = await app.inject({ method: 'GET', url: '/api/public/posts/board?departmentSlug=tech' });
+    expect(board.statusCode).toBe(200);
+    expect(board.json().data.pinned).toHaveLength(5);
+    expect(board.json().data.featured).toHaveLength(5);
+    expect(board.json().data.latest).toHaveLength(5);
   });
 
   it('forbids a department head from editing another departments post', async () => {

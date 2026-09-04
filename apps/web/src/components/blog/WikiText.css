@@ -1,0 +1,24 @@
+.tavern-post-content h2,
+.tavern-post-content h3,
+.tavern-post-content h4,
+.tavern-post-content h5,
+.tavern-post-content h6 {
+  margin: 1.35em 0 .55em;
+  color: #493052;
+  font-family: Georgia, "STSong", serif;
+}
+
+.tavern-post-content h2 { font-size: 1.55rem; }
+.tavern-post-content h3 { font-size: 1.3rem; }
+.tavern-post-content h4,
+.tavern-post-content h5,
+.tavern-post-content h6 { font-size: 1.05rem; }
+.tavern-post-content p { white-space: normal; line-height: 1.75; }
+.tavern-post-content p a,
+.tavern-post-content li a,
+.tavern-post-content blockquote a { overflow-wrap: anywhere; color: #5c3b83; text-decoration: underline; }
+.tavern-post-content blockquote { margin: 1em 0; padding: 10px 16px; border-left: 5px solid #765584; background: #f0e8f0; color: #514553; }
+.tavern-post-content ul,
+.tavern-post-content ol { margin: .8em 0; padding-left: 2em; line-height: 1.7; }
+.tavern-post-content hr { margin: 1.5em 0; border: 0; border-top: 2px dashed #987a94; }
+.tavern-post-content code { padding: 2px 5px; background: #ece8dc; border: 1px solid #cabda8; font-family: Consolas, monospace; }

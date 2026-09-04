@@ -42,6 +42,7 @@ export interface PageData<T> {
 
 export interface User {
   id: string;
+  uid: string;
   username: string | null;
   displayName: string;
   email: string;

@@ -8,7 +8,7 @@ export const departments = sqliteTable('departments', {
 });
 
 export const users = sqliteTable('users', {
-  id: text('id').primaryKey(), username: text('username').unique(), passwordHash: text('password_hash'), displayName: text('display_name').notNull(),
+  id: text('id').primaryKey(), uid: text('uid').notNull().unique(), username: text('username').unique(), passwordHash: text('password_hash'), displayName: text('display_name').notNull(),
   email: text('email').notNull().unique(), role: text('role').notNull(), departmentId: text('department_id').references(() => departments.id),
   bio: text('bio').notNull().default(''), guildTitle: text('guild_title').notNull().default(''), college: text('college').notNull().default(''), grade: text('grade').notNull().default(''),
   skills: text('skills').notNull().default('[]'), interests: text('interests').notNull().default('[]'), attributes: text('attributes').notNull().default('[]'), avatarColor: text('avatar_color').notNull().default('#2f6f64'),

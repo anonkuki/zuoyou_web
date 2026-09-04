@@ -4,11 +4,11 @@ export const RoleSchema = z.enum(['MEMBER', 'DEPARTMENT_ADMIN', 'DEPARTMENT_HEAD
 export type Role = z.infer<typeof RoleSchema>;
 
 export const roleLabels: Record<Role, string> = {
-  MEMBER: '正式成员',
-  DEPARTMENT_ADMIN: '四级·部门管理员',
-  DEPARTMENT_HEAD: '三级·部长',
-  VICE_PRESIDENT: '二级·副社长',
-  PRESIDENT: '一级·社长',
+  MEMBER: '普通成员',
+  DEPARTMENT_ADMIN: '副部长',
+  DEPARTMENT_HEAD: '部长',
+  VICE_PRESIDENT: '副社长',
+  PRESIDENT: '社长',
 };
 
 export const isExecutiveRole = (role: Role): boolean => role === 'PRESIDENT' || role === 'VICE_PRESIDENT';

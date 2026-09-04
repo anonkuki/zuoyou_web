@@ -940,3 +940,44 @@ footer.pixel-footer > .pixel-footer-main { padding-top: 20px; padding-bottom: 16
   .guild-atmosphere-canvas { display: none !important; }
   .hero-scroll-cue i::after { animation: none; top: 8px; }
 }
+
+/* Keep the interactive party in its own foreground band on compact screens. */
+@media (min-width: 641px) and (max-width: 820px) {
+  .guild-hero { height: 760px; min-height: 760px; }
+  .guild-building-art { bottom: 244px; }
+  .guild-approach { bottom: 160px; }
+  .anime-culture-props {
+    left: 12px;
+    right: auto;
+    bottom: 123px;
+    width: 428px;
+    transform: scale(.7);
+    transform-origin: left bottom;
+  }
+  .licensed-party {
+    right: 16px;
+    bottom: 124px;
+    transform: scale(.62);
+    transform-origin: right bottom;
+  }
+}
+
+@media (max-width: 640px) {
+  .guild-hero { height: 720px; min-height: 720px; }
+  .guild-building-art { bottom: 191px; }
+  .guild-approach { bottom: 141px; }
+  .anime-culture-props {
+    left: 12px;
+    right: auto;
+    bottom: 110px;
+    width: 428px;
+    transform: scale(.55);
+    transform-origin: left bottom;
+  }
+  .licensed-party {
+    right: 10px;
+    bottom: 110px;
+    transform: scale(.55);
+    transform-origin: right bottom;
+  }
+}

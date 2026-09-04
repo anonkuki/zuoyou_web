@@ -410,6 +410,26 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ id: row.id, status: row.status, rejectionReason: row.rejection_reason, activationCode: row.activation_code_encrypted ? decryptSecret(row.activation_code_encrypted, options.sessionSecret) : undefined });
   });
 
+  const registrationRequestSchema = z.object({
+    username: z.string().trim().regex(/^[a-zA-Z0-9._-]{3,40}$/, '用户名需为 3-40 位字母、数字、点、下划线或连字符'),
+    password: z.string().min(10).max(200),
+    contact: z.string().trim().min(3).max(160),
+    note: z.string().trim().max(1000).default(''),
+  });
+  app.post('/api/public/registration-requests', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const body = parse(registrationRequestSchema, request.body);
+    if (sqlite.prepare('SELECT 1 FROM users WHERE username=? COLLATE NOCASE').get(body.username)) throw new HttpError(409, 'USERNAME_TAKEN', '该用户名已被使用');
+    if (sqlite.prepare("SELECT 1 FROM registration_requests WHERE username=? COLLATE NOCASE AND status='PENDING'").get(body.username)) throw new HttpError(409, 'REQUEST_PENDING', '该用户名已有待审核注册请求');
+    if (sqlite.prepare("SELECT 1 FROM registration_requests WHERE contact=? COLLATE NOCASE AND status='PENDING'").get(body.contact)) throw new HttpError(409, 'CONTACT_PENDING', '该联系方式已有待审核注册请求');
+    const id = newId('registration');
+    const passwordHash = await hashPassword(body.password);
+    const timestamp = now();
+    sqlite.prepare(`INSERT INTO registration_requests(id,username,password_hash,contact,note,status,created_at,updated_at)
+      VALUES (?,?,?,?,?,'PENDING',?,?)`).run(id, body.username, passwordHash, body.contact, body.note, timestamp, timestamp);
+    audit(sqlite, null, 'REGISTRATION_REQUEST_SUBMITTED', 'registration_request', id);
+    return reply.status(201).send(successResponse({ id, status: 'PENDING' }));
+  });
+
   const loginSchema = z.object({ username: z.string().trim().min(1), password: z.string().min(8).max(200) });
   app.post('/api/auth/login', { config: { rateLimit: { max: options.production ? 10 : 100, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = parse(loginSchema, request.body);
@@ -1132,6 +1152,69 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const total = (sqlite.prepare('SELECT COUNT(*) count FROM applications').get() as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
+
+  app.get('/api/admin/registration-requests', async (request, reply) => {
+    const principal = requireAdmin(request, reply); if (!principal) return;
+    const paging = getPaging(request.query);
+    const items = sqlite.prepare(`SELECT id,username,contact,note,status,created_at,reviewed_at
+      FROM registration_requests ORDER BY CASE status WHEN 'PENDING' THEN 0 ELSE 1 END,created_at DESC LIMIT ? OFFSET ?`)
+      .all(paging.pageSize, paging.offset);
+    const total = (sqlite.prepare('SELECT COUNT(*) count FROM registration_requests').get() as { count: number }).count;
+    return successResponse(pageData(items, total, paging.page, paging.pageSize));
+  });
+
+  function allocateRegistrationUid(): string | null {
+    const hasUid = (sqlite.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name='uid'").get() as { 1: number } | undefined);
+    if (!hasUid) return null;
+    const used = new Set((sqlite.prepare('SELECT uid FROM users WHERE uid IS NOT NULL').all() as Array<{ uid: string }>).map((row) => row.uid));
+    for (let candidate = 10001; candidate <= 99999; candidate += 1) {
+      const uid = String(candidate);
+      if (!used.has(uid)) return uid;
+    }
+    throw new HttpError(409, 'UID_EXHAUSTED', '五位 UID 已分配完毕');
+  }
+
+  app.post('/api/admin/registration-requests/:id/approve', async (request, reply) => {
+    const principal = requireAdmin(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const registration = sqlite.prepare('SELECT id,username,password_hash,contact,status FROM registration_requests WHERE id=?').get(id) as { id: string; username: string; password_hash: string; contact: string; status: string } | undefined;
+    if (!registration) throw new HttpError(404, 'NOT_FOUND', '注册请求不存在');
+    if (registration.status !== 'PENDING') throw new HttpError(409, 'INVALID_STATE', '注册请求已处理');
+    if (sqlite.prepare('SELECT 1 FROM users WHERE username=? COLLATE NOCASE').get(registration.username)) throw new HttpError(409, 'USERNAME_TAKEN', '该用户名已被使用');
+    const userId = newId('user');
+    const uid = allocateRegistrationUid();
+    const contactIsEmail = z.email().safeParse(registration.contact).success;
+    const emailInUse = contactIsEmail && sqlite.prepare('SELECT 1 FROM users WHERE email=? COLLATE NOCASE').get(registration.contact);
+    const accountEmail = contactIsEmail && !emailInUse ? registration.contact : `${userId}@registration.invalid`;
+    const timestamp = now();
+    sqlite.transaction(() => {
+      const claimed = sqlite.prepare("UPDATE registration_requests SET status='APPROVED',reviewed_by=?,reviewed_at=?,updated_at=? WHERE id=? AND status='PENDING'")
+        .run(principal.id, timestamp, timestamp, id);
+      if (claimed.changes !== 1) throw new HttpError(409, 'INVALID_STATE', '注册请求已处理');
+      if (uid) {
+        sqlite.prepare(`INSERT INTO users(id,uid,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at)
+          VALUES (?,?,?,?,?,?,'MEMBER',NULL,'',1,?,?)`).run(userId, uid, registration.username, registration.password_hash, registration.username, accountEmail, timestamp, timestamp);
+      } else {
+        sqlite.prepare(`INSERT INTO users(id,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at)
+          VALUES (?,?,?,?,?,'MEMBER',NULL,'',1,?,?)`).run(userId, registration.username, registration.password_hash, registration.username, accountEmail, timestamp, timestamp);
+      }
+      sqlite.prepare('UPDATE registration_requests SET user_id=? WHERE id=?').run(userId, id);
+      audit(sqlite, principal.id, 'REGISTRATION_REQUEST_APPROVED', 'registration_request', id, userId);
+    })();
+    return successResponse({ approved: true, userId });
+  });
+
+  app.post('/api/admin/registration-requests/:id/reject', async (request, reply) => {
+    const principal = requireAdmin(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const timestamp = now();
+    const result = sqlite.prepare("UPDATE registration_requests SET status='REJECTED',reviewed_by=?,reviewed_at=?,updated_at=? WHERE id=? AND status='PENDING'")
+      .run(principal.id, timestamp, timestamp, id);
+    if (result.changes !== 1) throw new HttpError(409, 'INVALID_STATE', '注册请求不存在或已处理');
+    audit(sqlite, principal.id, 'REGISTRATION_REQUEST_REJECTED', 'registration_request', id);
+    return successResponse({ rejected: true });
+  });
+
   async function approveApplication(id: string, actor: Principal): Promise<string> {
     const application = sqlite.prepare('SELECT * FROM applications WHERE id=?').get(id) as { display_name: string; email: string; department_id: string; status: string } | undefined;
     if (!application) throw new HttpError(404, 'NOT_FOUND', '申请不存在'); if (application.status !== 'PENDING') throw new HttpError(409, 'INVALID_STATE', '申请已处理');

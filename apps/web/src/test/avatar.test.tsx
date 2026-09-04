@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -222,8 +222,20 @@ describe('Navbar user entry', () => {
     const { container } = renderAt('/');
     await screen.findByRole('heading', { name: '佐佑动漫社' }, { timeout: 4000 }).catch(() => undefined);
     await waitFor(() => expect(navbar(container)).not.toBeNull());
-    const login = within(navbar(container)).getByRole('link', { name: '登录' });
+    const login = navbar(container).querySelector('.guest-access > .pixel-login-link');
+    expect(login).not.toBeNull();
     expect(login).toHaveAttribute('href', '/login');
+  });
+
+  it('shows, hides and restores the homepage guest login and registration prompt', async () => {
+    stubSession(null);
+    renderAt('/');
+    expect(await screen.findByRole('complementary', { name: '游客账号入口' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '注册' })).toHaveAttribute('href', '/login?mode=register');
+    fireEvent.pointerMove(window, { clientX: 120, clientY: 360, pointerType: 'mouse' });
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: '游客账号入口' })).toBeNull());
+    fireEvent.pointerMove(window, { clientX: window.innerWidth - 20, clientY: 40, pointerType: 'mouse' });
+    expect(await screen.findByRole('complementary', { name: '游客账号入口' })).toBeInTheDocument();
   });
 
   it('opens an account menu with avatar studio and logout for signed-in members', async () => {

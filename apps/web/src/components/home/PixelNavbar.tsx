@@ -1,6 +1,6 @@
-import { ChevronDown, LayoutDashboard, LogOut, Menu, Palette, Search, UserRound, Users, X } from 'lucide-react';
+import { ChevronDown, LayoutDashboard, LogIn, LogOut, Menu, Palette, Search, UserPlus, UserRound, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { api, json } from '../../api';
@@ -19,11 +19,13 @@ const navigation = [
 
 /** 右上角用户芯片：迷你像素小人 + 昵称，展开账号菜单 */
 function UserMenu() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const client = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
+  const [guestPromptVisible, setGuestPromptVisible] = useState(true);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const logout = useMutation({
     mutationFn: () => api('/api/auth/logout', json('POST')),
@@ -41,8 +43,29 @@ function UserMenu() {
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('pointerdown', onPointer); };
   }, [open]);
 
+  useEffect(() => {
+    if (user || loading || location.pathname !== '/') return;
+    setGuestPromptVisible(true);
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerType && event.pointerType !== 'mouse') return;
+      const nearTopRight = event.clientX >= window.innerWidth - 380 && event.clientY <= 190;
+      setGuestPromptVisible(nearTopRight);
+    };
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    return () => window.removeEventListener('pointermove', onPointerMove);
+  }, [loading, location.pathname, user]);
+
+  if (loading) return null;
   if (!user) {
-    return <Link className="pixel-login-link" to="/login"><UserRound />登录</Link>;
+    const showPrompt = location.pathname === '/' && guestPromptVisible;
+    return <div className="guest-access" ref={rootRef} onMouseEnter={()=>location.pathname==='/'&&setGuestPromptVisible(true)}>
+      <Link className="pixel-login-link" to="/login" onFocus={()=>setGuestPromptVisible(true)}><UserRound />登录</Link>
+      <AnimatePresence>{showPrompt&&<motion.aside className="guest-access-prompt" aria-label="游客账号入口" initial={reduce?false:{opacity:0,y:-8,scale:.97}} animate={{opacity:1,y:0,scale:1}} exit={reduce?undefined:{opacity:0,y:-8,scale:.97}} transition={{duration:.18}}>
+        <button className="guest-prompt-close" aria-label="隐藏账号入口" onClick={()=>setGuestPromptVisible(false)}><X/></button>
+        <small>WELCOME, VISITOR</small><strong>登录或注册账号</strong><p>已有账号可直接登录；首次来访可提交注册请求，审核通过后即可进入成员中心。</p>
+        <div><Link to="/login"><LogIn/>登录</Link><Link to="/login?mode=register"><UserPlus/>注册</Link></div>
+      </motion.aside>}</AnimatePresence>
+    </div>;
   }
   const home = user.role === 'MEMBER' ? '/portal' : '/admin';
   const close = () => setOpen(false);

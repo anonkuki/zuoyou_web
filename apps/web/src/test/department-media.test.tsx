@@ -8,7 +8,7 @@ import { departmentMediaBySlug, officialSocialLinks } from '../components/depart
 import { PixelFooter } from '../components/home/PixelFooter';
 import { showcaseBySlug } from '../components/departments/showcase-data';
 import { DepartmentPhotoGallery } from '../components/departments/DepartmentPhotoGallery';
-import { departmentPhotosBySlug } from '../components/departments/department-photos';
+import { departmentPhotosBySlug, originalPortfolioPhotos } from '../components/departments/department-photos';
 
 const expectedBvids = {
   cos: ['BV1Vr7YzLE1R', 'BV14MjozwE8G', 'BV1XkFoe6Esm', 'BV1yE4m1R7kw', 'BV11H4y1F7Q9'],
@@ -29,12 +29,21 @@ const publicityArticleLinks = [
 const bilibiliShareSuffix = '/?share_source=copy_web&vd_source=24ea5eb803d51b94ae2092cd7a170281';
 
 describe('department social media shelf', () => {
-  it('indexes real and fallback photos for all six departments', () => {
+  it('indexes supplied photos for five departments while keeping the existing publicity gallery', () => {
     expect(Object.keys(departmentPhotosBySlug).sort()).toEqual(['cos', 'dance', 'music', 'original', 'publicity', 'tech']);
-    expect(departmentPhotosBySlug.tech.length).toBeGreaterThan(6);
+    expect(departmentPhotosBySlug.tech).toHaveLength(84);
     expect(departmentPhotosBySlug.tech.every(photo => photo.src.startsWith('/assets/photos/departments/tech/'))).toBe(true);
-    expect(departmentPhotosBySlug.dance).toHaveLength(6);
+    expect(departmentPhotosBySlug.cos).toHaveLength(7);
+    expect(departmentPhotosBySlug.cos.every(photo => photo.src.startsWith('/assets/photos/departments/cos/'))).toBe(true);
+    expect(departmentPhotosBySlug.dance).toHaveLength(9);
     expect(departmentPhotosBySlug.dance.every(photo => photo.src.startsWith('/assets/photos/departments/dance/'))).toBe(true);
+    expect(departmentPhotosBySlug.music).toHaveLength(11);
+    expect(departmentPhotosBySlug.music.every(photo => photo.src.startsWith('/assets/photos/departments/music/'))).toBe(true);
+    expect(departmentPhotosBySlug.original).toHaveLength(7);
+    expect(departmentPhotosBySlug.original.every(photo => photo.src.startsWith('/assets/photos/departments/original/'))).toBe(true);
+    expect(departmentPhotosBySlug.original.every(photo => photo.src.includes('/original/original-weekly-'))).toBe(true);
+    expect(originalPortfolioPhotos).toHaveLength(4);
+    expect(originalPortfolioPhotos.every(photo => photo.src.includes('/original/original-activity-'))).toBe(true);
     expect(departmentPhotosBySlug.publicity.length).toBeGreaterThan(6);
     expect(departmentPhotosBySlug.publicity.every(photo => photo.src.startsWith('/assets/photos/departments/publicity-fantasy/'))).toBe(true);
     expect(showcaseBySlug.tech.intro).toMatch(/视频制作.*摄影.*道具制作/);
@@ -81,11 +90,11 @@ describe('department social media shelf', () => {
     expect(within(gallery).getByText('2 / 14', { exact: true })).toBeInTheDocument();
   });
 
-  it('keeps a short fallback set as an editorial grid instead of a carousel', () => {
+  it('turns the supplied COS photo set into a carousel', () => {
     render(<DepartmentPhotoGallery slug="cos" />);
     const gallery = screen.getByRole('region', { name: 'COS部照片实录' });
     expect(gallery).toBeInTheDocument();
-    expect(within(gallery).queryByRole('button', { name: '下一张照片' })).not.toBeInTheDocument();
+    expect(within(gallery).getByRole('button', { name: '下一张照片' })).toBeInTheDocument();
   });
 
   it('maps every supplied department video to its matching department', () => {

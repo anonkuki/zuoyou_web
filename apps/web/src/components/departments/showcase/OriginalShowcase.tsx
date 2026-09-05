@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { motion, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from 'framer-motion';
 import { Brush } from 'lucide-react';
+import { originalPortfolioPhotos } from '../department-photos';
 import type { ShowcaseProps } from '../DeptShowcasePage';
 import { ClosingPanel } from '../DeptShowcasePage';
 import { WordReveal } from '../WordReveal';
@@ -81,14 +82,14 @@ export function OriginalShowcase({ dept, show }: ShowcaseProps) {
       <PixelDivider />
 
       <section className="atelier-gallery" aria-label="作品集锦" id="original-gallery" ref={galleryRef}>
-        <SectionHead no="02" zh={show.sections[1].zh} en={show.sections[1].en} note="每一幅作品都被装进悬浮的画框，随滚动以不同速度轻轻漂浮。" />
+        <SectionHead no="02" zh={show.sections[1].zh} en={show.sections[1].en} note="原创作品被装进悬浮画框，记录每一份从灵感走向成稿的创作。" />
         <div className="atelier-frames">
-          {show.films.map((f, index) => (
-            <DeptReveal key={f.cover} slug="original" index={index} className={`atelier-frame frame-float-${index % 3}`}>
+          {originalPortfolioPhotos.map((photo, index) => (
+            <DeptReveal key={photo.src} slug="original" index={index} className={`atelier-frame frame-float-${index % 3}`}>
               <motion.figure style={{ y: drift(index) }}>
                 <i className="washi-tape" aria-hidden="true" />
-                <img src={f.cover} alt={`${f.title} 作品`} loading="lazy" decoding="async" />
-                <figcaption><strong>{f.title}</strong><span>{f.romaji} · {f.year}</span></figcaption>
+                <img src={photo.src} alt={photo.alt} loading="lazy" decoding="async" />
+                <figcaption><strong>{photo.caption}</strong><span>ORIGINAL CLUB WORKS · 2026</span></figcaption>
               </motion.figure>
             </DeptReveal>
           ))}

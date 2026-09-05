@@ -122,6 +122,16 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
   }, [config.hiddenImageUrls, config.items]);
 
   const linkForImage = (image: HTMLImageElement) => links.get(image.getAttribute('src') ?? '') ?? links.get(image.currentSrc);
+  const imageFromEvent = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target instanceof HTMLImageElement) return event.target;
+    const target = event.target instanceof Element ? event.target : null;
+    const figureImages = target?.closest('figure,.page-managed-image')?.querySelectorAll('img');
+    if (figureImages?.length) {
+      const images = [...figureImages] as HTMLImageElement[];
+      return images.find(image => image.alt && image.getAttribute('aria-hidden') !== 'true') ?? images.at(-1) ?? null;
+    }
+    return document.elementsFromPoint?.(event.clientX, event.clientY).find(element => element instanceof HTMLImageElement) as HTMLImageElement | undefined ?? null;
+  };
 
   useEffect(() => {
     if (!imagePreview) return;
@@ -131,7 +141,7 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
   }, [imagePreview]);
 
   const handleImageClick = (event: MouseEvent<HTMLDivElement>) => {
-    const image = event.target instanceof HTMLImageElement ? event.target : null;
+    const image = imageFromEvent(event);
     if (!image) return;
     if (image.closest('.page-image-float-zoom')) {
       event.preventDefault();
@@ -146,7 +156,7 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
       window.location.assign(link);
       return;
     }
-    if (image.closest('a,button') || !image.alt) return;
+    if (image.closest('a,button')) return;
     event.preventDefault();
     const bounds = image.getBoundingClientRect();
     const ratio = bounds.width / Math.max(bounds.height, 1);
@@ -159,11 +169,11 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
     const left = Math.max(16, Math.min(bounds.left + (bounds.width - width) / 2, window.innerWidth - width - 16));
     const top = Math.max(16, Math.min(bounds.top + (bounds.height - height) / 2, window.innerHeight - height - 16));
     const src = image.currentSrc || image.getAttribute('src') || '';
-    setImagePreview(current => current?.src === src ? null : { src, alt: image.alt, left, top, width, height });
+    setImagePreview(current => current?.src === src ? null : { src, alt: image.alt || '图片预览', left, top, width, height });
   };
 
   const showLinkPreview = (event: MouseEvent<HTMLDivElement>) => {
-    const image = event.target instanceof HTMLImageElement ? event.target : null;
+    const image = imageFromEvent(event);
     if (!image) { if (linkPreview) setLinkPreview(null); return; }
     const url = linkForImage(image);
     if (!url) { if (linkPreview) setLinkPreview(null); return; }

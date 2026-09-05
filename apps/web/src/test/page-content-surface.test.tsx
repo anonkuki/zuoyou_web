@@ -35,13 +35,13 @@ describe('editable page image presentation', () => {
     expect(within(gallery).getByRole('button', { name: '查看第 8 张照片：编辑器新增照片' })).toBeInTheDocument();
     expect(screen.queryByText('相册说明')).not.toBeInTheDocument();
 
-    fireEvent.mouseMove(within(gallery).getByRole('img', { name: departmentPhotosBySlug.cos[0].alt }));
+    fireEvent.mouseMove(within(gallery).getByText(departmentPhotosBySlug.cos[0].caption));
     expect(screen.getByText('example.com')).toBeInTheDocument();
     expect(screen.getByText('/activity/2026')).toBeInTheDocument();
 
     await userEvent.click(within(gallery).getByRole('button', { name: '查看第 8 张照片：编辑器新增照片' }));
     const added = within(gallery).getByRole('img', { name: '编辑器新增照片' });
-    fireEvent.click(added);
+    fireEvent.click(within(gallery).getByText('编辑器新增照片'));
     expect(added.closest('figure')).not.toHaveClass('is-page-image-expanded');
     const preview = screen.getByRole('dialog', { name: '图片悬浮预览' });
     expect(within(preview).getByRole('img', { name: '编辑器新增照片' })).toBeInTheDocument();

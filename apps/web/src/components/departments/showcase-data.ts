@@ -152,7 +152,7 @@ export const deptShowcases: DeptShowcase[] = [
     tagline: '副歌要一起唱，才叫做轻音部。',
     intro: '乐队排练 / 舞台演出 / 声乐交流 / 原创编曲',
     duties: ['乐队排练', '舞台演出', '声乐交流', '原创编曲'],
-    sections: [{ zh: '正在播放', en: 'NOW PLAYING' }, { zh: '歌单', en: 'TRACKLIST' }, { zh: '排练室', en: 'REHEARSAL' }],
+    sections: [{ zh: '轻音部', en: 'LIGHT MUSIC DEPARTMENT' }, { zh: '原创曲目', en: 'ORIGINAL TRACKS' }, { zh: '排练视频', en: 'REHEARSAL ARCHIVE' }],
     films: [
       film('music', 1, 'けいおん!', 'K-ON!', 2009),
       film('music', 2, 'ぼっち・ざ・ろっく！', 'Bocchi the Rock!', 2022),

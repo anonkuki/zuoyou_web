@@ -18,7 +18,7 @@ export function DanceShowcase({ dept, show }: ShowcaseProps) {
   const addedPerformances = usePageSectionItems('dance-floor').filter(item => item.imageUrl);
   return (
     <main className="dept-page dept-dance">
-      <ChapterRail items={[
+      <ChapterRail accent={show.accent} items={[
         { id: 'dance-floor', no: '01', label: show.sections[0].zh },
         { id: 'dance-setlist', no: '02', label: show.sections[1].zh },
         { id: 'dance-backstage', no: '03', label: show.sections[2].zh },

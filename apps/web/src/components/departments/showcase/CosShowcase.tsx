@@ -47,7 +47,7 @@ export function CosShowcase({ dept, show }: ShowcaseProps) {
   const addedTransformations = usePageSectionItems('cos-henshin').filter(item => item.imageUrl);
   return (
     <main className="dept-page dept-cos">
-      <ChapterRail items={[
+      <ChapterRail accent={show.accent} items={[
         { id: 'cos-mirror', no: '01', label: show.sections[0].zh },
         { id: 'cos-henshin', no: '02', label: show.sections[1].zh },
         { id: 'cos-wardrobe', no: '03', label: show.sections[2].zh },

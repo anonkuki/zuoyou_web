@@ -101,6 +101,30 @@ const pageKeySchema = z.string().regex(/^(home|department:[a-z0-9-]+)$/);
 const externalLinkSchema = z.string().trim().max(2000).refine((value) => {
   try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
 }, '外部链接必须是有效的 http 或 https 地址');
+const bilibiliLinkSchema = externalLinkSchema.refine((value) => {
+  const host = new URL(value).hostname.toLowerCase();
+  return host === 'b23.tv' || host === 'bilibili.com' || host.endsWith('.bilibili.com');
+}, '请填写有效的 B 站视频链接');
+const bilibiliViewSchema = z.object({
+  code: z.number(),
+  message: z.string().optional(),
+  data: z.object({
+    bvid: z.string(),
+    title: z.string(),
+    pic: z.string(),
+    duration: z.number().nonnegative(),
+    pubdate: z.number(),
+  }).optional(),
+});
+const bvidFromUrl = (value: string) => value.match(/(?:\/video\/|\b)(BV[0-9A-Za-z]{10})(?:[/?#]|$)/i)?.[1] ?? null;
+const formatVideoDuration = (seconds: number) => {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remaining = Math.floor(seconds % 60);
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`
+    : `${minutes}:${String(remaining).padStart(2, '0')}`;
+};
 const pageAssetSchema = z.string().trim().min(1).max(2000).refine((value) => {
   if (value.startsWith('/') && !value.startsWith('//')) return true;
   try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
@@ -115,6 +139,7 @@ const pageContentConfigSchema = z.object({
     body: z.string().trim().max(4000).default(''),
     imageUrl: pageAssetSchema.nullable().default(null),
     linkUrl: externalLinkSchema.nullable().default(null),
+    instrument: z.enum(['主唱', '吉他', '贝斯', '鼓手', '键盘']).optional(),
   }).refine((item) => Boolean(item.title || item.body || item.imageUrl), '新增内容不能全部为空')).max(100).default([]),
   imageLinks: z.array(z.object({ imageUrl: pageAssetSchema, linkUrl: externalLinkSchema })).max(250).default([]),
 });
@@ -414,6 +439,47 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       hiddenSectionCount: config.hiddenSectionIds.length, hiddenImageCount: config.hiddenImageUrls.length, itemCount: config.items.length, imageLinkCount: config.imageLinks.length,
     });
     return successResponse({ pageKey, config, updatedAt: timestamp });
+  });
+  app.get('/api/admin/bilibili-preview', async (request, reply) => {
+    const principal = requireManager(request, reply);
+    if (!principal) return;
+    const inputUrl = parse(bilibiliLinkSchema, (request.query as { url?: string }).url);
+    let resolvedUrl = inputUrl;
+    let bvid = bvidFromUrl(resolvedUrl);
+    try {
+      if (!bvid && new URL(inputUrl).hostname.toLowerCase() === 'b23.tv') {
+        const redirect = await fetch(inputUrl, {
+          redirect: 'follow',
+          signal: AbortSignal.timeout(8000),
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SayuuGuild/1.0)' },
+        });
+        resolvedUrl = redirect.url;
+        bvid = bvidFromUrl(resolvedUrl);
+      }
+      if (!bvid) throw new HttpError(400, 'INVALID_BILIBILI_URL', '链接中没有找到有效的 BV 号');
+      const response = await fetch(`https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`, {
+        signal: AbortSignal.timeout(8000),
+        headers: {
+          Accept: 'application/json',
+          Referer: 'https://www.bilibili.com/',
+          'User-Agent': 'Mozilla/5.0 (compatible; SayuuGuild/1.0)',
+        },
+      });
+      if (!response.ok) throw new HttpError(502, 'BILIBILI_UNAVAILABLE', 'B站暂时没有返回视频信息');
+      const payload = bilibiliViewSchema.parse(await response.json());
+      if (payload.code !== 0 || !payload.data) throw new HttpError(400, 'BILIBILI_VIDEO_NOT_FOUND', payload.message || '没有找到对应的 B 站视频');
+      return successResponse({
+        bvid: payload.data.bvid,
+        title: payload.data.title,
+        cover: payload.data.pic.replace(/^http:/, 'https:'),
+        href: `https://www.bilibili.com/video/${payload.data.bvid}`,
+        duration: formatVideoDuration(payload.data.duration),
+        publishedAt: new Date(payload.data.pubdate * 1000).toISOString().slice(0, 10),
+      });
+    } catch (error) {
+      if (error instanceof HttpError || error instanceof ZodError) throw error;
+      throw new HttpError(502, 'BILIBILI_UNAVAILABLE', '读取 B 站视频信息失败，请稍后重试');
+    }
   });
   app.get('/api/public/chronicles', async (request) => {
     const paging = getPaging(request.query);

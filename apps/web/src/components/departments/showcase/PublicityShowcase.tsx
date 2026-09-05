@@ -16,7 +16,7 @@ export function PublicityShowcase({ dept, show }: ShowcaseProps) {
   const addedFilms = usePageSectionItems('publicity-films').filter(item => item.imageUrl);
   return (
     <main className="dept-page dept-publicity">
-      <ChapterRail items={[
+      <ChapterRail accent={show.accent} items={[
         { id: 'publicity-show', no: '01', label: show.sections[0].zh },
         { id: 'publicity-films', no: '02', label: show.sections[1].zh },
         { id: 'publicity-press', no: '03', label: show.sections[2].zh },

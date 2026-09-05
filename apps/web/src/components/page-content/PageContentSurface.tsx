@@ -12,6 +12,7 @@ export interface PageContentItem {
   body: string;
   imageUrl: string | null;
   linkUrl: string | null;
+  instrument?: '主唱' | '吉他' | '贝斯' | '鼓手' | '键盘';
 }
 
 export interface PageContentConfig {
@@ -39,7 +40,7 @@ const integratedImageSections = new Set([
   'department-photo-gallery',
   'publicity-show', 'publicity-films',
   'tech-sheet',
-  'music-tracklist',
+  'music-members', 'music-tracklist', 'music-rehearsal',
   'original-gallery',
   'dance-floor',
   'cos-henshin',
@@ -123,8 +124,9 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
 
   const linkForImage = (image: HTMLImageElement) => links.get(image.getAttribute('src') ?? '') ?? links.get(image.currentSrc);
   const imageFromEvent = (event: MouseEvent<HTMLDivElement>) => {
-    if (event.target instanceof HTMLImageElement) return event.target;
     const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('button,input,select,textarea,[role="button"]')) return null;
+    if (target instanceof HTMLImageElement) return target;
     const figureImages = target?.closest('figure,.page-managed-image')?.querySelectorAll('img');
     if (figureImages?.length) {
       const images = [...figureImages] as HTMLImageElement[];

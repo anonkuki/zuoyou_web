@@ -48,7 +48,7 @@ export function TechShowcase({ dept, show }: ShowcaseProps) {
 
   return (
     <main className="dept-page dept-tech">
-      <ChapterRail items={[
+      <ChapterRail accent={show.accent} items={[
         { id: 'tech-focus', no: '01', label: show.sections[0].zh },
         { id: 'tech-sheet', no: '02', label: show.sections[1].zh },
         { id: 'tech-exif', no: '03', label: show.sections[2].zh },

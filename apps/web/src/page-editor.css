@@ -69,7 +69,7 @@
 .page-editor-item { position: relative; display: grid; gap: 13px; margin-bottom: 14px; padding: 16px; background: #f6ecd5; border-left: 4px solid #bd903d; }
 .page-editor-field { display: grid; gap: 6px; min-width: 0; }
 .page-editor-field > span { color: #4f493e; font-size: 13px; font-weight: 700; }
-.page-editor-field input,.page-editor-field textarea { width: 100%; box-sizing: border-box; padding: 10px 11px; color: #28231b; border: 1px solid #a99878; background: #fffdf5; font: inherit; }
+.page-editor-field input,.page-editor-field textarea,.page-editor-field select { width: 100%; box-sizing: border-box; padding: 10px 11px; color: #28231b; border: 1px solid #a99878; background: #fffdf5; font: inherit; }
 .page-editor-field textarea { resize: vertical; }
 .page-editor-item-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .page-editor-delete { justify-self: end; color: #8b2531; }
@@ -96,11 +96,20 @@
 .page-editor-links article strong,.page-editor-links article a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .page-editor-links article a { color: #16665b; }
 .page-editor-links article button { color: #8b2531; border: 0; background: transparent; cursor: pointer; }
+.page-editor-video-source { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: end; padding: 14px; border: 1px solid #b99d64; background: #f4ead0; }
+.page-editor-video-source > button { min-height: 43px; padding: 0 14px; color: #f8ebc9; border: 2px solid #173f3b; background: #173f3b; cursor: pointer; font-weight: 800; }
+.page-editor-video-source > button:disabled { opacity: .55; cursor: wait; }
+.page-editor-video-preview { grid-column: 1 / -1; display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 14px; align-items: center; padding: 9px; color: #eee2bf; background: #153735; }
+.page-editor-video-preview img { width: 150px; aspect-ratio: 16/9; object-fit: cover; }
+.page-editor-video-source > .page-editor-error { grid-column: 1 / -1; margin: 0; }
 
 @media (max-width: 760px) {
   .page-editor-heading,.page-editor-panel-title { align-items: stretch; flex-direction: column; }
   .page-editor-panel-title p { text-align: left; }
   .page-editor-item-row,.page-editor-link-form { grid-template-columns: 1fr; }
+  .page-editor-video-source { grid-template-columns: 1fr; }
+  .page-editor-video-preview { grid-template-columns: 100px minmax(0,1fr); }
+  .page-editor-video-preview img { width: 100px; }
   .page-managed-item { grid-template-columns: 1fr; }
   .page-link-preview { display: none; }
 }

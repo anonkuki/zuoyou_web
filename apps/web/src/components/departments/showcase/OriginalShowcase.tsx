@@ -58,7 +58,7 @@ export function OriginalShowcase({ dept, show }: ShowcaseProps) {
 
   return (
     <main className="dept-page dept-original">
-      <ChapterRail items={[
+      <ChapterRail accent={show.accent} items={[
         { id: 'original-atelier', no: '01', label: show.sections[0].zh },
         { id: 'original-gallery', no: '02', label: show.sections[1].zh },
         { id: 'original-toolbox', no: '03', label: show.sections[2].zh },

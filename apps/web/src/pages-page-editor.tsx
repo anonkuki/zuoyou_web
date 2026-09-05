@@ -21,6 +21,17 @@ const departmentSectionIds: Record<string, string[]> = {
   cos: ['cos-mirror', 'cos-henshin', 'cos-wardrobe'],
 };
 
+const musicVideoSectionIds = new Set(['music-tracklist', 'music-rehearsal']);
+
+interface BilibiliPreview {
+  bvid: string;
+  title: string;
+  cover: string;
+  href: string;
+  duration: string;
+  publishedAt: string;
+}
+
 export const homePageSections: PageSectionDefinition[] = [
   { id: 'home-hero', name: '首页主视觉', description: '首页顶部的公会介绍与角色入口' },
   { id: 'home-story', name: '社团故事', description: '滚动浏览的社团介绍内容' },
@@ -32,11 +43,20 @@ export const homePageSections: PageSectionDefinition[] = [
 export function departmentPageSections(slug: string): PageSectionDefinition[] {
   const show = showcaseBySlug[slug];
   const ids = departmentSectionIds[slug] ?? [];
-  const themed = show?.sections.map((section, index) => ({ id: ids[index] ?? `${slug}-section-${index + 1}`, name: section.zh, description: section.en })) ?? [];
+  const themed = slug === 'music'
+    ? [
+      { id: 'music-playing', name: '轻音部主视觉', description: 'LIGHT MUSIC DEPARTMENT' },
+      { id: 'music-members', name: '成员配置卡', description: 'MEMBERS' },
+      { id: 'music-tracklist', name: '原创曲目', description: '粘贴 B 站链接，自动获取视频封面和标题' },
+      { id: 'music-rehearsal', name: '排练视频', description: '粘贴 B 站链接，自动获取视频封面和标题' },
+    ]
+    : show?.sections.map((section, index) => ({ id: ids[index] ?? `${slug}-section-${index + 1}`, name: section.zh, description: section.en })) ?? [];
   return [
     ...themed,
     { id: 'department-photo-gallery', name: '部门照片展示', description: '部门活动与作品照片' },
-    { id: 'department-media-shelf', name: '社团实录', description: '视频与图文内容' },
+    ...(slug === 'music'
+      ? [{ id: 'music-recruitment', name: '成员招募', description: '轻音部简介、成员数量与加入入口' }]
+      : [{ id: 'department-media-shelf', name: '社团实录', description: '视频与图文内容' }]),
     { id: 'department-post-board', name: '部门讨论区', description: '置顶帖与普通帖子' },
   ];
 }
@@ -58,6 +78,8 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
   const [saved, setSaved] = useState(false);
   const [newImageUrl, setNewImageUrl] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
+  const [videoLoadingId, setVideoLoadingId] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState<Record<string, string>>({});
 
   useEffect(() => { if (query.data) setDraft(query.data.config); }, [query.data]);
 
@@ -92,10 +114,30 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
   }));
   const addItem = (sectionId: string) => setDraft(current => ({
     ...current,
-    items: [...current.items, { id: `page-item-${Date.now()}-${Math.random().toString(16).slice(2)}`, sectionId, title: '新增内容', body: '', imageUrl: null, linkUrl: null }],
+    items: [...current.items, {
+      id: `page-item-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      sectionId,
+      title: sectionId === 'music-members' ? '' : '新增内容',
+      body: '', imageUrl: null, linkUrl: null,
+      ...(sectionId === 'music-members' ? { instrument: '主唱' as const } : {}),
+    }],
   }));
   const updateItem = (id: string, update: Partial<PageContentItem>) => setDraft(current => ({ ...current, items: current.items.map(item => item.id === id ? { ...item, ...update } : item) }));
   const deleteItem = (id: string) => setDraft(current => ({ ...current, items: current.items.filter(item => item.id !== id) }));
+  const fetchBilibiliPreview = async (itemId: string, value: string) => {
+    const url = value.trim();
+    if (!url) return;
+    setVideoLoadingId(itemId);
+    setVideoError(current => ({ ...current, [itemId]: '' }));
+    try {
+      const preview = await api<BilibiliPreview>(`/api/admin/bilibili-preview?url=${encodeURIComponent(url)}`);
+      updateItem(itemId, { title: preview.title, imageUrl: preview.cover, linkUrl: preview.href });
+    } catch (error) {
+      setVideoError(current => ({ ...current, [itemId]: error instanceof Error ? error.message : '读取视频信息失败' }));
+    } finally {
+      setVideoLoadingId(current => current === itemId ? null : current);
+    }
+  };
   const addImageLink = () => {
     const imageUrl = newImageUrl.trim();
     const linkUrl = newLinkUrl.trim();
@@ -127,12 +169,22 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
           return <article className={`page-editor-section ${hidden ? 'is-hidden' : ''}`} key={section.id}>
             <header><div><h3>{section.name}</h3>{section.description && <p>{section.description}</p>}</div><button type="button" onClick={() => toggleSection(section.id)}>{hidden ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}{hidden ? '恢复板块' : '隐藏板块'}</button></header>
             <div className="page-editor-items">
-              {items.map(item => <div className="page-editor-item" key={item.id}>
-                <Field label="标题"><input value={item.title} maxLength={120} onChange={event => updateItem(item.id, { title: event.target.value })} /></Field>
-                <Field label="正文"><textarea value={item.body} maxLength={4000} rows={4} onChange={event => updateItem(item.id, { body: event.target.value })} /></Field>
-                <div className="page-editor-item-row"><Field label="图片地址（选填）"><input value={item.imageUrl ?? ''} placeholder="/assets/... 或 https://..." onChange={event => updateItem(item.id, { imageUrl: event.target.value || null })} /></Field><Field label="点击图片跳转（选填）"><input value={item.linkUrl ?? ''} placeholder="https://..." onChange={event => updateItem(item.id, { linkUrl: event.target.value || null })} /></Field></div>
+              {items.map(item => {
+                const isMusicMember = scope === 'department' && slug === 'music' && section.id === 'music-members';
+                return <div className="page-editor-item" key={item.id}>
+                <Field label={isMusicMember ? '姓名' : '标题'}><input value={item.title} maxLength={120} onChange={event => updateItem(item.id, { title: event.target.value })} /></Field>
+                {isMusicMember && <Field label="乐器"><select value={item.instrument ?? '主唱'} onChange={event => updateItem(item.id, { instrument: event.target.value as PageContentItem['instrument'] })}>
+                  {['主唱', '吉他', '贝斯', '鼓手', '键盘'].map(instrument => <option value={instrument} key={instrument}>{instrument}</option>)}
+                </select></Field>}
+                <Field label={isMusicMember ? '介绍你自己' : '正文'}><textarea value={item.body} maxLength={4000} rows={4} onChange={event => updateItem(item.id, { body: event.target.value })} /></Field>
+                {scope === 'department' && slug === 'music' && musicVideoSectionIds.has(section.id) ? <div className="page-editor-video-source">
+                  <Field label="B站视频链接"><input value={item.linkUrl ?? ''} placeholder="https://www.bilibili.com/video/BV..." onChange={event => updateItem(item.id, { linkUrl: event.target.value || null })} onBlur={event => void fetchBilibiliPreview(item.id, event.target.value)} /></Field>
+                  <button type="button" onClick={() => void fetchBilibiliPreview(item.id, item.linkUrl ?? '')} disabled={!item.linkUrl || videoLoadingId === item.id}>{videoLoadingId === item.id ? '正在读取…' : '自动获取封面与标题'}</button>
+                  {item.imageUrl && <div className="page-editor-video-preview"><img src={item.imageUrl} alt="" referrerPolicy="no-referrer" /><strong>{item.title || '已读取视频'}</strong></div>}
+                  {videoError[item.id] && <p className="page-editor-error" role="alert">{videoError[item.id]}</p>}
+                </div> : <div className="page-editor-item-row"><Field label="图片地址（选填）"><input value={item.imageUrl ?? ''} placeholder="/assets/... 或 https://..." onChange={event => updateItem(item.id, { imageUrl: event.target.value || null })} /></Field><Field label="点击图片跳转（选填）"><input value={item.linkUrl ?? ''} placeholder="https://..." onChange={event => updateItem(item.id, { linkUrl: event.target.value || null })} /></Field></div>}
                 <button className="page-editor-delete" type="button" onClick={() => deleteItem(item.id)}><Trash2 aria-hidden="true" /> 删除这条内容</button>
-              </div>)}
+              </div>;})}
               <button className="page-editor-add" type="button" onClick={() => addItem(section.id)}><Plus aria-hidden="true" /> 在“{section.name}”中新增内容</button>
             </div>
           </article>;

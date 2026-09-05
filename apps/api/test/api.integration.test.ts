@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { openDatabase, seedDatabase } from '../src/database.js';
 
@@ -786,6 +786,16 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const publicHome = await app.inject({ method: 'GET', url: '/api/public/page-content/home' });
     expect(publicHome.json().data.config).toEqual(homeConfig);
 
+    const musicConfig = {
+      hiddenSectionIds: [], hiddenImageUrls: [], imageLinks: [],
+      items: [{ id: 'music-member', sectionId: 'music-members', title: '小音', body: '负责低音声部。', imageUrl: '/assets/member.webp', linkUrl: null, instrument: '贝斯' }],
+    };
+    expect((await app.inject({
+      method: 'PUT', url: '/api/admin/page-content/department%3Amusic', headers: { cookie: adminCookie }, payload: musicConfig,
+    })).statusCode).toBe(200);
+    const publicMusic = await app.inject({ method: 'GET', url: '/api/public/page-content/department%3Amusic' });
+    expect(publicMusic.json().data.config).toEqual(musicConfig);
+
     const departmentConfig = {
       hiddenSectionIds: ['cos-henshin'],
       hiddenImageUrls: [],
@@ -804,6 +814,33 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     expect((await app.inject({
       method: 'PUT', url: '/api/admin/page-content/department%3Acos', headers: { cookie: memberCookie }, payload: departmentConfig,
     })).statusCode).toBe(403);
+  });
+
+  it('loads Bilibili title and cover data for music-page editors', async () => {
+    expect((await app.inject({
+      method: 'GET', url: '/api/admin/bilibili-preview?url=https%3A%2F%2Fwww.bilibili.com%2Fvideo%2FBV1XhVn6UED5', headers: { cookie: memberCookie },
+    })).statusCode).toBe(403);
+    expect((await app.inject({
+      method: 'GET', url: '/api/admin/bilibili-preview?url=https%3A%2F%2Fexample.com%2Fvideo%2FBV1XhVn6UED5', headers: { cookie: adminCookie },
+    })).statusCode).toBe(400);
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      code: 0,
+      data: {
+        bvid: 'BV1XhVn6UED5', title: '轻音部原创曲测试', pic: 'http://i0.hdslb.com/bfs/archive/test.jpg', duration: 241, pubdate: 1788105600,
+      },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    try {
+      const response = await app.inject({
+        method: 'GET', url: '/api/admin/bilibili-preview?url=https%3A%2F%2Fwww.bilibili.com%2Fvideo%2FBV1XhVn6UED5', headers: { cookie: adminCookie },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().data).toMatchObject({
+        bvid: 'BV1XhVn6UED5', title: '轻音部原创曲测试', cover: 'https://i0.hdslb.com/bfs/archive/test.jpg', duration: '4:01', href: 'https://www.bilibili.com/video/BV1XhVn6UED5',
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('stores and serves announcement body content', async () => {

@@ -141,7 +141,7 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
     </section>
 
     <section className="page-editor-panel">
-      <div className="page-editor-panel-title"><div><small>02 / IMAGE LINKS</small><h2>图片跳转设置</h2></div><p>指定链接后，访客悬停时会看到目标信息，点击图片可前往外部页面；普通展示图片会在悬停时放大。</p></div>
+      <div className="page-editor-panel-title"><div><small>02 / IMAGE LINKS</small><h2>图片跳转设置</h2></div><p>指定链接后，访客悬停时会看到目标信息，点击图片可前往外部页面；普通展示图片点击后会就地悬浮放大。</p></div>
       <div className="page-editor-link-form">
         <Field label="选择或填写页面中的图片">
           <input list="page-known-images" value={newImageUrl} placeholder="选择现有图片，或粘贴图片地址" onChange={event => setNewImageUrl(event.target.value)} />

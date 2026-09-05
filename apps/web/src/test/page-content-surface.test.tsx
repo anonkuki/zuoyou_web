@@ -43,6 +43,9 @@ describe('editable page image presentation', () => {
     const added = within(gallery).getByRole('img', { name: '编辑器新增照片' });
     fireEvent.click(added);
     expect(added.closest('figure')).not.toHaveClass('is-page-image-expanded');
-    expect(screen.queryByRole('dialog', { name: '图片预览' })).not.toBeInTheDocument();
+    const preview = screen.getByRole('dialog', { name: '图片悬浮预览' });
+    expect(within(preview).getByRole('img', { name: '编辑器新增照片' })).toBeInTheDocument();
+    await userEvent.click(preview);
+    expect(screen.queryByRole('dialog', { name: '图片悬浮预览' })).not.toBeInTheDocument();
   });
 });

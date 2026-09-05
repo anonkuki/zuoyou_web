@@ -82,6 +82,7 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
   const config = query.data?.config ?? emptyPageContentConfig();
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [linkPreview, setLinkPreview] = useState<{ url: string; left: number; top: number } | null>(null);
+  const [imagePreview, setImagePreview] = useState<{ src: string; alt: string; left: number; top: number; width: number; height: number } | null>(null);
   const links = useMemo(() => {
     const result = new Map<string, string>();
     const add = (imageUrl: string, linkUrl: string) => {
@@ -122,9 +123,22 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
 
   const linkForImage = (image: HTMLImageElement) => links.get(image.getAttribute('src') ?? '') ?? links.get(image.currentSrc);
 
+  useEffect(() => {
+    if (!imagePreview) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setImagePreview(null); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [imagePreview]);
+
   const handleImageClick = (event: MouseEvent<HTMLDivElement>) => {
     const image = event.target instanceof HTMLImageElement ? event.target : null;
     if (!image) return;
+    if (image.closest('.page-image-float-zoom')) {
+      event.preventDefault();
+      event.stopPropagation();
+      setImagePreview(null);
+      return;
+    }
     const link = linkForImage(image);
     if (link) {
       event.preventDefault();
@@ -132,6 +146,20 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
       window.location.assign(link);
       return;
     }
+    if (image.closest('a,button') || !image.alt) return;
+    event.preventDefault();
+    const bounds = image.getBoundingClientRect();
+    const ratio = bounds.width / Math.max(bounds.height, 1);
+    let width = Math.min(Math.max(bounds.width * 1.36, bounds.width + 120), window.innerWidth - 32, 980);
+    let height = width / ratio;
+    if (height > window.innerHeight - 32) {
+      height = window.innerHeight - 32;
+      width = height * ratio;
+    }
+    const left = Math.max(16, Math.min(bounds.left + (bounds.width - width) / 2, window.innerWidth - width - 16));
+    const top = Math.max(16, Math.min(bounds.top + (bounds.height - height) / 2, window.innerHeight - height - 16));
+    const src = image.currentSrc || image.getAttribute('src') || '';
+    setImagePreview(current => current?.src === src ? null : { src, alt: image.alt, left, top, width, height });
   };
 
   const showLinkPreview = (event: MouseEvent<HTMLDivElement>) => {
@@ -142,7 +170,8 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
     const bounds = image.getBoundingClientRect();
     const width = 294;
     const left = Math.max(12, window.innerWidth - width - 22);
-    setLinkPreview({ url, left, top: Math.max(86, Math.min(bounds.top, window.innerHeight - 178)) });
+    const top = Math.max(86, Math.min(bounds.top, window.innerHeight - 178));
+    setLinkPreview(current => current?.url === url && current.left === left && current.top === top ? current : { url, left, top });
   };
 
   const itemsBySection = sections.map(section => ({ section, items: config.items.filter(item => item.sectionId === section.id && !(integratedImageSections.has(section.id) && item.imageUrl)) }));
@@ -162,5 +191,13 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
       <p>{linkDetails.pathname === '/' ? '网站首页' : decodeURIComponent(linkDetails.pathname).slice(0, 90)}</p>
       <small>点击图片前往目标页面</small>
     </aside>}
+    {imagePreview && <button
+      type="button"
+      className="page-image-float-zoom"
+      role="dialog"
+      aria-label="图片悬浮预览"
+      style={{ left: imagePreview.left, top: imagePreview.top, width: imagePreview.width, height: imagePreview.height }}
+      onClick={() => setImagePreview(null)}
+    ><img src={imagePreview.src} alt={imagePreview.alt} /></button>}
   </div></PageContentContext.Provider>;
 }

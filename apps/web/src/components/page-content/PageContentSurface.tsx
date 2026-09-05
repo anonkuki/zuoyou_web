@@ -159,11 +159,15 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
     if (image.closest('a,button')) return;
     event.preventDefault();
     const bounds = image.getBoundingClientRect();
-    const ratio = bounds.width / Math.max(bounds.height, 1);
-    let width = Math.min(Math.max(bounds.width * 1.36, bounds.width + 120), window.innerWidth - 32, 980);
+    const ratio = image.naturalWidth && image.naturalHeight
+      ? image.naturalWidth / image.naturalHeight
+      : bounds.width / Math.max(bounds.height, 1);
+    const availableWidth = window.innerWidth - 32;
+    const availableHeight = window.innerHeight - 32;
+    let width = Math.min(Math.max(bounds.width * 1.35, Math.min(720, availableWidth)), availableWidth);
     let height = width / ratio;
-    if (height > window.innerHeight - 32) {
-      height = window.innerHeight - 32;
+    if (height > availableHeight) {
+      height = availableHeight;
       width = height * ratio;
     }
     const left = Math.max(16, Math.min(bounds.left + (bounds.width - width) / 2, window.innerWidth - width - 16));
@@ -195,19 +199,19 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
     {itemsBySection.map(({ section, items }) => <SectionAdditions key={section.id} sectionId={section.id} items={items} />)}
     {unmatched.length > 0 && <section className="page-managed-fallback shell"><AddedItems items={unmatched} /></section>}
     {canEdit && <div className="page-edit-entry shell"><Link className="guild-button" to={editTo}><Pencil aria-hidden="true" /> 编辑页面</Link></div>}
-    {linkPreview && linkDetails && <aside className="page-link-preview" style={{ left: linkPreview.left, top: linkPreview.top }} role="status">
+    {linkPreview && linkDetails && createPortal(<aside className="page-link-preview" style={{ left: linkPreview.left, top: linkPreview.top }} role="status">
       <span><ExternalLink aria-hidden="true" /> EXTERNAL LINK</span>
       <strong>{linkDetails.hostname.replace(/^www\./, '')}</strong>
       <p>{linkDetails.pathname === '/' ? '网站首页' : decodeURIComponent(linkDetails.pathname).slice(0, 90)}</p>
       <small>点击图片前往目标页面</small>
-    </aside>}
-    {imagePreview && <button
+    </aside>, document.body)}
+    {imagePreview && createPortal(<button
       type="button"
       className="page-image-float-zoom"
       role="dialog"
       aria-label="图片悬浮预览"
       style={{ left: imagePreview.left, top: imagePreview.top, width: imagePreview.width, height: imagePreview.height }}
       onClick={() => setImagePreview(null)}
-    ><img src={imagePreview.src} alt={imagePreview.alt} /></button>}
+    ><img src={imagePreview.src} alt={imagePreview.alt} /></button>, document.body)}
   </div></PageContentContext.Provider>;
 }

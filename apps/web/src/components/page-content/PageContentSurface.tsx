@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
-import { ExternalLink, Pencil, X } from 'lucide-react';
+import { ExternalLink, Pencil } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 
@@ -31,20 +31,22 @@ export interface PageContentResponse {
 
 export const emptyPageContentConfig = (): PageContentConfig => ({ hiddenSectionIds: [], hiddenImageUrls: [], items: [], imageLinks: [] });
 export const pageContentQueryKey = (pageKey: string) => ['page-content', pageKey] as const;
+const PageContentContext = createContext<PageContentConfig | null>(null);
+export const usePageContentConfig = () => useContext(PageContentContext) ?? emptyPageContentConfig();
 
-function AddedItems({ items, onPreview }: { items: PageContentItem[]; onPreview: (src: string, alt: string) => void }) {
+function AddedItems({ items, onExpand }: { items: PageContentItem[]; onExpand: (image: HTMLImageElement) => void }) {
   if (!items.length) return null;
   return <div className="page-managed-items" aria-label="页面新增内容">
     {items.map(item => <article className="page-managed-item" key={item.id}>
       {item.imageUrl && (item.linkUrl
         ? <a className="page-managed-image" href={item.linkUrl} target="_blank" rel="noreferrer"><img src={item.imageUrl} alt={item.title || '页面展示图片'} /><ExternalLink aria-hidden="true" /></a>
-        : <button className="page-managed-image" type="button" onClick={() => onPreview(item.imageUrl!, item.title || '页面展示图片')}><img src={item.imageUrl} alt={item.title || '页面展示图片'} /></button>)}
+        : <button className="page-managed-image" type="button" onClick={event => onExpand(event.currentTarget.querySelector('img')!)}><img src={item.imageUrl} alt={item.title || '页面展示图片'} /></button>)}
       <div>{item.title && <h3>{item.title}</h3>}{item.body && <p>{item.body}</p>}</div>
     </article>)}
   </div>;
 }
 
-function SectionAdditions({ sectionId, items, onPreview }: { sectionId: string; items: PageContentItem[]; onPreview: (src: string, alt: string) => void }) {
+function SectionAdditions({ sectionId, items, onExpand }: { sectionId: string; items: PageContentItem[]; onExpand: (image: HTMLImageElement) => void }) {
   const [host, setHost] = useState<HTMLElement | null>(null);
   useEffect(() => {
     const target = document.getElementById(sectionId);
@@ -55,7 +57,7 @@ function SectionAdditions({ sectionId, items, onPreview }: { sectionId: string; 
     setHost(node);
     return () => { node.remove(); };
   }, [sectionId, items.length]);
-  return host ? createPortal(<AddedItems items={items} onPreview={onPreview} />, host) : null;
+  return host ? createPortal(<AddedItems items={items} onExpand={onExpand} />, host) : null;
 }
 
 export function PageContentSurface({ pageKey, sections, editTo, canEdit, children }: {
@@ -68,8 +70,12 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
   const query = useQuery({ queryKey: pageContentQueryKey(pageKey), queryFn: () => api<PageContentResponse>(`/api/public/page-content/${encodeURIComponent(pageKey)}`) });
   const config = query.data?.config ?? emptyPageContentConfig();
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const [preview, setPreview] = useState<{ src: string; alt: string } | null>(null);
-  const links = useMemo(() => new Map(config.imageLinks.map(item => [item.imageUrl, item.linkUrl])), [config.imageLinks]);
+  const [expandedElement, setExpandedElement] = useState<HTMLElement | null>(null);
+  const [linkPreview, setLinkPreview] = useState<{ url: string; left: number; top: number } | null>(null);
+  const links = useMemo(() => new Map([
+    ...config.imageLinks.map(item => [item.imageUrl, item.linkUrl] as const),
+    ...config.items.filter(item => item.imageUrl && item.linkUrl).map(item => [item.imageUrl!, item.linkUrl!] as const),
+  ]), [config.imageLinks, config.items]);
   const sectionIds = useMemo(() => sections.map(section => section.id), [sections]);
 
   useEffect(() => {
@@ -98,9 +104,21 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
     return () => changed.forEach(({ element, display }) => { element.style.display = display; });
   }, [config.hiddenImageUrls, config.items]);
 
+  useEffect(() => () => expandedElement?.classList.remove('is-page-image-expanded'), [expandedElement]);
+
+  const toggleExpanded = (image: HTMLImageElement) => {
+    const element = (image.closest('figure,.page-managed-image') ?? image) as HTMLElement;
+    setExpandedElement(current => {
+      if (current === element) { current.classList.remove('is-page-image-expanded'); return null; }
+      current?.classList.remove('is-page-image-expanded');
+      element.classList.add('is-page-image-expanded');
+      return element;
+    });
+  };
+
   const handleImageClick = (event: MouseEvent<HTMLDivElement>) => {
     const image = event.target instanceof HTMLImageElement ? event.target : null;
-    if (!image || image.closest('.page-managed-image')) return;
+    if (!image) return;
     const source = image.getAttribute('src') ?? '';
     const link = links.get(source);
     if (link) {
@@ -111,20 +129,36 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
     }
     if (image.closest('a,button') || !image.alt) return;
     event.preventDefault();
-    setPreview({ src: image.currentSrc || source, alt: image.alt });
+    toggleExpanded(image);
   };
 
-  const itemsBySection = sections.map(section => ({ section, items: config.items.filter(item => item.sectionId === section.id) }));
+  const showLinkPreview = (event: MouseEvent<HTMLDivElement>) => {
+    const image = event.target instanceof HTMLImageElement ? event.target : null;
+    if (!image) return;
+    const url = links.get(image.getAttribute('src') ?? '');
+    if (!url) return;
+    const bounds = image.getBoundingClientRect();
+    const width = 294;
+    const left = bounds.right + 14 + width <= window.innerWidth ? bounds.right + 14 : Math.max(12, bounds.left - width - 14);
+    setLinkPreview({ url, left, top: Math.max(86, Math.min(bounds.top, window.innerHeight - 178)) });
+  };
+
+  const itemsBySection = sections.map(section => ({ section, items: config.items.filter(item => item.sectionId === section.id && !(section.id === 'department-photo-gallery' && item.imageUrl)) }));
   const unmatched = config.items.filter(item => !sectionIds.includes(item.sectionId));
 
-  return <div ref={surfaceRef} className="page-content-surface" onClickCapture={handleImageClick}>
+  let linkDetails: URL | null = null;
+  try { linkDetails = linkPreview ? new URL(linkPreview.url) : null; } catch { linkDetails = null; }
+
+  return <PageContentContext.Provider value={config}><div ref={surfaceRef} className="page-content-surface" onClickCapture={handleImageClick} onMouseOver={showLinkPreview} onMouseOut={event => { if (event.target instanceof HTMLImageElement) setLinkPreview(null); }} onMouseLeave={() => setLinkPreview(null)}>
     {children}
-    {itemsBySection.map(({ section, items }) => <SectionAdditions key={section.id} sectionId={section.id} items={items} onPreview={(src, alt) => setPreview({ src, alt })} />)}
-    {unmatched.length > 0 && <section className="page-managed-fallback shell"><AddedItems items={unmatched} onPreview={(src, alt) => setPreview({ src, alt })} /></section>}
+    {itemsBySection.map(({ section, items }) => <SectionAdditions key={section.id} sectionId={section.id} items={items} onExpand={toggleExpanded} />)}
+    {unmatched.length > 0 && <section className="page-managed-fallback shell"><AddedItems items={unmatched} onExpand={toggleExpanded} /></section>}
     {canEdit && <div className="page-edit-entry shell"><Link className="guild-button" to={editTo}><Pencil aria-hidden="true" /> 编辑页面</Link></div>}
-    {preview && <div className="page-image-lightbox" role="dialog" aria-modal="true" aria-label="图片预览" onClick={() => setPreview(null)}>
-      <button type="button" aria-label="关闭图片预览" onClick={() => setPreview(null)}><X aria-hidden="true" /></button>
-      <img src={preview.src} alt={preview.alt} onClick={event => event.stopPropagation()} />
-    </div>}
-  </div>;
+    {linkPreview && linkDetails && <aside className="page-link-preview" style={{ left: linkPreview.left, top: linkPreview.top }} role="status">
+      <span><ExternalLink aria-hidden="true" /> EXTERNAL LINK</span>
+      <strong>{linkDetails.hostname.replace(/^www\./, '')}</strong>
+      <p>{linkDetails.pathname === '/' ? '网站首页' : decodeURIComponent(linkDetails.pathname).slice(0, 90)}</p>
+      <small>点击图片前往目标页面</small>
+    </aside>}
+  </div></PageContentContext.Provider>;
 }

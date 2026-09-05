@@ -35,7 +35,7 @@ export function DepartmentMediaShelf({ slug }: { slug: string }) {
   };
 
   return (
-    <section className="department-media-shelf" aria-label="部门社团实录">
+    <section id="department-media-shelf" className="department-media-shelf" aria-label="部门社团实录">
       <header className="department-media-head">
         <span><Radio aria-hidden="true" /> GUILD CHANNEL</span>
         <h2>{media.videos?.length ? '看看我们真的做过什么' : '读一读我们留下的记录'}</h2>

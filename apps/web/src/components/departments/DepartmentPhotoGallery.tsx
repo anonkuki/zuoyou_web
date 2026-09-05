@@ -26,7 +26,7 @@ export function DepartmentPhotoGallery({ slug }: { slug: string }) {
   const active = photos[activeIndex];
 
   return (
-    <section className={`dept-photo-gallery ${isCarousel ? 'is-carousel' : 'is-grid'}`} aria-label={`${labels.name}照片实录`}>
+    <section id="department-photo-gallery" className={`dept-photo-gallery ${isCarousel ? 'is-carousel' : 'is-grid'}`} aria-label={`${labels.name}照片实录`}>
       <header className="dept-photo-heading">
         <span><Camera aria-hidden="true" /> CLUB PHOTO LOG</span>
         <h2>{labels.title}</h2>

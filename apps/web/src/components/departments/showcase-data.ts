@@ -1,4 +1,5 @@
 export interface DepartmentInfo {
+  id?: string;
   slug: string;
   name: string;
   title: string;

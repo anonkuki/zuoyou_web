@@ -772,6 +772,40 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     expect(homepage.json().data.latest.length).toBeGreaterThan(0);
   });
 
+  it('persists editable page content and enforces homepage and department scope', async () => {
+    const homeConfig = {
+      hiddenSectionIds: [],
+      hiddenImageUrls: [],
+      items: [{ id: 'welcome-card', sectionId: 'home-entry', title: '本周活动', body: '欢迎来看看。', imageUrl: null, linkUrl: null }],
+      imageLinks: [{ imageUrl: '/assets/example.webp', linkUrl: 'https://example.com/activity' }],
+    };
+    const adminSave = await app.inject({
+      method: 'PUT', url: '/api/admin/page-content/home', headers: { cookie: adminCookie }, payload: homeConfig,
+    });
+    expect(adminSave.statusCode).toBe(200);
+    const publicHome = await app.inject({ method: 'GET', url: '/api/public/page-content/home' });
+    expect(publicHome.json().data.config).toEqual(homeConfig);
+
+    const departmentConfig = {
+      hiddenSectionIds: ['cos-henshin'],
+      hiddenImageUrls: [],
+      items: [{ id: 'cos-note', sectionId: 'cos-wardrobe', title: '道具通知', body: '新增展示内容', imageUrl: '/assets/example.webp', linkUrl: null }],
+      imageLinks: [],
+    };
+    expect((await app.inject({
+      method: 'PUT', url: '/api/admin/page-content/department%3Acos', headers: { cookie: leadCookie }, payload: departmentConfig,
+    })).statusCode).toBe(200);
+    expect((await app.inject({
+      method: 'PUT', url: '/api/admin/page-content/department%3Atech', headers: { cookie: leadCookie }, payload: departmentConfig,
+    })).statusCode).toBe(403);
+    expect((await app.inject({
+      method: 'PUT', url: '/api/admin/page-content/home', headers: { cookie: leadCookie }, payload: homeConfig,
+    })).statusCode).toBe(403);
+    expect((await app.inject({
+      method: 'PUT', url: '/api/admin/page-content/department%3Acos', headers: { cookie: memberCookie }, payload: departmentConfig,
+    })).statusCode).toBe(403);
+  });
+
   it('stores and serves announcement body content', async () => {
     const payload = {
       title: '星辉祭筹备说明',

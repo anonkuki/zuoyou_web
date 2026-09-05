@@ -97,6 +97,27 @@ class HttpError extends Error {
 
 const now = () => new Date().toISOString();
 const newId = (prefix: string) => `${prefix}_${randomUUID()}`;
+const pageKeySchema = z.string().regex(/^(home|department:[a-z0-9-]+)$/);
+const externalLinkSchema = z.string().trim().max(2000).refine((value) => {
+  try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
+}, '外部链接必须是有效的 http 或 https 地址');
+const pageAssetSchema = z.string().trim().min(1).max(2000).refine((value) => {
+  if (value.startsWith('/') && !value.startsWith('//')) return true;
+  try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
+}, '图片地址必须是站内路径或有效的 http/https 地址');
+const pageContentConfigSchema = z.object({
+  hiddenSectionIds: z.array(z.string().trim().min(1).max(80)).max(30).default([]),
+  hiddenImageUrls: z.array(pageAssetSchema).max(250).default([]),
+  items: z.array(z.object({
+    id: z.string().trim().min(1).max(100),
+    sectionId: z.string().trim().min(1).max(80),
+    title: z.string().trim().max(120).default(''),
+    body: z.string().trim().max(4000).default(''),
+    imageUrl: pageAssetSchema.nullable().default(null),
+    linkUrl: externalLinkSchema.nullable().default(null),
+  }).refine((item) => Boolean(item.title || item.body || item.imageUrl), '新增内容不能全部为空')).max(100).default([]),
+  imageLinks: z.array(z.object({ imageUrl: pageAssetSchema, linkUrl: externalLinkSchema })).max(250).default([]),
+});
 const publicAnnouncement = (row: AnnouncementRow) => ({
   id: row.id,
   title: row.title,
@@ -224,6 +245,17 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
   function scopeDepartment(principal: Principal, departmentId: string): void {
     if (!canAccessDepartment(principal, departmentId)) throw new HttpError(403, 'FORBIDDEN', '不可管理其他部门资源');
+  }
+
+  function pageEditScope(principal: Principal, pageKey: string): void {
+    if (pageKey === 'home') {
+      if (!isExecutiveRole(principal.role)) throw new HttpError(403, 'FORBIDDEN', '仅社长和副社长可以编辑社团主页');
+      return;
+    }
+    const slug = pageKey.slice('department:'.length);
+    const department = sqlite.prepare('SELECT id FROM departments WHERE slug=?').get(slug) as { id: string } | undefined;
+    if (!department) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
+    scopeDepartment(principal, department.id);
   }
 
   const assignableRoleSchema = z.enum(['VICE_PRESIDENT', 'DEPARTMENT_HEAD', 'DEPARTMENT_ADMIN']);
@@ -357,6 +389,31 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const department = sqlite.prepare('SELECT * FROM departments WHERE slug=?').get(slug);
     if (!department) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
     return successResponse({ department });
+  });
+  app.get('/api/public/page-content/:pageKey', async (request) => {
+    const pageKey = parse(pageKeySchema, (request.params as { pageKey: string }).pageKey);
+    if (pageKey.startsWith('department:')) {
+      const slug = pageKey.slice('department:'.length);
+      if (!sqlite.prepare('SELECT 1 FROM departments WHERE slug=?').get(slug)) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
+    }
+    const row = sqlite.prepare('SELECT config_json,updated_at FROM page_content_configs WHERE page_key=?').get(pageKey) as { config_json: string; updated_at: string } | undefined;
+    const config = row ? pageContentConfigSchema.parse(JSON.parse(row.config_json)) : pageContentConfigSchema.parse({});
+    return successResponse({ pageKey, config, updatedAt: row?.updated_at ?? null });
+  });
+  app.put('/api/admin/page-content/:pageKey', async (request, reply) => {
+    const principal = requireManager(request, reply);
+    if (!principal) return;
+    const pageKey = parse(pageKeySchema, (request.params as { pageKey: string }).pageKey);
+    pageEditScope(principal, pageKey);
+    const config = parse(pageContentConfigSchema, request.body);
+    const timestamp = now();
+    sqlite.prepare(`INSERT INTO page_content_configs(page_key,config_json,updated_by,updated_at) VALUES (?,?,?,?)
+      ON CONFLICT(page_key) DO UPDATE SET config_json=excluded.config_json,updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
+      .run(pageKey, JSON.stringify(config), principal.id, timestamp);
+    audit(sqlite, principal.id, 'PAGE_CONTENT_UPDATED', 'page_content', pageKey, null, {
+      hiddenSectionCount: config.hiddenSectionIds.length, hiddenImageCount: config.hiddenImageUrls.length, itemCount: config.items.length, imageLinkCount: config.imageLinks.length,
+    });
+    return successResponse({ pageKey, config, updatedAt: timestamp });
   });
   app.get('/api/public/chronicles', async (request) => {
     const paging = getPaging(request.query);

@@ -7,6 +7,7 @@ import { ClosingPanel } from '../DeptShowcasePage';
 import { WordReveal } from '../WordReveal';
 import { PixelDivider, PixelSprite } from '../pixel';
 import { ChapterRail, DeptReveal, SectionHead, useHeroParallax } from '../shared';
+import { usePageSectionItems } from '../../page-content/PageContentSurface';
 
 /** 纪念碑谷式等距几何：彭罗斯三角 + 悬浮方块岛屿，随滚动缓慢 morph 重组 */
 function IsoGeometry() {
@@ -53,6 +54,7 @@ export function OriginalShowcase({ dept, show }: ShowcaseProps) {
   const driftSlow = useTransform(scrollYProgress, [0, 1], [0, -46]);
   const driftFast = useTransform(scrollYProgress, [0, 1], [0, -104]);
   const drift = (index: number) => (reduce ? undefined : index % 2 ? driftFast : driftSlow);
+  const addedWorks = usePageSectionItems('original-gallery').filter(item => item.imageUrl);
 
   return (
     <main className="dept-page dept-original">
@@ -91,6 +93,11 @@ export function OriginalShowcase({ dept, show }: ShowcaseProps) {
                 <img src={photo.src} alt={photo.alt} loading="lazy" decoding="async" />
                 <figcaption><strong>{photo.caption}</strong><span>ORIGINAL CLUB WORKS · 2026</span></figcaption>
               </motion.figure>
+            </DeptReveal>
+          ))}
+          {addedWorks.map((item, index) => (
+            <DeptReveal key={item.id} slug="original" index={originalPortfolioPhotos.length + index} className={`atelier-frame frame-float-${index % 3}`}>
+              <figure><i className="washi-tape" aria-hidden="true" /><img src={item.imageUrl!} alt={item.title || '新增作品'} loading="lazy" decoding="async" /><figcaption><strong>{item.title || '新增作品'}</strong><span>{item.body || 'ORIGINAL CLUB WORKS'}</span></figcaption></figure>
             </DeptReveal>
           ))}
         </div>

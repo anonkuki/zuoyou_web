@@ -7,6 +7,7 @@ import { WordReveal } from '../WordReveal';
 import { PixelDivider, PixelSprite } from '../pixel';
 import { ChapterRail, entranceProps, SectionHead, useHeroParallax } from '../shared';
 import { musicLyrics } from '../showcase-data';
+import { usePageSectionItems } from '../../page-content/PageContentSurface';
 
 const LINE_MS = 3200;
 
@@ -33,6 +34,7 @@ export function MusicShowcase({ dept, show }: ShowcaseProps) {
 
   const progress = active / (musicLyrics.length - 1);
   const vinylCover = show.films[active % show.films.length];
+  const addedTracks = usePageSectionItems('music-tracklist').filter(item => item.imageUrl);
 
   return (
     <main className="dept-page dept-music">
@@ -92,6 +94,9 @@ export function MusicShowcase({ dept, show }: ShowcaseProps) {
               <span className="track-year"><AudioLines aria-hidden="true" /> {f.year}</span>
             </motion.li>
           ))}
+          {addedTracks.map((item, index) => <motion.li key={item.id} {...(reduce ? {} : entranceProps('music', show.films.length + index))}>
+            <span className="track-no">N{String(index + 1).padStart(2, '0')}</span><img src={item.imageUrl!} alt={item.title || '新增轻音部记录'} loading="lazy" decoding="async" /><div><strong>{item.title || '新增记录'}</strong><em>{item.body || 'LIGHT MUSIC CLUB'}</em></div><span className="track-year"><AudioLines aria-hidden="true" /> NEW</span>
+          </motion.li>)}
         </ol>
       </section>
 

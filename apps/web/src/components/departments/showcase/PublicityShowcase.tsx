@@ -6,11 +6,14 @@ import { ClosingPanel } from '../DeptShowcasePage';
 import { WordReveal } from '../WordReveal';
 import { PixelDivider, PixelSprite } from '../pixel';
 import { ChapterRail, DeptReveal, SectionHead, useHeroParallax } from '../shared';
+import { usePageSectionItems } from '../../page-content/PageContentSurface';
 
 /** 外宣&幻想研 · 白箱影院 SHIROBAKO CINEMA：黑白漫画影院 + 逐帧跳进 + 胶片条 scroll-snap + 放映机闪烁 */
 export function PublicityShowcase({ dept, show }: ShowcaseProps) {
   const heroRef = useRef<HTMLElement>(null);
   const parallax = useHeroParallax(heroRef);
+  const addedShowing = usePageSectionItems('publicity-show').filter(item => item.imageUrl);
+  const addedFilms = usePageSectionItems('publicity-films').filter(item => item.imageUrl);
   return (
     <main className="dept-page dept-publicity">
       <ChapterRail items={[
@@ -57,6 +60,9 @@ export function PublicityShowcase({ dept, show }: ShowcaseProps) {
               </motion.figure>
             </DeptReveal>
           ))}
+          {addedShowing.map((item, index) => <DeptReveal key={item.id} slug="publicity" index={index % 4} className="cinema-frame-wrap">
+            <motion.figure className="cinema-frame" whileHover={{ y: -8 }}><img src={item.imageUrl!} alt={item.title || '新增放映记录'} loading="lazy" decoding="async" /><figcaption><span>N{String(index + 1).padStart(2, '0')}</span>{item.title || '新增内容'}</figcaption></motion.figure>
+          </DeptReveal>)}
         </div>
       </section>
 
@@ -73,6 +79,9 @@ export function PublicityShowcase({ dept, show }: ShowcaseProps) {
               </figure>
             </DeptReveal>
           ))}
+          {addedFilms.map((item, index) => <DeptReveal key={item.id} slug="publicity" index={index % 3} className={`cinema-panel panel-tilt-${index % 3}`}>
+            <figure><img src={item.imageUrl!} alt={item.title || '新增年度片单'} loading="lazy" decoding="async" /><figcaption><strong>{item.title || '新增内容'}</strong><span>{item.body || 'PUBLICITY ARCHIVE'}</span></figcaption></figure>
+          </DeptReveal>)}
         </div>
       </section>
 

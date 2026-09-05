@@ -7,6 +7,7 @@ import { WordReveal } from '../WordReveal';
 import { PixelDivider, PixelSprite } from '../pixel';
 import { ChapterRail, SectionHead, useHeroParallax } from '../shared';
 import type { FilmEntry } from '../showcase-data';
+import { usePageSectionItems } from '../../page-content/PageContentSurface';
 
 /** 快门显影照片：快门叶片合拢→白闪帧→从模糊灰度显影为清晰彩色 */
 function DevelopPhoto({ film, index }: { film: FilmEntry; index: number }) {
@@ -43,6 +44,7 @@ export function TechShowcase({ dept, show }: ShowcaseProps) {
   const focal = useTransform(smooth, [0, 1], [24, 85]);
   const focalText = useTransform(focal, value => `${Math.round(value)}mm`);
   const shutterText = useTransform(smooth, [0, 1], ['1/250', '1/60']);
+  const addedPhotos = usePageSectionItems('tech-sheet').filter(item => item.imageUrl);
 
   return (
     <main className="dept-page dept-tech">
@@ -86,6 +88,7 @@ export function TechShowcase({ dept, show }: ShowcaseProps) {
         <SectionHead no="02" zh={show.sections[1].zh} en={show.sections[1].en} note="滚动时取景器持续对焦——每一张照片都从显影液里慢慢浮出颜色。" />
         <div className="vf-sheet">
           {show.films.map((f, index) => <DevelopPhoto key={f.cover} film={f} index={index} />)}
+          {addedPhotos.map((item, index) => <figure className="vf-photo" key={item.id}><div className="vf-photo-window"><img src={item.imageUrl!} alt={item.title || '新增技术部照片'} loading="lazy" decoding="async" /></div><figcaption><span>NEW{String(index + 1).padStart(2, '0')}</span>{item.title || '新增照片'}{item.body && ` · ${item.body}`}</figcaption></figure>)}
         </div>
       </section>
 

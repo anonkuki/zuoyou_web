@@ -6,6 +6,7 @@ import { ClosingPanel } from '../DeptShowcasePage';
 import { WordReveal } from '../WordReveal';
 import { PixelDivider, PixelSprite } from '../pixel';
 import { ChapterRail, DeptReveal, entranceProps, SectionHead, useHeroParallax } from '../shared';
+import { usePageSectionItems } from '../../page-content/PageContentSurface';
 
 const marqueeText = '佐佑舞装部 · STARDUST STAGE · ON STAGE · 星轨舞台 · ';
 
@@ -14,6 +15,7 @@ export function DanceShowcase({ dept, show }: ShowcaseProps) {
   const heroRef = useRef<HTMLElement>(null);
   const parallax = useHeroParallax(heroRef);
   const reduce = useReducedMotion();
+  const addedPerformances = usePageSectionItems('dance-floor').filter(item => item.imageUrl);
   return (
     <main className="dept-page dept-dance">
       <ChapterRail items={[
@@ -57,6 +59,9 @@ export function DanceShowcase({ dept, show }: ShowcaseProps) {
                 </motion.figure>
               </DeptReveal>
             ))}
+            {addedPerformances.map((item, index) => <DeptReveal key={item.id} slug="dance" index={show.films.length + index} className="stage-card-wrap">
+              <motion.figure className="stage-card" whileHover={{ y: -14 }}><img src={item.imageUrl!} alt={item.title || '新增演出照片'} loading="lazy" decoding="async" /><figcaption><span>N{index + 1}</span>{item.title || '新增演出'}</figcaption></motion.figure>
+            </DeptReveal>)}
           </div>
         </div>
       </section>

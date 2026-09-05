@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -10,7 +10,7 @@ import { PageContentSurface } from '../components/page-content/PageContentSurfac
 afterEach(() => vi.unstubAllGlobals());
 
 describe('editable page image presentation', () => {
-  it('merges editor photos into the department carousel, expands inline, and previews external links', async () => {
+  it('merges editor photos into the department carousel and previews external links', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ ok: true, data: {
@@ -35,14 +35,14 @@ describe('editable page image presentation', () => {
     expect(within(gallery).getByRole('button', { name: '查看第 8 张照片：编辑器新增照片' })).toBeInTheDocument();
     expect(screen.queryByText('相册说明')).not.toBeInTheDocument();
 
-    fireEvent.mouseOver(within(gallery).getByRole('img', { name: departmentPhotosBySlug.cos[0].alt }));
+    fireEvent.mouseMove(within(gallery).getByRole('img', { name: departmentPhotosBySlug.cos[0].alt }));
     expect(screen.getByText('example.com')).toBeInTheDocument();
     expect(screen.getByText('/activity/2026')).toBeInTheDocument();
 
     await userEvent.click(within(gallery).getByRole('button', { name: '查看第 8 张照片：编辑器新增照片' }));
     const added = within(gallery).getByRole('img', { name: '编辑器新增照片' });
     fireEvent.click(added);
-    await waitFor(() => expect(added.closest('figure')).toHaveClass('is-page-image-expanded'));
+    expect(added.closest('figure')).not.toHaveClass('is-page-image-expanded');
     expect(screen.queryByRole('dialog', { name: '图片预览' })).not.toBeInTheDocument();
   });
 });

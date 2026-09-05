@@ -7,6 +7,7 @@ import { WordReveal } from '../WordReveal';
 import { PixelDivider, PixelSprite } from '../pixel';
 import { ChapterRail, SectionHead, useHeroParallax } from '../shared';
 import type { FilmEntry } from '../showcase-data';
+import { usePageSectionItems } from '../../page-content/PageContentSurface';
 
 /** 变身卡：素颜（灰度剪影）⇢ 上妆（全彩），clip-path 圆形擦除 + 交叉溶解长缓动 */
 function HenshinCard({ film, index }: { film: FilmEntry; index: number }) {
@@ -43,6 +44,7 @@ function HenshinCard({ film, index }: { film: FilmEntry; index: number }) {
 export function CosShowcase({ dept, show }: ShowcaseProps) {
   const heroRef = useRef<HTMLElement>(null);
   const parallax = useHeroParallax(heroRef);
+  const addedTransformations = usePageSectionItems('cos-henshin').filter(item => item.imageUrl);
   return (
     <main className="dept-page dept-cos">
       <ChapterRail items={[
@@ -80,6 +82,10 @@ export function CosShowcase({ dept, show }: ShowcaseProps) {
         <SectionHead no="02" zh={show.sections[1].zh} en={show.sections[1].en} note="进入视口或 hover，看它们从素颜剪影变成全彩的「成为」。" />
         <div className="henshin-grid">
           {show.films.map((f, index) => <HenshinCard key={f.cover} film={f} index={index} />)}
+          {addedTransformations.map(item => <motion.figure className="henshin-card" whileHover={{ y: -8 }} key={item.id}>
+            <img className="henshin-after" src={item.imageUrl!} alt={item.title || '新增变身记录'} loading="lazy" decoding="async" />
+            <figcaption><span className="henshin-label label-after">NEW</span><strong>{item.title || '新增变身记录'}</strong>{item.body && <small>{item.body}</small>}</figcaption>
+          </motion.figure>)}
         </div>
       </section>
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, Check, Copy, ExternalLink, MessageCircle, Play, Radio, X } from 'lucide-react';
+import { Check, Copy, ExternalLink, MessageCircle, Play, Radio, X } from 'lucide-react';
 import type { DepartmentVideo } from './department-media';
 import { departmentMediaBySlug, officialSocialLinks } from './department-media';
 
@@ -35,7 +35,7 @@ export function DepartmentMediaShelf({ slug }: { slug: string }) {
   };
 
   return (
-    <section className="department-media-shelf" aria-label="部门社团实录">
+    <section id="department-media-shelf" className="department-media-shelf" aria-label="部门社团实录">
       <header className="department-media-head">
         <span><Radio aria-hidden="true" /> GUILD CHANNEL</span>
         <h2>{media.videos?.length ? '看看我们真的做过什么' : '读一读我们留下的记录'}</h2>
@@ -72,9 +72,12 @@ export function DepartmentMediaShelf({ slug }: { slug: string }) {
         rel="noreferrer"
         aria-label="打开佐佑动漫社 2025 年度总结网站"
       >
-        <BookOpen aria-hidden="true" />
-        <span><small>ANNUAL ARCHIVE · 2025</small><strong>{media.annualReport.title}</strong><p>{media.annualReport.description}</p></span>
-        <b>进入年度总结 <ExternalLink aria-hidden="true" /></b>
+        <span className="annual-report-preview">
+          <span className="annual-report-browser-bar" aria-hidden="true"><i /><i /><i /><em>2025.zuoyou-archive</em></span>
+          <iframe src={media.annualReport.href} title="佐佑动漫社 2025 年度报告首页预览" loading="lazy" tabIndex={-1} aria-hidden="true" sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" />
+          <span className="annual-report-preview-shade" aria-hidden="true" /><span className="annual-report-preview-badge">网站首页实时预览</span>
+        </span>
+        <span className="annual-report-copy"><small>ANNUAL ARCHIVE · 2025</small><strong>{media.annualReport.title}</strong><p>{media.annualReport.description}</p><b>查看完整年度报告 <ExternalLink aria-hidden="true" /></b></span>
       </a>}
 
       {media.wechatArticles && <div className="publicity-feed">

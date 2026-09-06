@@ -1,10 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Camera, ChevronLeft, ChevronRight } from 'lucide-react';
 import { departmentPhotoLabels, departmentPhotosBySlug } from './department-photos';
+import { usePageContentConfig } from '../page-content/PageContentSurface';
 
 export function DepartmentPhotoGallery({ slug }: { slug: string }) {
-  const photos = departmentPhotosBySlug[slug] ?? [];
+  const config = usePageContentConfig();
+  const photos = useMemo(() => [
+    ...(departmentPhotosBySlug[slug] ?? []),
+    ...config.items.filter(item => item.sectionId === 'department-photo-gallery' && item.imageUrl).map(item => ({
+      src: item.imageUrl!,
+      alt: item.title || item.body || '部门新增照片',
+      caption: item.title || '新增照片',
+      source: '本部门投稿' as const,
+    })),
+  ].filter(photo => !config.hiddenImageUrls.includes(photo.src)), [config.hiddenImageUrls, config.items, slug]);
   const labels = departmentPhotoLabels[slug];
   const [activeIndex, setActiveIndex] = useState(0);
   const reduceMotion = useReducedMotion();
@@ -12,7 +22,7 @@ export function DepartmentPhotoGallery({ slug }: { slug: string }) {
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const thumbnailRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-  useEffect(() => setActiveIndex(0), [slug]);
+  useEffect(() => setActiveIndex(0), [slug, photos.length]);
   useEffect(() => {
     thumbnailRefs.current[activeIndex]?.scrollIntoView?.({
       behavior: reduceMotion ? 'auto' : 'smooth',
@@ -26,7 +36,7 @@ export function DepartmentPhotoGallery({ slug }: { slug: string }) {
   const active = photos[activeIndex];
 
   return (
-    <section className={`dept-photo-gallery ${isCarousel ? 'is-carousel' : 'is-grid'}`} aria-label={`${labels.name}照片实录`}>
+    <section id="department-photo-gallery" className={`dept-photo-gallery ${isCarousel ? 'is-carousel' : 'is-grid'}`} aria-label={`${labels.name}照片实录`}>
       <header className="dept-photo-heading">
         <span><Camera aria-hidden="true" /> CLUB PHOTO LOG</span>
         <h2>{labels.title}</h2>

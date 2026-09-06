@@ -4,7 +4,7 @@ const qaRoot = 'artifacts/qa';
 
 async function loginDemo(page: Page, role: '负责人' | '成员') {
   await page.goto('/login');
-  await page.getByRole('button', { name: role, exact: true }).click();
+  await page.getByRole('button', { name: role === '负责人' ? '部长' : '成员', exact: true }).click();
   await page.getByRole('button', { name: '登录公会' }).click();
   await expect(page).toHaveURL(role === '成员' ? /\/portal$/ : /\/admin\/activities$/);
 }

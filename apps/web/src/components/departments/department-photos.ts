@@ -5,20 +5,6 @@ export interface DepartmentPhoto {
   source: '本部门投稿' | '社团年度记录';
 }
 
-const tech = (file: string, alt: string, caption: string): DepartmentPhoto => ({
-  src: `/assets/photos/departments/tech/${file}`,
-  alt,
-  caption,
-  source: '本部门投稿',
-});
-
-const shared = (file: string, alt: string, caption: string): DepartmentPhoto => ({
-  src: `/assets/photos/shared/${file}`,
-  alt,
-  caption,
-  source: '社团年度记录',
-});
-
 const department = (folder: string, file: string, alt: string, caption: string): DepartmentPhoto => ({
   src: `/assets/photos/departments/${folder}/${file}`,
   alt,
@@ -26,59 +12,50 @@ const department = (folder: string, file: string, alt: string, caption: string):
   source: '本部门投稿',
 });
 
+const activitySeries = (
+  folder: string,
+  prefix: string,
+  count: number,
+  departmentName: string,
+  collectionName: string,
+): DepartmentPhoto[] => Array.from({ length: count }, (_, index) => {
+  const number = String(index + 1).padStart(2, '0');
+  return department(
+    folder,
+    `${prefix}-${number}.webp`,
+    `${departmentName}${collectionName}照片 ${index + 1}`,
+    `${collectionName} · 活动记录 ${number}`,
+  );
+});
+
 export const departmentPhotoLabels: Record<string, { name: string; title: string; intro: string }> = {
-  cos: { name: 'COS部', title: '镜头里的角色与伙伴', intro: '从准备到合影，先收录几段属于社团的共同记忆；更多本部门返图会继续补充。' },
-  tech: { name: '技术部', title: '取景器后的现场记录', intro: '摄影、直播、后台调控与器材练习，都由这些真实镜头留了下来。' },
-  music: { name: '轻音部', title: '排练之外的相聚时刻', intro: '舞台与排练素材仍在整理，先从社团活动和大家相聚的片段开始。' },
-  original: { name: '原创部', title: '一起创作的日常', intro: '创作不只发生在画纸上，也发生在围坐讨论、共同完善作品的过程里。' },
-  dance: { name: '舞装部', title: '舞台亮起的瞬间', intro: '社庆舞台、户外演出和谢幕合影，记录每一次排练走到聚光灯下。' },
+  cos: { name: 'COS部', title: '镜头里的角色与伙伴', intro: '妆造、角色演绎与活动合影，都收录在这组来自 COS 部的现场返图中。' },
+  tech: { name: '技术部', title: '取景器后的现场记录', intro: '从影像纪实、剪辑教学到道具制作，镜头记录下技术部和道具组的活动日常。' },
+  music: { name: '轻音部', title: '排练之外的相聚时刻', intro: '排练、演出与伙伴们相聚的片段，共同组成轻音部的活动记录。' },
+  original: { name: '原创部', title: '一起创作的日常', intro: '从灵感交流到作品打磨，这些照片记录了原创部共同创作的过程。' },
+  dance: { name: '舞装部', title: '舞台亮起的瞬间', intro: '排练、演出和谢幕合影，记录每一次从练习室走到聚光灯下的时刻。' },
   publicity: { name: '外宣&幻想研', title: '放映、记录与社团现场', intro: '幻想研一起看番与交流作品，外宣把活动现场整理成大家日后还能翻看的记录。' },
 };
 
+export const originalPortfolioPhotos = activitySeries(
+  'original',
+  'original-activity',
+  4,
+  '原创部',
+  '原创作品',
+);
+
 export const departmentPhotosBySlug: Record<string, DepartmentPhoto[]> = {
   tech: [
-    tech('05A52E2C6776BCF896B169F36D51D9EF.jpg', '技术部成员使用稳定器拍摄活动现场', '活动现场的机位准备'),
-    tech('0F256EDC9DEA3894BFCD66D6F699B94B.jpg', '技术部成员调整长焦相机', '调整镜头与拍摄参数'),
-    tech('1DDC86BB49848C5E66560A3EDA191682.jpg', '手持相机与镜头的器材记录', '外拍设备记录'),
-    tech('37413AB610492BA9D93C231451B8FAAE.png', '胶片画面中的春日花影', '胶片里的春日光影'),
-    tech('499102A315E640D95E901025F9080DE1.jpg', '技术部活动拍摄间隙的趣味照片', '拍摄间隙，也要留一点快乐'),
-    tech('4A048043B0CFFB4FD3FF364DA94CCF50.jpg', '技术部成员在后台电脑前整理素材', '后台剪辑与现场素材整理'),
-    tech('571D9F4E47905DF526478FDBAEEED237.jpg', '舞台演出直播调控屏幕', '社庆舞台的直播与后台调控'),
-    tech('7EFC72309AC24FC63108AAC7E74128E0.jpg', '落叶上的相机和长焦镜头', '器材与秋日取景'),
-    tech('8C820C7109106E0CE0F0464F3CED50EC.jpg', '社团舞台活动结束后的合影', '完成一次活动后的合影'),
-    tech('AFAF89DD0D2AABA19B1E214B0DAD826D.jpg', '技术部成员在活动现场操作相机', '活动现场的跟拍时刻'),
-    tech('B77E7B6746F5AB925E73A1BBBC7EAA31.jpg', '正在记录舞台画面的摄影机位', '社团活动摄影机位'),
-    tech('C709DA8EB01B82142586E6A6E60ED03A.jpg', '技术部成员排成一列进行拍摄练习', '一起练习取景和构图'),
-    tech('DB82039A9BA57BF4B734209F259F9C22.jpg', '草地上的相机和镜头', '器材实拍与取景练习'),
-    tech('E888B5D09CAA32858FE045E4ED7CD48E.jpg', '从摄影机后方看到的社庆舞台', '镜头后的社庆现场'),
-    tech('FAFD2BFA46F10447A854C4996C805206.png', '胶片画面中的花朵与户外景色', '另一卷春日底片'),
+    ...activitySeries('tech', 'tech-yearbook', 55, '技术部', '2026 年度佐佑影业纪实'),
+    ...activitySeries('tech', 'tech-props', 11, '技术部', '道具组周常与雕南瓜'),
+    ...activitySeries('tech', 'tech-editing', 9, '技术部', '剪辑教学周常'),
+    ...activitySeries('tech', 'tech-review', 9, '技术部', '年度总结影像'),
   ],
-  cos: [
-    shared('cosplay-group.jpg', '社团成员身着角色服装的集体合影', '社庆里的角色大合影'),
-    shared('indoor-club-group.jpg', '社团成员在室内活动后的合影', '活动结束后一起留下的照片'),
-    shared('outdoor-group-night.jpg', '社团成员夜间户外活动合影', '夜色里的社团相聚'),
-    shared('anniversary-stage-group.jpg', '社庆舞台上的全体成员合影', '一年一度的社庆大合影'),
-  ],
-  dance: [
-    department('dance', 'dance-01.jpg', '舞装部成员在社庆舞台进行主题合演', '社庆舞台上的主题合演'),
-    department('dance', 'dance-02.jpg', '舞装部成员在舞台中央完成整齐编排', '舞台中央，动作正好合拍'),
-    department('dance', 'dance-03.jpg', '灯光下的舞装部现场演出剪影', '光棒与节奏一起亮起'),
-    department('dance', 'dance-04.jpg', '舞装部夜间主题演出后的合影', '夜色里的主题演出合影'),
-    department('dance', 'dance-05.jpg', '舞装部成员在排练场地完整走台', '从排练厅走向正式舞台'),
-    department('dance', 'dance-06.jpg', '演出结束后的舞装部成员集体合影', '谢幕后和伙伴们留张合影'),
-  ],
-  music: [
-    shared('club-dinner-pizza.jpg', '社团成员围坐分享披萨', '排练和活动之外的聚餐时间'),
-    shared('club-small-group.jpg', '几位社团成员在室内合影', '和熟悉的伙伴一起留下记录'),
-    shared('indoor-club-group.jpg', '社团成员室内集体合影', '大家聚在一起的普通一天'),
-    shared('anniversary-stage-performance.jpg', '社庆舞台上的现场节目', '从排练室走向社庆舞台'),
-  ],
-  original: [
-    shared('creative-workshop.jpg', '社团成员围在电脑旁讨论创作内容', '围在一起打磨新的想法'),
-    shared('creative-workshop-closeup.jpg', '社团成员共同查看桌面上的创作内容', '创作过程中的交流与修改'),
-    shared('club-small-group.jpg', '社团成员在室内轻松合影', '完成作品后也要留一张合影'),
-    shared('indoor-club-group.jpg', '社团成员参加室内活动的合影', '属于创作者们的社团日常'),
-  ],
+  cos: activitySeries('cos', 'cos-activity', 7, 'COS部', '角色与活动'),
+  dance: activitySeries('dance', 'dance-activity', 9, '舞装部', '排练与演出'),
+  music: activitySeries('music', 'music-activity', 11, '轻音部', '排练与演出'),
+  original: activitySeries('original', 'original-weekly', 7, '原创部', '周常活动'),
   publicity: [
     department('publicity-fantasy', 'publicity-01.jpg', '社团成员在图书馆活动后举旗合影', '图书馆活动结束后的合影'),
     department('publicity-fantasy', 'publicity-02.jpg', '社团成员参加大型影院观影活动', '一起走进放映厅看一部作品'),

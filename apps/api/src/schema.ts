@@ -123,9 +123,15 @@ export const announcements = sqliteTable('announcements', {
   updatedAt: utcText('updated_at'),
 });
 
+export const postSubboards = sqliteTable('post_subboards', {
+  id: text('id').primaryKey(), departmentId: text('department_id').notNull().references(() => departments.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(), description: text('description').notNull().default(''), createdBy: text('created_by').notNull().references(() => users.id),
+  createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
+}, (table) => [uniqueIndex('post_subboard_department_name_unique').on(table.departmentId, table.name), index('post_subboard_department_idx').on(table.departmentId, table.createdAt)]);
+
 export const posts = sqliteTable('posts', {
   id: text('id').primaryKey(), userId: text('user_id').notNull().references(() => users.id),
-  title: text('title').notNull(), subtitle: text('subtitle'), content: text('content').notNull(), bodyJson: text('body_json').notNull().default('[]'), departmentId: text('department_id').references(() => departments.id),
+  title: text('title').notNull(), subtitle: text('subtitle'), content: text('content').notNull(), bodyJson: text('body_json').notNull().default('[]'), departmentId: text('department_id').references(() => departments.id), subboardId: text('subboard_id').references(() => postSubboards.id, { onDelete: 'set null' }),
   pinned: integer('pinned', { mode: 'boolean' }).notNull().default(false), deletedAt: text('deleted_at'),
   createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 }, (table) => [index('post_list_idx').on(table.deletedAt, table.pinned, table.createdAt)]);
@@ -140,7 +146,7 @@ export const postVotes = sqliteTable('post_votes', {
 }, (table) => [primaryKey({ columns: [table.postId, table.userId] })]);
 
 export const postAssets = sqliteTable('post_assets', {
-  id: text('id').primaryKey(), ownerId: text('owner_id').notNull().references(() => users.id), postId: text('post_id').references(() => posts.id, { onDelete: 'cascade' }), storageKey: text('storage_key').notNull().unique(), mimeType: text('mime_type').notNull(), size: integer('size').notNull(), createdAt: utcText('created_at'),
+  id: text('id').primaryKey(), ownerId: text('owner_id').notNull().references(() => users.id), postId: text('post_id').references(() => posts.id, { onDelete: 'cascade' }), storageKey: text('storage_key').notNull().unique(), fileName: text('file_name').notNull().default(''), assetKind: text('asset_kind').notNull().default('IMAGE'), mimeType: text('mime_type').notNull(), size: integer('size').notNull(), createdAt: utcText('created_at'),
 }, (table) => [index('post_asset_post_idx').on(table.postId)]);
 
 export const postComments = sqliteTable('post_comments', {

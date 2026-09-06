@@ -1,4 +1,5 @@
 export interface DepartmentInfo {
+  id?: string;
   slug: string;
   name: string;
   title: string;
@@ -119,7 +120,7 @@ export const deptShowcases: DeptShowcase[] = [
     tagline: '地板记得每一次练习，舞台记得每一次绽放。',
     intro: '宅舞、WOTA 艺、舞台编排——舞装部是公会的引擎室。音乐一响，所有人都会跟着我们动起来。',
     duties: ['宅舞编排', 'WOTA 艺', '舞台演出', '快闪企划'],
-    sections: [{ zh: '演出中', en: 'ON STAGE' }, { zh: '节目单', en: 'SETLIST' }, { zh: '后台', en: 'BACKSTAGE' }],
+    sections: [{ zh: '成员介绍', en: 'MEMBERS' }, { zh: '节目单', en: 'SETLIST' }, { zh: '演出曲目库', en: 'PERFORMANCE LIBRARY' }],
     films: [
       film('dance', 1, 'ボールルームへようこそ', 'Ballroom e Youkoso', 2017),
       film('dance', 2, 'ラブライブ! School idol project', 'Love Live! School idol project', 2013),
@@ -151,7 +152,7 @@ export const deptShowcases: DeptShowcase[] = [
     tagline: '副歌要一起唱，才叫做轻音部。',
     intro: '乐队排练 / 舞台演出 / 声乐交流 / 原创编曲',
     duties: ['乐队排练', '舞台演出', '声乐交流', '原创编曲'],
-    sections: [{ zh: '正在播放', en: 'NOW PLAYING' }, { zh: '歌单', en: 'TRACKLIST' }, { zh: '排练室', en: 'REHEARSAL' }],
+    sections: [{ zh: '轻音部', en: 'LIGHT MUSIC DEPARTMENT' }, { zh: '原创曲目', en: 'ORIGINAL TRACKS' }, { zh: '排练视频', en: 'REHEARSAL ARCHIVE' }],
     films: [
       film('music', 1, 'けいおん!', 'K-ON!', 2009),
       film('music', 2, 'ぼっち・ざ・ろっく！', 'Bocchi the Rock!', 2022),

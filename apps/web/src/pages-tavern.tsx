@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, ChevronDown, Edit3, ImagePlus, Link2, MessageCircle, Pin, Plus, Send, Sparkles, Star, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ChevronDown, Download, Edit3, FileText, ImagePlus, Link2, MessageCircle, Paperclip, Pin, Plus, Send, Sparkles, Star, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react';
 import { isExecutiveRole, isManagementRole, memberAttributePool } from '@guild/contracts';
 import { api, ApiError, json, type PageData, type User } from './api';
 import { useAuth } from './auth';
@@ -12,9 +12,11 @@ import './tavern-editor.css';
 
 interface PostAuthor { id: string; displayName: string; avatarColor: string }
 interface PostBlock { type: 'PARAGRAPH' | 'IMAGE' | 'LINK'; text?: string; assetId?: string; alt?: string; url?: string; label?: string }
-export interface TavernPost { id: string; title: string; subtitle: string; content: string; body: PostBlock[]; departmentId: string | null; departmentName: string | null; pinned: boolean; featured: boolean; visibleOnGuild: boolean; visibleOnDepartment: boolean; upvoteCount: number; downvoteCount: number; score: number; myRating: -1 | 0 | 1; commentCount: number; author: PostAuthor; createdAt: string; updatedAt: string }
+interface PostAttachment { id: string; name: string; mimeType: string; size: number }
+export interface TavernPost { id: string; title: string; subtitle: string; content: string; body: PostBlock[]; attachments?: PostAttachment[]; departmentId: string | null; departmentName: string | null; subboardId: string | null; subboardName: string | null; pinned: boolean; featured: boolean; visibleOnGuild: boolean; visibleOnDepartment: boolean; upvoteCount: number; downvoteCount: number; score: number; myRating: -1 | 0 | 1; commentCount: number; author: PostAuthor; createdAt: string; updatedAt: string }
 interface TavernComment { id: string; postId: string; content: string; author: PostAuthor; createdAt: string }
-interface DepartmentOption { id: string; name: string }
+interface DepartmentOption { id: string; name: string; slug: string }
+interface PostSubboard { id: string; name: string; description: string; departmentId: string; departmentSlug: string; postCount: number }
 interface MatchProfile { id: string; displayName: string; avatarColor: string; guildTitle: string; departmentName?: string | null; bio: string; presence?: 'ONLINE' | 'AWAY' | 'OFFLINE' }
 interface MatchItem { score: number; sharedAttributes: string[]; sharedTags: string[]; profile: MatchProfile }
 
@@ -116,6 +118,30 @@ function PostContentEditor({ blocks, onChange, onUpload, uploading, uploadError 
   </fieldset>;
 }
 
+function formatFileSize(size: number) {
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  if (size >= 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${size} B`;
+}
+
+function PostAttachmentEditor({ attachments, onChange, onUpload, uploading, uploadError }: { attachments: PostAttachment[]; onChange: (items: PostAttachment[]) => void; onUpload: (files: File[]) => void; uploading: boolean; uploadError?: Error | null }) {
+  return <fieldset className="post-attachment-editor">
+    <legend><Paperclip />附件附录（选填）</legend>
+    <p>图片、视频、PDF、压缩包和文档等文件会在帖子正文与评分模块之后，以附录形式供读者下载。每帖最多 10 个附件。</p>
+    <label className="post-attachment-picker"><Paperclip />{uploading ? '正在上传附件…' : '选择并上传文件'}<input aria-label="选择帖子附件" type="file" multiple disabled={uploading || attachments.length >= 10} onChange={(event) => { const files = [...(event.target.files ?? [])].slice(0, 10 - attachments.length); if (files.length) onUpload(files); event.currentTarget.value = ''; }} /></label>
+    {attachments.length > 0 && <ul>{attachments.map((attachment) => <li key={attachment.id}><FileText/><span><strong>{attachment.name}</strong><small>{attachment.mimeType} · {formatFileSize(attachment.size)}</small></span><button type="button" aria-label={`移除附件 ${attachment.name}`} onClick={() => onChange(attachments.filter((item) => item.id !== attachment.id))}><X/></button></li>)}</ul>}
+    {uploadError && <p className="form-error">{uploadError.message}</p>}
+  </fieldset>;
+}
+
+function PostAttachmentAppendix({ attachments, publicAccess = false }: { attachments: PostAttachment[]; publicAccess?: boolean }) {
+  if (!attachments.length) return null;
+  return <section className="post-attachment-appendix" aria-labelledby="post-appendix-title">
+    <h2 id="post-appendix-title"><Paperclip/>帖子附录</h2>
+    <ul>{attachments.map((attachment) => <li key={attachment.id}><FileText/><span><strong>{attachment.name}</strong><small>{attachment.mimeType} · {formatFileSize(attachment.size)}</small></span><a href={`/api/${publicAccess ? 'public' : 'member'}/post-attachments/${attachment.id}/content`} download><Download/>下载</a></li>)}</ul>
+  </section>;
+}
+
 function DeleteConfirmDialog({ kind, pending, error, onCancel, onConfirm }: { kind: '帖子' | '评论'; pending: boolean; error?: Error | null; onCancel: () => void; onConfirm: () => void }) {
   return <div className="delete-confirm-backdrop" role="presentation">
     <section className="delete-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-confirm-title">
@@ -153,10 +179,11 @@ export function PublicPostPage() {
   const post = query.data.post;
   return <main className="public-blog-detail"><article>
     <Link className="tavern-back" to="/"><ArrowLeft/>返回社团主页</Link>
-    <small>{post.departmentName ?? '公会全域'} · {formatDate(post.createdAt)}</small>
+    <small>{post.departmentName ?? '公会全域'}{post.subboardName ? ` / ${post.subboardName}` : ''} · {formatDate(post.createdAt)}</small>
     <h1>{post.title}</h1>{post.subtitle && <h2>{post.subtitle}</h2>}
     <p className="public-blog-byline">BY {post.author.displayName} · 综合评分 {post.score > 0 ? `+${post.score}` : post.score}</p>
     <PostBody post={post}/>
+    <PostAttachmentAppendix attachments={post.attachments ?? []} publicAccess />
   </article></main>;
 }
 
@@ -164,23 +191,36 @@ export function PostsPage() {
   const { user } = useAuth();
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: '', subtitle: '', departmentId: '' });
+  const [form, setForm] = useState({ title: '', subtitle: '', departmentId: '', subboardId: '' });
+  const [subboardOpen, setSubboardOpen] = useState(false);
+  const [subboardForm, setSubboardForm] = useState({ departmentId: '', name: '', description: '' });
   const [blocks, setBlocks] = useState<EditorBlock[]>(emptyEditor);
+  const [attachments, setAttachments] = useState<PostAttachment[]>([]);
   const [deletePost, setDeletePost] = useState<TavernPost | null>(null);
   const [placementNotice, setPlacementNotice] = useState<string | null>(null);
   const departments = useQuery({ queryKey: ['public', 'departments'], queryFn: () => api<{ items: DepartmentOption[] }>('/api/public/departments') });
+  const selectedDepartmentSlug = departments.data?.items?.find((department) => department.id === form.departmentId)?.slug;
+  const subboards = useQuery({ queryKey: ['public-post-subboards', selectedDepartmentSlug], queryFn: () => api<{ items: PostSubboard[] }>(`/api/public/post-subboards?departmentSlug=${encodeURIComponent(selectedDepartmentSlug!)}`), enabled: Boolean(selectedDepartmentSlug) });
   const query = useQuery({ queryKey: ['tavern', 'posts'], queryFn: () => api<PageData<TavernPost>>('/api/member/posts?page=1&pageSize=50') });
   const refresh = () => client.invalidateQueries({ queryKey: ['tavern'] });
   const create = useMutation({
     mutationFn: () => api<{ post: TavernPost }>('/api/member/posts', json('POST', {
-      title: form.title, subtitle: form.subtitle, content: editorContent(blocks), departmentId: form.departmentId || null, body: editorBody(blocks),
+      title: form.title, subtitle: form.subtitle, content: editorContent(blocks), departmentId: form.departmentId || null, subboardId: form.subboardId || null, body: editorBody(blocks), attachmentIds: attachments.map((attachment) => attachment.id),
     })),
-    onSuccess: () => { blocks.forEach((block) => { if (block.type === 'IMAGE' && block.previewUrl.startsWith('blob:')) URL.revokeObjectURL(block.previewUrl); }); setOpen(false); setForm({ title: '', subtitle: '', departmentId: '' }); setBlocks(emptyEditor()); refresh(); },
+    onSuccess: () => { blocks.forEach((block) => { if (block.type === 'IMAGE' && block.previewUrl.startsWith('blob:')) URL.revokeObjectURL(block.previewUrl); }); setOpen(false); setForm({ title: '', subtitle: '', departmentId: '', subboardId: '' }); setBlocks(emptyEditor()); setAttachments([]); refresh(); },
+  });
+  const createSubboard = useMutation({
+    mutationFn: () => api<{ subboard: PostSubboard }>('/api/member/post-subboards', json('POST', subboardForm)),
+    onSuccess: ({ subboard }) => { client.invalidateQueries({ queryKey: ['public-post-subboards'] }); setSubboardOpen(false); setSubboardForm({ departmentId: '', name: '', description: '' }); if (form.departmentId === subboard.departmentId) setForm((current) => ({ ...current, subboardId: subboard.id })); },
   });
   const upload = useMutation({
     mutationFn: ({ file }: { file: File; afterIndex: number; previewUrl: string }) => { const data = new FormData(); data.append('file', file); return api<{ asset: { id: string; url: string } }>('/api/member/post-assets', { method: 'POST', body: data }); },
     onSuccess: ({ asset }, variables) => setBlocks((items) => [...items.slice(0, variables.afterIndex + 1), { key: nextEditorKey(), type: 'IMAGE', assetId: asset.id, previewUrl: variables.previewUrl, alt: '' }, ...items.slice(variables.afterIndex + 1)]),
     onError: (_error, variables) => URL.revokeObjectURL(variables.previewUrl),
+  });
+  const attachmentUpload = useMutation({
+    mutationFn: (file: File) => { const data = new FormData(); data.append('file', file); return api<{ attachment: PostAttachment }>('/api/member/post-attachments', { method: 'POST', body: data }); },
+    onSuccess: ({ attachment }) => setAttachments((items) => items.some((item) => item.id === attachment.id) ? items : [...items, attachment]),
   });
   const place = useMutation({
     mutationFn: ({ post, scope, visible = true, pinned, featured }: { post: TavernPost; scope: 'GUILD' | 'DEPARTMENT'; visible?: boolean; pinned?: boolean; featured?: boolean }) => api(`/api/member/posts/${post.id}/placement`, json('PUT', { scope, departmentId: scope === 'DEPARTMENT' ? post.departmentId : null, visible, pinned, featured })),
@@ -194,16 +234,26 @@ export function PostsPage() {
   return <main className="social-page tavern-page">
     <PageHero eyebrow="ADVENTURER TAVERN" title="冒险者酒馆" description="成员公开的交流区：分享进度、招募搭档、约团约展，真实写入公会档案。">
       <button className="guild-button primary" onClick={() => setOpen(!open)}>{open ? '收起表单' : '发布新帖'}</button>
+      {user?.role !== 'MEMBER' && <button className="guild-button" onClick={() => { setSubboardOpen(!subboardOpen); setSubboardForm((current) => ({ ...current, departmentId: isExecutiveRole(user!.role) ? current.departmentId : user?.departmentId ?? '' })); }}>{subboardOpen ? '收起子板块表单' : '创建部门子板块'}</button>}
     </PageHero>
     <section className="shell">
+      {subboardOpen && <form className="inline-create subboard-create" onSubmit={(event) => { event.preventDefault(); createSubboard.mutate(); }}>
+        <label>所属部门<select required value={subboardForm.departmentId} disabled={!isExecutiveRole(user!.role)} onChange={(event) => setSubboardForm({ ...subboardForm, departmentId: event.target.value })}><option value="">选择部门</option>{departments.data?.items.filter((department) => isExecutiveRole(user!.role) || department.id === user?.departmentId).map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+        <label>子板块名称<input required minLength={2} maxLength={40} value={subboardForm.name} onChange={(event) => setSubboardForm({ ...subboardForm, name: event.target.value })} placeholder="例如：番剧吐槽" /></label>
+        <label>简介（选填）<input maxLength={160} value={subboardForm.description} onChange={(event) => setSubboardForm({ ...subboardForm, description: event.target.value })} placeholder="说明这个板块适合讨论什么" /></label>
+        {createSubboard.error && <p className="form-error">{createSubboard.error.message}</p>}
+        <button className="guild-button primary" disabled={createSubboard.isPending}>创建子板块</button>
+      </form>}
       {open && <form className="inline-create tavern-create" onSubmit={submit}>
         <label>帖子标题<input required minLength={2} maxLength={60} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="例如：周末道具修补互助" /></label>
         <label>小标题（选填）<input maxLength={160} value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} placeholder="给正文加一句引子" /></label>
-        <label>所属范围<select value={form.departmentId} onChange={(e) => setForm({ ...form, departmentId: e.target.value })}><option value="">公会全域</option>{departments.data?.items?.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+        <label>所属范围<select value={form.departmentId} onChange={(e) => setForm({ ...form, departmentId: e.target.value, subboardId: '' })}><option value="">公会全域</option>{departments.data?.items?.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+        {form.departmentId && <label>子板块（选填）<select value={form.subboardId} onChange={(event) => setForm({ ...form, subboardId: event.target.value })}><option value="">不加入子板块</option>{subboards.data?.items.map((subboard) => <option key={subboard.id} value={subboard.id}>{subboard.name}</option>)}</select></label>}
         <PostContentEditor blocks={blocks} onChange={setBlocks} uploading={upload.isPending} uploadError={upload.error} onUpload={(file, afterIndex) => upload.mutate({ file, afterIndex, previewUrl: URL.createObjectURL(file) })} />
+        <PostAttachmentEditor attachments={attachments} onChange={setAttachments} uploading={attachmentUpload.isPending} uploadError={attachmentUpload.error} onUpload={(files) => files.forEach((file) => attachmentUpload.mutate(file))} />
         {editorContent(blocks).length > 0 && editorContent(blocks).length < 5 && <p className="form-error">正文文字至少需要 5 个字符。</p>}
         {create.error && <p className="form-error">{create.error.message}</p>}
-        <button className="guild-button primary" disabled={create.isPending || upload.isPending || editorContent(blocks).length < 5}>发布到酒馆</button>
+        <button className="guild-button primary" disabled={create.isPending || upload.isPending || attachmentUpload.isPending || editorContent(blocks).length < 5}>发布到酒馆</button>
       </form>}
       {query.isLoading ? <LoadingPanel label="正在翻开酒馆留言板" /> : query.error ? <ErrorPanel error={query.error} /> : !query.data?.items.length ? <EmptyPanel label="酒馆还没有帖子，来发第一帖" /> : <div className="tavern-post-list">
         {query.data.items.map((post) => <PixelFrame key={post.id} className="tavern-post-card">
@@ -214,7 +264,7 @@ export function PostsPage() {
           </div>
           <Link className="tavern-post-title" to={`/portal/tavern/${post.id}`}><h2>{post.title}</h2></Link>
           {post.subtitle && <p className="tavern-post-subtitle">{post.subtitle}</p>}
-          <span className="tavern-scope">{post.departmentName ?? '公会全域'}</span>
+          <span className="tavern-scope">{post.departmentName ?? '公会全域'}{post.subboardName ? ` / ${post.subboardName}` : ''}</span>
           <p className="tavern-post-excerpt">{post.content.split('\n')[0]}</p>
           <div className="tavern-post-foot">
             <Link to={`/portal/tavern/${post.id}`}><MessageCircle />{post.commentCount} 条评论</Link>
@@ -237,7 +287,7 @@ export function PostDetailPage() {
   const { user } = useAuth();
   const client = useQueryClient();
   const [content, setContent] = useState('');
-  const [editForm, setEditForm] = useState<{ title: string; subtitle: string; blocks: EditorBlock[] } | null>(null);
+  const [editForm, setEditForm] = useState<{ title: string; subtitle: string; blocks: EditorBlock[]; attachments: PostAttachment[] } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ kind: '帖子' | '评论'; id: string } | null>(null);
   const query = useQuery({ queryKey: ['tavern', 'post', id], queryFn: () => api<{ post: TavernPost; comments: TavernComment[]; supporters: PostAuthor[] }>(`/api/member/posts/${id}`), enabled: Boolean(id) });
   const refresh = () => client.invalidateQueries({ queryKey: ['tavern'] });
@@ -249,12 +299,16 @@ export function PostDetailPage() {
   const removePost = useMutation({ mutationFn: () => api(`/api/member/posts/${id}`, json('DELETE')), onSuccess: () => { refresh(); } });
   const rate = useMutation({ mutationFn: (value: -1 | 0 | 1) => api(`/api/member/posts/${id}/rating`, json('PUT', { value })), onSuccess: refresh });
   const edit = useMutation({ mutationFn: () => api(`/api/member/posts/${id}`, json('PATCH', {
-    title: editForm!.title, subtitle: editForm!.subtitle, content: editorContent(editForm!.blocks), departmentId: query.data!.post.departmentId, body: editorBody(editForm!.blocks),
+    title: editForm!.title, subtitle: editForm!.subtitle, content: editorContent(editForm!.blocks), departmentId: query.data!.post.departmentId, subboardId: query.data!.post.subboardId, body: editorBody(editForm!.blocks), attachmentIds: editForm!.attachments.map((attachment) => attachment.id),
   })), onSuccess: () => { editForm?.blocks.forEach((block) => { if (block.type === 'IMAGE' && block.previewUrl.startsWith('blob:')) URL.revokeObjectURL(block.previewUrl); }); setEditForm(null); refresh(); } });
   const editUpload = useMutation({
     mutationFn: ({ file }: { file: File; afterIndex: number; previewUrl: string }) => { const data = new FormData(); data.append('file', file); return api<{ asset: { id: string; url: string } }>('/api/member/post-assets', { method: 'POST', body: data }); },
     onSuccess: ({ asset }, variables) => setEditForm((current) => current ? { ...current, blocks: [...current.blocks.slice(0, variables.afterIndex + 1), { key: nextEditorKey(), type: 'IMAGE', assetId: asset.id, previewUrl: variables.previewUrl, alt: '' }, ...current.blocks.slice(variables.afterIndex + 1)] } : current),
     onError: (_error, variables) => URL.revokeObjectURL(variables.previewUrl),
+  });
+  const editAttachmentUpload = useMutation({
+    mutationFn: (file: File) => { const data = new FormData(); data.append('file', file); return api<{ attachment: PostAttachment }>('/api/member/post-attachments', { method: 'POST', body: data }); },
+    onSuccess: ({ attachment }) => setEditForm((current) => current ? { ...current, attachments: current.attachments.some((item) => item.id === attachment.id) ? current.attachments : [...current.attachments, attachment] } : current),
   });
   const navigate = useNavigate();
   if (query.isLoading) return <main><LoadingPanel label="正在读取帖子" /></main>;
@@ -272,12 +326,14 @@ export function PostDetailPage() {
         </div>
         <h1>{post.title}</h1>
         {post.subtitle && <p className="tavern-detail-subtitle">{post.subtitle}</p>}
+        {post.subboardName && <span className="tavern-scope">{post.departmentName} / {post.subboardName}</span>}
         <PostBody post={post} />
         {editForm && <form className="tavern-edit-form" onSubmit={(event) => { event.preventDefault(); edit.mutate(); }}>
           <label>大标题<input required value={editForm.title} onChange={(event) => setEditForm({ ...editForm, title: event.target.value })}/></label>
           <label>小标题<input value={editForm.subtitle} onChange={(event) => setEditForm({ ...editForm, subtitle: event.target.value })}/></label>
           <PostContentEditor blocks={editForm.blocks} onChange={(blocks) => setEditForm({ ...editForm, blocks })} uploading={editUpload.isPending} uploadError={editUpload.error} onUpload={(file, afterIndex) => editUpload.mutate({ file, afterIndex, previewUrl: URL.createObjectURL(file) })} />
-          <div><button className="guild-button primary" disabled={edit.isPending || editUpload.isPending || editorContent(editForm.blocks).length < 5}>保存修改</button><button type="button" onClick={() => setEditForm(null)}>取消</button></div>
+          <PostAttachmentEditor attachments={editForm.attachments} onChange={(attachments) => setEditForm({ ...editForm, attachments })} uploading={editAttachmentUpload.isPending} uploadError={editAttachmentUpload.error} onUpload={(files) => files.forEach((file) => editAttachmentUpload.mutate(file))} />
+          <div><button className="guild-button primary" disabled={edit.isPending || editUpload.isPending || editAttachmentUpload.isPending || editorContent(editForm.blocks).length < 5}>保存修改</button><button type="button" onClick={() => setEditForm(null)}>取消</button></div>
           {edit.error && <p className="form-error">{edit.error.message}</p>}
         </form>}
         <div className="tavern-post-foot">
@@ -286,9 +342,10 @@ export function PostDetailPage() {
             <strong>{post.score > 0 ? `+${post.score}` : post.score}</strong>
             <button className={post.myRating === -1 ? 'active down' : ''} aria-label={`反对，当前 ${post.downvoteCount} 人`} onClick={() => rate.mutate(post.myRating === -1 ? 0 : -1)}><ThumbsDown/>{post.downvoteCount}</button>
           </div>
-          {canModerate && <button onClick={() => setEditForm({ title: post.title, subtitle: post.subtitle, blocks: blocksFromPost(post) })}><Edit3/>编辑帖子</button>}
+          {canModerate && <button onClick={() => setEditForm({ title: post.title, subtitle: post.subtitle, blocks: blocksFromPost(post), attachments: post.attachments ?? [] })}><Edit3/>编辑帖子</button>}
           {(canModerate || user?.id === post.author.id) && <button className="danger" onClick={() => { removePost.reset(); setDeleteTarget({ kind: '帖子', id: post.id }); }}><Trash2 />删除帖子</button>}
         </div>
+        <PostAttachmentAppendix attachments={post.attachments ?? []} />
         <details className="post-supporters"><summary><ChevronDown/>查看赞成这篇帖子的成员（{post.upvoteCount}）</summary>{supporters.length ? <ul>{supporters.map((supporter) => <li key={supporter.id}><span className="social-avatar small" style={{ '--avatar-color': supporter.avatarColor } as React.CSSProperties}><b>{supporter.displayName.slice(0, 1)}</b></span>{supporter.displayName}</li>)}</ul> : <p>还没有成员赞成这篇帖子。</p>}</details>
       </PixelFrame>
       <section className="tavern-comments">

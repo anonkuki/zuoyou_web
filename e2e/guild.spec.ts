@@ -4,7 +4,8 @@ const qaRoot = 'artifacts/qa';
 
 async function loginDemo(page: Page, role: '管理员' | '负责人' | '成员') {
   await page.goto('/login');
-  await page.getByRole('button', { name: role, exact: true }).click();
+  const demoRole = { 管理员: '社长', 负责人: '部长', 成员: '成员' }[role];
+  await page.getByRole('button', { name: demoRole, exact: true }).click();
   await page.getByRole('button', { name: '登录公会' }).click();
   await expect(page).toHaveURL(role === '成员' ? /\/portal$/ : role === '负责人' ? /\/admin\/activities$/ : /\/admin$/);
 }
@@ -127,13 +128,13 @@ test('首页故事卡与公告进入各自的真实内容页', async ({ page }) 
 
 test('部门视频通过官方播放器预览并保留清单中的完整 B站分享链接', async ({ page }) => {
   await page.goto('/departments/cos');
-  const previewButtons = page.getByRole('button', { name: /站内预览/ });
-  await expect(previewButtons).toHaveCount(5);
+  const previewCards = page.locator('.cos-video-card[href^="https://www.bilibili.com/video/"]');
+  await expect(previewCards).toHaveCount(5);
   const playerResponsePromise = page.waitForResponse((response) =>
     response.url() === 'https://player.bilibili.com/player.html?bvid=BV1Vr7YzLE1R&autoplay=0'
       && response.request().resourceType() === 'document',
   );
-  await previewButtons.first().click();
+  await previewCards.first().click();
   const playerResponse = await playerResponsePromise;
   expect(playerResponse.ok()).toBe(true);
   const dialog = page.getByRole('dialog', { name: /那一天的cos，接力起来/ });
@@ -325,7 +326,7 @@ test('成员作品、负责人审核、活动与文件操作可实际执行', as
   const archiveFileName = `档案资料${suffix}.txt`;
   await loginDemo(page, '成员');
   await page.goto('/portal/works');
-  await page.getByRole('button', { name: '上传新作品' }).click();
+  await page.getByRole('button', { name: '上传作品文件' }).click();
   await page.getByLabel('作品名称').fill(workTitle);
   await page.getByLabel('作品说明').fill('端到端验收提交的真实作品文件');
   await page.getByLabel('作品文件', { exact: true }).setInputFiles({ name: fileName, mimeType: 'text/plain', buffer: Buffer.from('guild work e2e') });

@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 import {
-  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, isExecutiveRole, isManagementRole, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, postPlacementSchema, postRatingSchema, resolveAvatarConfig, successResponse, worldMoveSchema,
+  ActivityStatusSchema, FileVisibilitySchema, RoleSchema, WorkStatusSchema, announcementInputSchema, announcementUpdateSchema, areaMessageCreateSchema, commentCreateSchema, directConversationInputSchema, homeDataSchema, isExecutiveRole, isManagementRole, memberProfileUpdateSchema, messageCreateSchema, messageUpdateSchema, pageQuerySchema, postCreateSchema, postPlacementSchema, postRatingSchema, postSubboardCreateSchema, resolveAvatarConfig, successResponse, worldMoveSchema,
   type ActivityStatus, type AvatarConfig, type Role,
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
@@ -97,6 +97,59 @@ class HttpError extends Error {
 
 const now = () => new Date().toISOString();
 const newId = (prefix: string) => `${prefix}_${randomUUID()}`;
+const pageKeySchema = z.string().regex(/^(home|department:[a-z0-9-]+)$/);
+const externalLinkSchema = z.string().trim().max(2000).refine((value) => {
+  try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
+}, '外部链接必须是有效的 http 或 https 地址');
+const bilibiliLinkSchema = externalLinkSchema.refine((value) => {
+  const host = new URL(value).hostname.toLowerCase();
+  return host === 'b23.tv' || host === 'bilibili.com' || host.endsWith('.bilibili.com');
+}, '请填写有效的 B 站视频链接');
+const bilibiliViewSchema = z.object({
+  code: z.number(),
+  message: z.string().optional(),
+  data: z.object({
+    bvid: z.string(),
+    title: z.string(),
+    pic: z.string(),
+    duration: z.number().nonnegative(),
+    pubdate: z.number(),
+  }).optional(),
+});
+const bvidFromUrl = (value: string) => value.match(/(?:\/video\/|\b)(BV[0-9A-Za-z]{10})(?:[/?#]|$)/i)?.[1] ?? null;
+const formatVideoDuration = (seconds: number) => {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remaining = Math.floor(seconds % 60);
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`
+    : `${minutes}:${String(remaining).padStart(2, '0')}`;
+};
+const pageAssetSchema = z.string().trim().min(1).max(2000).refine((value) => {
+  if (value.startsWith('/') && !value.startsWith('//')) return true;
+  try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
+}, '图片地址必须是站内路径或有效的 http/https 地址');
+const pageContentConfigSchema = z.object({
+  hiddenSectionIds: z.array(z.string().trim().min(1).max(80)).max(30).default([]),
+  hiddenImageUrls: z.array(pageAssetSchema).max(250).default([]),
+  hiddenPresetIds: z.array(z.string().trim().min(1).max(160)).max(500).default([]),
+  items: z.array(z.object({
+    id: z.string().trim().min(1).max(100),
+    sectionId: z.string().trim().min(1).max(80),
+    title: z.string().trim().max(120).default(''),
+    body: z.string().trim().max(4000).default(''),
+    imageUrl: pageAssetSchema.nullable().default(null),
+    linkUrl: externalLinkSchema.nullable().default(null),
+    instrument: z.enum(['主唱', '吉他', '贝斯', '鼓手', '键盘']).optional(),
+  }).refine((item) => Boolean(item.title || item.body || item.imageUrl), '新增内容不能全部为空')).max(100).default([]),
+  imageLinks: z.array(z.object({ imageUrl: pageAssetSchema, linkUrl: externalLinkSchema })).max(250).default([]),
+  sectionOverrides: z.array(z.object({
+    sectionId: z.string().trim().min(1).max(80),
+    title: z.string().trim().max(120),
+    subtitle: z.string().trim().max(120),
+    description: z.string().trim().max(500),
+  })).max(40).default([]),
+});
 const publicAnnouncement = (row: AnnouncementRow) => ({
   id: row.id,
   title: row.title,
@@ -224,6 +277,17 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
   function scopeDepartment(principal: Principal, departmentId: string): void {
     if (!canAccessDepartment(principal, departmentId)) throw new HttpError(403, 'FORBIDDEN', '不可管理其他部门资源');
+  }
+
+  function pageEditScope(principal: Principal, pageKey: string): void {
+    if (pageKey === 'home') {
+      if (!isExecutiveRole(principal.role)) throw new HttpError(403, 'FORBIDDEN', '仅社长和副社长可以编辑社团主页');
+      return;
+    }
+    const slug = pageKey.slice('department:'.length);
+    const department = sqlite.prepare('SELECT id FROM departments WHERE slug=?').get(slug) as { id: string } | undefined;
+    if (!department) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
+    scopeDepartment(principal, department.id);
   }
 
   const assignableRoleSchema = z.enum(['VICE_PRESIDENT', 'DEPARTMENT_HEAD', 'DEPARTMENT_ADMIN']);
@@ -357,6 +421,72 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const department = sqlite.prepare('SELECT * FROM departments WHERE slug=?').get(slug);
     if (!department) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
     return successResponse({ department });
+  });
+  app.get('/api/public/page-content/:pageKey', async (request) => {
+    const pageKey = parse(pageKeySchema, (request.params as { pageKey: string }).pageKey);
+    if (pageKey.startsWith('department:')) {
+      const slug = pageKey.slice('department:'.length);
+      if (!sqlite.prepare('SELECT 1 FROM departments WHERE slug=?').get(slug)) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
+    }
+    const row = sqlite.prepare('SELECT config_json,updated_at FROM page_content_configs WHERE page_key=?').get(pageKey) as { config_json: string; updated_at: string } | undefined;
+    const config = row ? pageContentConfigSchema.parse(JSON.parse(row.config_json)) : pageContentConfigSchema.parse({});
+    return successResponse({ pageKey, config, updatedAt: row?.updated_at ?? null });
+  });
+  app.put('/api/admin/page-content/:pageKey', async (request, reply) => {
+    const principal = requireManager(request, reply);
+    if (!principal) return;
+    const pageKey = parse(pageKeySchema, (request.params as { pageKey: string }).pageKey);
+    pageEditScope(principal, pageKey);
+    const config = parse(pageContentConfigSchema, request.body);
+    const timestamp = now();
+    sqlite.prepare(`INSERT INTO page_content_configs(page_key,config_json,updated_by,updated_at) VALUES (?,?,?,?)
+      ON CONFLICT(page_key) DO UPDATE SET config_json=excluded.config_json,updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
+      .run(pageKey, JSON.stringify(config), principal.id, timestamp);
+    audit(sqlite, principal.id, 'PAGE_CONTENT_UPDATED', 'page_content', pageKey, null, {
+      hiddenSectionCount: config.hiddenSectionIds.length, hiddenImageCount: config.hiddenImageUrls.length, itemCount: config.items.length, imageLinkCount: config.imageLinks.length,
+    });
+    return successResponse({ pageKey, config, updatedAt: timestamp });
+  });
+  app.get('/api/admin/bilibili-preview', async (request, reply) => {
+    const principal = requireManager(request, reply);
+    if (!principal) return;
+    const inputUrl = parse(bilibiliLinkSchema, (request.query as { url?: string }).url);
+    let resolvedUrl = inputUrl;
+    let bvid = bvidFromUrl(resolvedUrl);
+    try {
+      if (!bvid && new URL(inputUrl).hostname.toLowerCase() === 'b23.tv') {
+        const redirect = await fetch(inputUrl, {
+          redirect: 'follow',
+          signal: AbortSignal.timeout(8000),
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SayuuGuild/1.0)' },
+        });
+        resolvedUrl = redirect.url;
+        bvid = bvidFromUrl(resolvedUrl);
+      }
+      if (!bvid) throw new HttpError(400, 'INVALID_BILIBILI_URL', '链接中没有找到有效的 BV 号');
+      const response = await fetch(`https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`, {
+        signal: AbortSignal.timeout(8000),
+        headers: {
+          Accept: 'application/json',
+          Referer: 'https://www.bilibili.com/',
+          'User-Agent': 'Mozilla/5.0 (compatible; SayuuGuild/1.0)',
+        },
+      });
+      if (!response.ok) throw new HttpError(502, 'BILIBILI_UNAVAILABLE', 'B站暂时没有返回视频信息');
+      const payload = bilibiliViewSchema.parse(await response.json());
+      if (payload.code !== 0 || !payload.data) throw new HttpError(400, 'BILIBILI_VIDEO_NOT_FOUND', payload.message || '没有找到对应的 B 站视频');
+      return successResponse({
+        bvid: payload.data.bvid,
+        title: payload.data.title,
+        cover: payload.data.pic.replace(/^http:/, 'https:'),
+        href: `https://www.bilibili.com/video/${payload.data.bvid}`,
+        duration: formatVideoDuration(payload.data.duration),
+        publishedAt: new Date(payload.data.pubdate * 1000).toISOString().slice(0, 10),
+      });
+    } catch (error) {
+      if (error instanceof HttpError || error instanceof ZodError) throw error;
+      throw new HttpError(502, 'BILIBILI_UNAVAILABLE', '读取 B 站视频信息失败，请稍后重试');
+    }
   });
   app.get('/api/public/chronicles', async (request) => {
     const paging = getPaging(request.query);
@@ -550,8 +680,8 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const body = parse(postCreateSchema, request.body);
     const post = sqlite.transaction(() => {
       const created = social.createPost(principal, body);
-      social.syncAssets(principal, String(created.id), body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? []);
-      return created;
+      social.syncAssets(principal, String(created.id), body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? [], body.attachmentIds);
+      return social.getPost(String(created.id), principal.id).post;
     })();
     return reply.status(201).send(successResponse({ post }));
   });
@@ -561,8 +691,8 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const body = parse(postCreateSchema, request.body);
     const post = sqlite.transaction(() => {
       const edited = social.editPost(principal, id, body);
-      social.syncAssets(principal, id, body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? []);
-      return edited;
+      social.syncAssets(principal, id, body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? [], body.attachmentIds);
+      return social.getPost(String(edited.id), principal.id).post;
     })();
     audit(sqlite, principal.id, 'POST_EDITED', 'post', id);
     return successResponse({ post });
@@ -630,6 +760,58 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const id = (request.params as { id: string }).id;
     const result = world.deleteMessage(principal, id);
     if (result.moderated) audit(sqlite, principal.id, 'AREA_MESSAGE_DELETED', 'area_message', id, result.ownerId);
+    return successResponse({ deleted: true });
+  });
+
+  const departmentGuestbook = (slug: string) => {
+    const department = sqlite.prepare('SELECT id,slug,name FROM departments WHERE slug=?').get(slug) as { id: string; slug: string; name: string } | undefined;
+    if (!department) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
+    return department;
+  };
+  const guestbookItems = (slug: string) => (sqlite.prepare(`SELECT m.id,m.content,m.created_at,u.id sender_id,u.display_name,u.avatar_color
+    FROM area_messages m JOIN users u ON u.id=m.sender_id
+    WHERE m.area_id=? AND m.deleted_at IS NULL ORDER BY m.created_at DESC,m.id DESC LIMIT 50`).all(slug) as Array<Record<string, unknown>>).map((row) => ({
+      id: row.id, content: row.content, createdAt: row.created_at,
+      sender: { id: row.sender_id, displayName: row.display_name, avatarColor: row.avatar_color },
+    }));
+
+  app.get('/api/member/departments/:slug/guestbook', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const { slug } = request.params as { slug: string };
+    departmentGuestbook(slug);
+    return successResponse({ items: guestbookItems(slug) });
+  });
+  app.post('/api/member/departments/:slug/guestbook', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const { slug } = request.params as { slug: string };
+    const department = departmentGuestbook(slug);
+    if (!memberBelongsToDepartment(principal.id, department.id) && !isExecutiveRole(principal.role)) throw new HttpError(403, 'FORBIDDEN', '仅本部门成员可以留言');
+    const { content } = parse(areaMessageCreateSchema, request.body);
+    const message = world.postMessage(principal, slug, content);
+    audit(sqlite, principal.id, 'DEPARTMENT_GUESTBOOK_MESSAGE_CREATED', 'area_message', String(message.id), principal.id, { departmentId: department.id });
+    return reply.status(201).send(successResponse({ message }));
+  });
+  app.patch('/api/admin/departments/:slug/guestbook/:id', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const { slug, id } = request.params as { slug: string; id: string };
+    const department = departmentGuestbook(slug);
+    scopeDepartment(principal, department.id);
+    const { content } = parse(areaMessageCreateSchema, request.body);
+    const message = sqlite.prepare('SELECT sender_id FROM area_messages WHERE id=? AND area_id=? AND deleted_at IS NULL').get(id, slug) as { sender_id: string } | undefined;
+    if (!message) throw new HttpError(404, 'NOT_FOUND', '留言不存在或已删除');
+    sqlite.prepare('UPDATE area_messages SET content=? WHERE id=?').run(content, id);
+    audit(sqlite, principal.id, 'DEPARTMENT_GUESTBOOK_MESSAGE_UPDATED', 'area_message', id, message.sender_id, { departmentId: department.id });
+    return successResponse({ updated: true });
+  });
+  app.delete('/api/admin/departments/:slug/guestbook/:id', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const { slug, id } = request.params as { slug: string; id: string };
+    const department = departmentGuestbook(slug);
+    scopeDepartment(principal, department.id);
+    const message = sqlite.prepare('SELECT sender_id FROM area_messages WHERE id=? AND area_id=? AND deleted_at IS NULL').get(id, slug) as { sender_id: string } | undefined;
+    if (!message) throw new HttpError(404, 'NOT_FOUND', '留言不存在或已删除');
+    sqlite.prepare('UPDATE area_messages SET deleted_at=? WHERE id=?').run(now(), id);
+    audit(sqlite, principal.id, 'DEPARTMENT_GUESTBOOK_MESSAGE_DELETED', 'area_message', id, message.sender_id, { departmentId: department.id });
     return successResponse({ deleted: true });
   });
 
@@ -952,23 +1134,87 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     await pipeline(part.file, createWriteStream(path, { flags: 'wx' }));
     const info = await stat(path);
     if (part.file.truncated || info.size > 8 * 1024 * 1024) { await unlink(path); throw new HttpError(413, 'IMAGE_TOO_LARGE', '单张图片不能超过 8MB'); }
-    sqlite.prepare('INSERT INTO post_assets(id,owner_id,post_id,storage_key,mime_type,size,created_at) VALUES (?,?,NULL,?,?,?,?)').run(id, principal.id, storageKey, part.mimetype, info.size, now());
+    sqlite.prepare("INSERT INTO post_assets(id,owner_id,post_id,storage_key,file_name,asset_kind,mime_type,size,created_at) VALUES (?,?,NULL,?,?,'IMAGE',?,?,?)").run(id, principal.id, storageKey, part.filename, part.mimetype, info.size, now());
     return reply.status(201).send(successResponse({ asset: { id, url: `/api/public/post-assets/${id}`, mimeType: part.mimetype, size: info.size } }));
+  });
+  app.post('/api/member/post-subboards', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const body = parse(postSubboardCreateSchema, request.body);
+    const subboard = social.createSubboard(principal, body);
+    audit(sqlite, principal.id, 'POST_SUBBOARD_CREATED', 'post_subboard', String((subboard as { id: string }).id), null, { departmentId: body.departmentId, name: body.name });
+    return reply.status(201).send(successResponse({ subboard }));
+  });
+
+  app.post('/api/member/post-attachments', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const part = await request.file();
+    if (!part) throw new HttpError(400, 'FILE_REQUIRED', '请选择要作为附录上传的文件');
+    const originalName = [...part.filename].filter((character) => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127).join('').trim().slice(0, 180) || '未命名附件';
+    const extension = extname(originalName).toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 10);
+    const blockedExtensions = new Set(['.exe', '.msi', '.bat', '.cmd', '.com', '.scr', '.ps1', '.vbs', '.js', '.jar', '.dll']);
+    if (blockedExtensions.has(extension)) throw new HttpError(415, 'UNSAFE_ATTACHMENT_TYPE', '不支持上传可执行文件或脚本文件');
+    const id = newId('post-attachment');
+    const storageKey = `post-attachments/${id}${extension}`;
+    const path = resolve(options.uploadRoot, storageKey);
+    await mkdir(resolve(options.uploadRoot, 'post-attachments'), { recursive: true });
+    await pipeline(part.file, createWriteStream(path, { flags: 'wx' }));
+    const info = await stat(path);
+    const maxSize = part.mimetype.startsWith('video/') ? 200 * 1024 * 1024 : part.mimetype.startsWith('image/') ? 10 * 1024 * 1024 : 30 * 1024 * 1024;
+    if (part.file.truncated || info.size > maxSize) {
+      await unlink(path);
+      const sizeLabel = part.mimetype.startsWith('video/') ? '200MB' : part.mimetype.startsWith('image/') ? '10MB' : '30MB';
+      throw new HttpError(413, 'ATTACHMENT_TOO_LARGE', `该类附件不能超过 ${sizeLabel}`);
+    }
+    sqlite.prepare("INSERT INTO post_assets(id,owner_id,post_id,storage_key,file_name,asset_kind,mime_type,size,created_at) VALUES (?,?,NULL,?,?,'ATTACHMENT',?,?,?)").run(id, principal.id, storageKey, originalName, part.mimetype || 'application/octet-stream', info.size, now());
+    return reply.status(201).send(successResponse({ attachment: { id, name: originalName, mimeType: part.mimetype || 'application/octet-stream', size: info.size } }));
+  });
+
+  app.get('/api/member/post-attachments/:id/content', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const attachment = sqlite.prepare(`SELECT a.storage_key,a.file_name,a.mime_type FROM post_assets a JOIN posts p ON p.id=a.post_id WHERE a.id=? AND a.asset_kind='ATTACHMENT' AND p.deleted_at IS NULL`).get((request.params as { id: string }).id) as { storage_key: string; file_name: string; mime_type: string } | undefined;
+    if (!attachment) throw new HttpError(404, 'NOT_FOUND', '附件不存在');
+    const uploadRoot = resolve(options.uploadRoot);
+    const filePath = resolve(uploadRoot, attachment.storage_key);
+    if (!filePath.startsWith(`${uploadRoot}${sep}`)) throw new HttpError(400, 'INVALID_STORAGE_KEY', '文件路径无效');
+    reply.type(attachment.mime_type).header('X-Content-Type-Options', 'nosniff').header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(attachment.file_name)}`);
+    return reply.send(createReadStream(filePath));
   });
 
   app.get('/api/public/posts/board', async (request) => {
-    const { departmentSlug } = parse(z.object({ departmentSlug: z.string().trim().min(1).optional() }), request.query);
-    return successResponse(social.publicBoard(departmentSlug));
+    const { departmentSlug, subboardId } = parse(z.object({ departmentSlug: z.string().trim().min(1).optional(), subboardId: z.string().trim().min(1).optional() }), request.query);
+    return successResponse(social.publicBoard(departmentSlug, subboardId));
+  });
+  app.get('/api/public/post-subboards', async (request) => {
+    const { departmentSlug, q } = parse(z.object({ departmentSlug: z.string().trim().min(1).optional(), q: z.string().trim().max(80).optional() }), request.query);
+    return successResponse(social.listSubboards(departmentSlug, q));
+  });
+  app.get('/api/public/forum/categories', async () => successResponse(social.forumDirectory()));
+  app.get('/api/public/forum/topics', async (request) => {
+    const { departmentSlug, subboardId, page, pageSize } = parse(z.object({
+      departmentSlug: z.string().trim().min(1), subboardId: z.string().trim().min(1).optional(),
+      page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(50).default(20),
+    }), request.query);
+    return successResponse(social.publicTopics(departmentSlug, subboardId, page, pageSize));
   });
   app.get('/api/public/posts/:id', async (request) => successResponse({ post: social.publicPost((request.params as { id: string }).id) }));
 
   app.get('/api/public/post-assets/:id', async (request, reply) => {
-    const asset = sqlite.prepare(`SELECT a.storage_key,a.mime_type FROM post_assets a JOIN posts p ON p.id=a.post_id WHERE a.id=? AND p.deleted_at IS NULL AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id)`).get((request.params as { id: string }).id) as { storage_key: string; mime_type: string } | undefined;
+    const asset = sqlite.prepare(`SELECT a.storage_key,a.mime_type FROM post_assets a JOIN posts p ON p.id=a.post_id WHERE a.id=? AND a.asset_kind='IMAGE' AND p.deleted_at IS NULL AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id)`).get((request.params as { id: string }).id) as { storage_key: string; mime_type: string } | undefined;
     if (!asset) throw new HttpError(404, 'NOT_FOUND', '图片不存在');
     const uploadRoot = resolve(options.uploadRoot);
     const filePath = resolve(uploadRoot, asset.storage_key);
     if (!filePath.startsWith(`${uploadRoot}${sep}`)) throw new HttpError(400, 'INVALID_STORAGE_KEY', '文件路径无效');
     reply.type(asset.mime_type).header('Cache-Control', 'public, max-age=3600');
+    return reply.send(createReadStream(filePath));
+  });
+
+  app.get('/api/public/post-attachments/:id/content', async (request, reply) => {
+    const attachment = sqlite.prepare(`SELECT a.storage_key,a.file_name,a.mime_type FROM post_assets a JOIN posts p ON p.id=a.post_id WHERE a.id=? AND a.asset_kind='ATTACHMENT' AND p.deleted_at IS NULL AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id)`).get((request.params as { id: string }).id) as { storage_key: string; file_name: string; mime_type: string } | undefined;
+    if (!attachment) throw new HttpError(404, 'NOT_FOUND', '附件不存在');
+    const uploadRoot = resolve(options.uploadRoot);
+    const filePath = resolve(uploadRoot, attachment.storage_key);
+    if (!filePath.startsWith(`${uploadRoot}${sep}`)) throw new HttpError(400, 'INVALID_STORAGE_KEY', '文件路径无效');
+    reply.type(attachment.mime_type).header('X-Content-Type-Options', 'nosniff').header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(attachment.file_name)}`);
     return reply.send(createReadStream(filePath));
   });
 
@@ -1139,9 +1385,15 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
 
   app.get('/api/admin/applications', async (request, reply) => {
-    const principal = requireAdmin(request, reply); if (!principal) return;
+    const principal = requireManager(request, reply); if (!principal) return;
     const paging = getPaging(request.query);
-    const rows = sqlite.prepare('SELECT id,display_name,email,college,department_id,reason,status,rejection_reason,created_at FROM applications ORDER BY created_at DESC LIMIT ? OFFSET ?').all(paging.pageSize, paging.offset) as Array<Record<string, unknown> & { id: string; department_id: string }>;
+    const scoped = !isExecutiveRole(principal.role);
+    const where = scoped ? `WHERE (a.department_id=? OR EXISTS(
+      SELECT 1 FROM application_departments scope_ad WHERE scope_ad.application_id=a.id AND scope_ad.department_id=?
+    ))` : '';
+    const parameters = scoped ? [principal.departmentId, principal.departmentId] : [];
+    const rows = sqlite.prepare(`SELECT a.id,a.display_name,a.email,a.college,a.department_id,a.reason,a.status,a.rejection_reason,a.created_at
+      FROM applications a ${where} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`).all(...parameters, paging.pageSize, paging.offset) as Array<Record<string, unknown> & { id: string; department_id: string }>;
     const selectedDepartments = sqlite.prepare(`SELECT ad.department_id,d.name FROM application_departments ad JOIN departments d ON d.id=ad.department_id
       WHERE ad.application_id=? ORDER BY ad.preference_order,ad.rowid`);
     const items = rows.map((row) => {
@@ -1149,7 +1401,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       const fallback = selected.length ? selected : [{ department_id: row.department_id, name: row.department_id }];
       return { ...row, departmentIds: fallback.map((department) => department.department_id), departmentNames: fallback.map((department) => department.name) };
     });
-    const total = (sqlite.prepare('SELECT COUNT(*) count FROM applications').get() as { count: number }).count;
+    const total = (sqlite.prepare(`SELECT COUNT(*) count FROM applications a ${where}`).get(...parameters) as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
 

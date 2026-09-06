@@ -1,29 +1,64 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BlogPostBoard } from '../components/blog/BlogPostBoard';
+import { BlogPostBoard, ForumDirectory } from '../components/blog/BlogPostBoard';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-describe('BlogPostBoard', () => {
-  it('renders pinned, member-selected and newest posts for a department', async () => {
-    const posts = Array.from({ length: 6 }, (_, index) => ({ id: `post-${index + 1}`, title: `幻装工坊日志 ${index + 1}`, subtitle: '不应显示的小标题', content: '不应显示的正文。', body: [], departmentName: 'COS部', pinned: true, featured: true, upvoteCount: 5, downvoteCount: 2, score: 3, commentCount: 0, createdAt: '2026-08-20T08:00:00.000Z', author: { id: `member-${index + 1}`, displayName: `作者 ${index + 1}`, avatarColor: '#fff' } }));
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, data: { pinned: posts, featured: posts, latest: posts } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
-    vi.stubGlobal('fetch', fetchMock);
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={client}><MemoryRouter><BlogPostBoard departmentSlug="cos" /></MemoryRouter></QueryClientProvider>);
+const post = (id: string, title: string, pinned = false) => ({ id, title, subtitle: '', content: '正文', body: [], departmentName: '外宣&幻想研', subboardId: null, subboardName: null, pinned, featured: false, upvoteCount: 0, downvoteCount: 0, score: 0, commentCount: 2, createdAt: `2026-08-${id === 'pinned' ? '01' : '20'}T08:00:00.000Z`, author: { id: 'member', displayName: '测试作者', avatarColor: '#fff' } });
+const group = { id: 'dept-publicity', slug: 'publicity', name: '外宣&幻想研', title: '传令官', description: '宣传运营与动漫文化研究', topicCount: 3, replyCount: 4, latestPost: { id: 'latest', title: '本周番剧讨论', authorName: '测试作者', latestAuthorName: '回复者', createdAt: '2026-08-20T09:00:00.000Z' }, subboards: [
+  { id: 'subboard-anime', departmentId: 'dept-publicity', name: '番剧吐槽', description: '当季动画讨论', topicCount: 2, replyCount: 3, latestPost: { id: 'latest', title: '本周番剧讨论', authorName: '测试作者', latestAuthorName: '回复者', createdAt: '2026-08-20T09:00:00.000Z' } },
+  { id: 'subboard-news', departmentId: 'dept-publicity', name: '宣传速报', description: '发布动态', topicCount: 1, replyCount: 1, latestPost: null },
+] };
 
+const renderWithClient = (node: React.ReactNode) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}><MemoryRouter>{node}</MemoryRouter></QueryClientProvider>);
+};
+
+describe('public forum layout', () => {
+  it('shows departments and their child boards as an SCP-style category directory', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, data: { groups: [group] } }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    renderWithClient(<ForumDirectory/>);
+    const directory = await screen.findByRole('region', { name: '酒馆板块目录' });
+    expect(await within(directory).findByText('外宣&幻想研')).toBeInTheDocument();
+    expect(within(directory).getByRole('link', { name: '外宣&幻想研综合讨论' })).toHaveAttribute('href', '/tavern/publicity');
+    expect(within(directory).getByRole('link', { name: /番剧吐槽/ })).toHaveAttribute('href', '/tavern/publicity/subboard-anime');
+    expect(within(directory).getByText('主题')).toBeInTheDocument();
+    expect(within(directory).getByText('回复')).toBeInTheDocument();
+    expect(within(directory).getByText('最新动态')).toBeInTheDocument();
+  });
+
+  it('mixes pinned and ordinary topics and filters a department by child board', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/public/forum/categories') return new Response(JSON.stringify({ ok: true, data: { groups: [group] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      const items = path.includes('subboardId=subboard-anime') ? [post('latest', '本周番剧讨论')] : [post('pinned', '版规与发帖指引', true), post('latest', '本周番剧讨论')];
+      return new Response(JSON.stringify({ ok: true, data: { department: { id: group.id, name: group.name, slug: group.slug }, subboard: null, items, page: 1, pageSize: 20, total: items.length } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderWithClient(<BlogPostBoard departmentSlug="publicity"/>);
     const board = await screen.findByRole('region', { name: '部门帖子' });
-    expect(await within(board).findByRole('heading', { name: /置顶帖.*05 \/ 05/ })).toBeInTheDocument();
-    expect(within(board).getByRole('heading', { name: /精选帖.*05 \/ 05/ })).toBeInTheDocument();
-    expect(within(board).getByRole('heading', { name: /最新发帖.*05 \/ 05/ })).toBeInTheDocument();
-    expect(within(board).getAllByRole('link')).toHaveLength(15);
-    expect(within(board).getAllByText('BY 作者 1')).toHaveLength(3);
-    expect(within(board).queryByText('幻装工坊日志 6')).not.toBeInTheDocument();
-    expect(within(board).queryByText('不应显示的小标题')).not.toBeInTheDocument();
-    expect(within(board).queryByText('不应显示的正文。')).not.toBeInTheDocument();
-    expect(within(board).queryByText('评分 +3')).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith('/api/public/posts/board?departmentSlug=cos', expect.any(Object));
+    expect(await within(board).findByText('版规与发帖指引')).toBeInTheDocument();
+    expect(within(board).getByText('本周番剧讨论')).toBeInTheDocument();
+    expect(within(board).getByText('置顶')).toBeInTheDocument();
+    await user.type(within(board).getByPlaceholderText('检索本部门子板块'), '番剧');
+    expect(within(board).queryByRole('button', { name: /宣传速报/ })).not.toBeInTheDocument();
+    await user.click(within(board).getByRole('button', { name: /番剧吐槽/ }));
+    expect(await within(board).findByText('当前子板块：番剧吐槽')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('subboardId=subboard-anime'), expect.any(Object));
+  });
+
+  it('deduplicates pinned topics in the compact homepage list', async () => {
+    const pinned = post('pinned', '欢迎来到冒险者酒馆', true);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, data: { pinned: [pinned], featured: [], latest: [pinned, post('latest', '九月宣传内容排期')] } }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    renderWithClient(<BlogPostBoard compact title="冒险者酒馆"/>);
+    const board = await screen.findByRole('region', { name: '社团帖子' });
+    expect(await within(board).findAllByText('欢迎来到冒险者酒馆')).toHaveLength(1);
+    expect(within(board).getByText('九月宣传内容排期')).toBeInTheDocument();
+    expect(within(board).queryByRole('heading', { name: '置顶帖' })).not.toBeInTheDocument();
   });
 });

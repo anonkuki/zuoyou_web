@@ -1,0 +1,319 @@
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { createPortal } from 'react-dom';
+import { ExternalLink, Pencil } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { api } from '../../api';
+
+export interface PageContentItem {
+  id: string;
+  sectionId: string;
+  title: string;
+  body: string;
+  imageUrl: string | null;
+  linkUrl: string | null;
+  instrument?: '主唱' | '吉他' | '贝斯' | '鼓手' | '键盘';
+}
+
+export interface PageContentConfig {
+  hiddenSectionIds: string[];
+  hiddenImageUrls: string[];
+  hiddenPresetIds: string[];
+  items: PageContentItem[];
+  imageLinks: Array<{ imageUrl: string; linkUrl: string }>;
+  sectionOverrides: Array<{ sectionId: string; title: string; subtitle: string; description: string }>;
+}
+
+export interface PageSectionDefinition {
+  id: string;
+  name: string;
+  subtitle?: string;
+  description?: string;
+  defaultItems?: PageContentItem[];
+}
+
+export interface PageContentResponse {
+  pageKey: string;
+  config: PageContentConfig;
+  updatedAt: string | null;
+}
+
+export const emptyPageContentConfig = (): PageContentConfig => ({ hiddenSectionIds: [], hiddenImageUrls: [], hiddenPresetIds: [], items: [], imageLinks: [], sectionOverrides: [] });
+export const pageContentQueryKey = (pageKey: string) => ['page-content', pageKey] as const;
+const PageContentContext = createContext<PageContentConfig | null>(null);
+export const usePageContentConfig = () => useContext(PageContentContext) ?? emptyPageContentConfig();
+export const usePageSectionItems = (sectionId: string) => usePageContentConfig().items.filter(item => item.sectionId === sectionId);
+export const usePageSectionHeading = (sectionId: string, title: string, subtitle: string, description: string) => {
+  const override = usePageContentConfig().sectionOverrides.find(item => item.sectionId === sectionId);
+  return override ?? { sectionId, title, subtitle, description };
+};
+export const useEditablePresetItems = (sectionId: string, defaults: PageContentItem[]) => {
+  const config = usePageContentConfig();
+  const overrides = new Map(config.items.filter(item => item.sectionId === sectionId).map(item => [item.id, item]));
+  return defaults.map(item => overrides.get(item.id) ?? item).filter(item => !config.hiddenPresetIds.includes(item.id));
+};
+
+const integratedImageSections = new Set([
+  'department-photo-gallery',
+  'publicity-show', 'publicity-films',
+  'tech-sheet',
+  'music-members', 'music-tracklist', 'music-rehearsal',
+  'original-gallery',
+  'dance-floor',
+  'cos-henshin',
+]);
+
+const techFullyIntegratedSections = new Set([
+  'tech-sheet', 'department-photo-gallery', 'department-media-shelf', 'tech-tutorials',
+]);
+const danceFullyIntegratedSections = new Set([
+  'dance-floor', 'dance-setlist', 'department-photo-gallery', 'department-media-shelf', 'dance-backstage',
+]);
+const originalFullyIntegratedSections = new Set([
+  'original-gallery', 'original-characters', 'department-photo-gallery', 'department-media-shelf', 'original-toolbox',
+]);
+const cosFullyIntegratedSections = new Set([
+  'cos-henshin', 'department-photo-gallery', 'department-media-shelf', 'cos-conventions', 'cos-wardrobe',
+]);
+const publicityFullyIntegratedSections = new Set([
+  'publicity-show', 'publicity-films', 'department-photo-gallery', 'publicity-media-wall',
+  'publicity-reviews', 'publicity-screenings', 'publicity-press',
+]);
+
+function AddedItems({ items }: { items: PageContentItem[] }) {
+  if (!items.length) return null;
+  return <div className="page-managed-items" aria-label="页面新增内容">
+    {items.map(item => <article className="page-managed-item" key={item.id}>
+      {item.imageUrl && (item.linkUrl
+        ? <a className="page-managed-image" href={item.linkUrl} target="_blank" rel="noreferrer"><img src={item.imageUrl} alt={item.title || '页面展示图片'} /><ExternalLink aria-hidden="true" /></a>
+        : <figure className="page-managed-image"><img src={item.imageUrl} alt={item.title || '页面展示图片'} /></figure>)}
+      <div>{item.title && <h3>{item.title}</h3>}{item.body && <p>{item.body}</p>}</div>
+    </article>)}
+  </div>;
+}
+
+function SectionAdditions({ sectionId, items }: { sectionId: string; items: PageContentItem[] }) {
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const target = document.getElementById(sectionId);
+    if (!target || !items.length) { setHost(null); return; }
+    const node = document.createElement('div');
+    node.className = 'page-managed-slot';
+    target.appendChild(node);
+    setHost(node);
+    return () => { node.remove(); };
+  }, [sectionId, items.length]);
+  return host ? createPortal(<AddedItems items={items} />, host) : null;
+}
+
+export function PageContentSurface({ pageKey, sections, editTo, canEdit, children }: {
+  pageKey: string;
+  sections: PageSectionDefinition[];
+  editTo: string;
+  canEdit: boolean;
+  children: ReactNode;
+}) {
+  const query = useQuery({ queryKey: pageContentQueryKey(pageKey), queryFn: () => api<PageContentResponse>(`/api/public/page-content/${encodeURIComponent(pageKey)}`) });
+  const config = { ...emptyPageContentConfig(), ...(query.data?.config ?? {}) };
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const [linkPreview, setLinkPreview] = useState<{ url: string; left: number; top: number } | null>(null);
+  const [imagePreview, setImagePreview] = useState<{ src: string; alt: string; left: number; top: number; width: number; height: number } | null>(null);
+  const links = useMemo(() => {
+    const result = new Map<string, string>();
+    const add = (imageUrl: string, linkUrl: string) => {
+      result.set(imageUrl, linkUrl);
+      try { result.set(new URL(imageUrl, window.location.href).href, linkUrl); } catch { /* Keep the original key. */ }
+    };
+    config.imageLinks.forEach(item => add(item.imageUrl, item.linkUrl));
+    config.items.forEach(item => { if (item.imageUrl && item.linkUrl) add(item.imageUrl, item.linkUrl); });
+    return result;
+  }, [config.imageLinks, config.items]);
+  const sectionIds = useMemo(() => sections.map(section => section.id), [sections]);
+  const presetIds = useMemo(() => new Set(sections.flatMap(section => section.defaultItems?.map(item => item.id) ?? [])), [sections]);
+
+  useEffect(() => {
+    const hidden = new Set(config.hiddenSectionIds);
+    const changed: Array<{ element: HTMLElement; display: string }> = [];
+    for (const id of sectionIds) {
+      const element = document.getElementById(id);
+      if (!element) continue;
+      changed.push({ element, display: element.style.display });
+      if (hidden.has(id)) element.style.display = 'none';
+      else element.style.removeProperty('display');
+    }
+    return () => changed.forEach(({ element, display }) => { element.style.display = display; });
+  }, [config.hiddenSectionIds, sectionIds]);
+
+  useEffect(() => {
+    const hidden = new Set(config.hiddenImageUrls);
+    const changed: Array<{ element: HTMLElement; display: string }> = [];
+    surfaceRef.current?.querySelectorAll('img').forEach(image => {
+      if (!hidden.has(image.getAttribute('src') ?? '')) return;
+      const element = (image.closest('figure,.page-managed-item') ?? image) as HTMLElement;
+      if (changed.some(entry => entry.element === element)) return;
+      changed.push({ element, display: element.style.display });
+      element.style.display = 'none';
+    });
+    return () => changed.forEach(({ element, display }) => { element.style.display = display; });
+  }, [config.hiddenImageUrls, config.items]);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const replaceText = (root: Element, original: string | undefined, next: string) => {
+      if (!original || original === next) return;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        const value = node.nodeValue?.trim();
+        if (value === original.trim() || value?.startsWith(original.trim())) { node.nodeValue = node.nodeValue!.replace(original.trim(), next); return; }
+        node = walker.nextNode();
+      }
+    };
+    const findByImage = (section: Element, src: string) => [...section.querySelectorAll('img')].find(image => image.getAttribute('src') === src);
+    const apply = () => {
+      for (const section of sections) {
+        const root = surface.querySelector(`#${CSS.escape(section.id)}`);
+        if (!root) continue;
+        const heading = config.sectionOverrides.find(item => item.sectionId === section.id);
+        if (heading) {
+          const header = root.querySelector(':scope > header');
+          const title = header?.querySelector('h2,h3');
+          const subtitle = header?.querySelector('small');
+          const description = header?.querySelector('p');
+          if (title && title.textContent !== heading.title) title.textContent = heading.title;
+          if (subtitle && subtitle.textContent !== heading.subtitle) subtitle.textContent = heading.subtitle;
+          if (description && description.textContent !== heading.description) description.textContent = heading.description;
+        }
+        for (const preset of section.defaultItems ?? []) {
+          const override = config.items.find(item => item.id === preset.id);
+          const image = preset.imageUrl ? findByImage(root, preset.imageUrl) : undefined;
+          let target = image?.closest('article,figure,li,a,details,[role="row"],.publicity-screening-table>div') as HTMLElement | null;
+          if (!target && preset.title) {
+            const textNode = [...root.querySelectorAll('article,figure,li,a,details,[role="row"],.publicity-screening-table>div')].find(element => element.textContent?.includes(preset.title));
+            target = textNode as HTMLElement | null;
+          }
+          if (!target) continue;
+          target.dataset.pagePresetId = preset.id;
+          target.style.display = config.hiddenPresetIds.includes(preset.id) ? 'none' : '';
+          if (!override) continue;
+          if (preset.imageUrl && override.imageUrl) target.querySelectorAll('img').forEach(candidate => {
+            if (candidate.getAttribute('src') === preset.imageUrl) candidate.setAttribute('src', override.imageUrl!);
+          });
+          replaceText(target, preset.title, override.title);
+          replaceText(target, preset.body, override.body);
+          const anchor = target instanceof HTMLAnchorElement ? target : target.querySelector('a');
+          if (anchor instanceof HTMLAnchorElement && override.linkUrl) anchor.href = override.linkUrl;
+        }
+      }
+    };
+    apply();
+    const observer = new MutationObserver(() => apply());
+    observer.observe(surface, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [config.hiddenPresetIds, config.items, config.sectionOverrides, sections]);
+
+  const linkForImage = (image: HTMLImageElement) => links.get(image.getAttribute('src') ?? '') ?? links.get(image.currentSrc);
+  const imageFromEvent = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('button,input,select,textarea,[role="button"]')) return null;
+    if (target instanceof HTMLImageElement) return target;
+    const figureImages = target?.closest('figure,.page-managed-image')?.querySelectorAll('img');
+    if (figureImages?.length) {
+      const images = [...figureImages] as HTMLImageElement[];
+      return images.find(image => image.alt && image.getAttribute('aria-hidden') !== 'true') ?? images.at(-1) ?? null;
+    }
+    return document.elementsFromPoint?.(event.clientX, event.clientY).find(element => element instanceof HTMLImageElement) as HTMLImageElement | undefined ?? null;
+  };
+
+  useEffect(() => {
+    if (!imagePreview) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setImagePreview(null); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [imagePreview]);
+
+  const handleImageClick = (event: MouseEvent<HTMLDivElement>) => {
+    const image = imageFromEvent(event);
+    if (!image) return;
+    if (image.closest('.page-image-float-zoom')) {
+      event.preventDefault();
+      event.stopPropagation();
+      setImagePreview(null);
+      return;
+    }
+    const link = linkForImage(image);
+    if (link) {
+      event.preventDefault();
+      event.stopPropagation();
+      window.location.assign(link);
+      return;
+    }
+    if (image.closest('a,button')) return;
+    event.preventDefault();
+    const bounds = image.getBoundingClientRect();
+    const ratio = image.naturalWidth && image.naturalHeight
+      ? image.naturalWidth / image.naturalHeight
+      : bounds.width / Math.max(bounds.height, 1);
+    const availableWidth = window.innerWidth - 32;
+    const availableHeight = window.innerHeight - 32;
+    let width = Math.min(Math.max(bounds.width * 1.35, Math.min(720, availableWidth)), availableWidth);
+    let height = width / ratio;
+    if (height > availableHeight) {
+      height = availableHeight;
+      width = height * ratio;
+    }
+    const left = Math.max(16, Math.min(bounds.left + (bounds.width - width) / 2, window.innerWidth - width - 16));
+    const top = Math.max(16, Math.min(bounds.top + (bounds.height - height) / 2, window.innerHeight - height - 16));
+    const src = image.currentSrc || image.getAttribute('src') || '';
+    setImagePreview(current => current?.src === src ? null : { src, alt: image.alt || '图片预览', left, top, width, height });
+  };
+
+  const showLinkPreview = (event: MouseEvent<HTMLDivElement>) => {
+    const image = imageFromEvent(event);
+    if (!image) { if (linkPreview) setLinkPreview(null); return; }
+    const url = linkForImage(image);
+    if (!url) { if (linkPreview) setLinkPreview(null); return; }
+    const bounds = image.getBoundingClientRect();
+    const width = 294;
+    const left = Math.max(12, window.innerWidth - width - 22);
+    const top = Math.max(86, Math.min(bounds.top, window.innerHeight - 178));
+    setLinkPreview(current => current?.url === url && current.left === left && current.top === top ? current : { url, left, top });
+  };
+
+  const itemsBySection = sections.map(section => ({
+    section,
+    items: config.items.filter(item => !presetIds.has(item.id) && item.sectionId === section.id
+      && !(integratedImageSections.has(section.id) && item.imageUrl)
+      && !(pageKey === 'department:tech' && techFullyIntegratedSections.has(section.id))
+      && !(pageKey === 'department:dance' && danceFullyIntegratedSections.has(section.id))
+      && !(pageKey === 'department:original' && originalFullyIntegratedSections.has(section.id))
+      && !(pageKey === 'department:cos' && cosFullyIntegratedSections.has(section.id))
+      && !(pageKey === 'department:publicity' && publicityFullyIntegratedSections.has(section.id))),
+  }));
+  const unmatched = config.items.filter(item => !sectionIds.includes(item.sectionId));
+
+  let linkDetails: URL | null = null;
+  try { linkDetails = linkPreview ? new URL(linkPreview.url) : null; } catch { linkDetails = null; }
+
+  return <PageContentContext.Provider value={config}><div ref={surfaceRef} className="page-content-surface" data-page-key={pageKey} onClickCapture={handleImageClick} onMouseMove={showLinkPreview} onMouseLeave={() => setLinkPreview(null)}>
+    {children}
+    {itemsBySection.map(({ section, items }) => <SectionAdditions key={section.id} sectionId={section.id} items={items} />)}
+    {unmatched.length > 0 && <section className="page-managed-fallback shell"><AddedItems items={unmatched} /></section>}
+    {canEdit && <div className="page-edit-entry shell"><Link className="guild-button" to={editTo}><Pencil aria-hidden="true" /> 编辑页面</Link></div>}
+    {linkPreview && linkDetails && createPortal(<aside className="page-link-preview" style={{ left: linkPreview.left, top: linkPreview.top }} role="status">
+      <span><ExternalLink aria-hidden="true" /> EXTERNAL LINK</span>
+      <strong>{linkDetails.hostname.replace(/^www\./, '')}</strong>
+      <p>{linkDetails.pathname === '/' ? '网站首页' : decodeURIComponent(linkDetails.pathname).slice(0, 90)}</p>
+      <small>点击图片前往目标页面</small>
+    </aside>, document.body)}
+    {imagePreview && createPortal(<button
+      type="button"
+      className="page-image-float-zoom"
+      role="dialog"
+      aria-label="图片悬浮预览"
+      style={{ left: imagePreview.left, top: imagePreview.top, width: imagePreview.width, height: imagePreview.height }}
+      onClick={() => setImagePreview(null)}
+    ><img src={imagePreview.src} alt={imagePreview.alt} /></button>, document.body)}
+  </div></PageContentContext.Provider>;
+}

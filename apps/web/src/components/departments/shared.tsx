@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { motion, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from 'framer-motion';
+import { createPortal } from 'react-dom';
 import { deptMotion, stepsEase } from './showcase-data';
 import { WordReveal } from './WordReveal';
 
@@ -28,23 +29,33 @@ export function SectionHead({ no, zh, en, note }: { no: string; zh: string; en: 
 }
 
 /** 右侧固定像素章节轨：滚动高亮当前章节，点击平滑锚点跳转（移动端隐藏） */
-export function ChapterRail({ items }: { items: { id: string; no: string; label: string }[] }) {
+export function ChapterRail({ items, accent }: { items: { id: string; no: string; label: string }[]; accent?: string }) {
   const reduce = useReducedMotion();
   const [active, setActive] = useState(items[0]?.id ?? '');
+  const itemIds = items.map(item => item.id).join('\u0000');
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver(entries => {
-      for (const entry of entries) if (entry.isIntersecting) setActive(entry.target.id);
-    }, { rootMargin: '-38% 0px -55% 0px' });
-    for (const { id } of items) {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    }
-    return () => observer.disconnect();
-  }, [items]);
+    const ids = itemIds.split('\u0000').filter(Boolean);
+    const update = () => {
+      const sightLine = window.innerHeight * .46;
+      let current = ids[0] ?? '';
+      for (const id of ids) {
+        const section = document.getElementById(id);
+        if (section && section.getBoundingClientRect().top <= sightLine) current = id;
+        else if (section) break;
+      }
+      setActive(current);
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [itemIds]);
   const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
-  return (
-    <nav className="chapter-rail" aria-label="章节导航">
+  const rail = (
+    <nav className="chapter-rail" aria-label="章节导航" style={{ '--chapter-accent': accent ?? '#c89b3c' } as CSSProperties}>
       {items.map(item => (
         <button key={item.id} type="button" className={active === item.id ? 'is-active' : ''} onClick={() => jump(item.id)} aria-label={`跳转到${item.label}`} aria-current={active === item.id ? 'true' : undefined}>
           <b>{item.no}</b><span>{item.label}</span>
@@ -52,6 +63,7 @@ export function ChapterRail({ items }: { items: { id: string; no: string; label:
       ))}
     </nav>
   );
+  return typeof document === 'undefined' ? rail : createPortal(rail, document.body);
 }
 
 /** 每部门入场语法对应的 motion props（供 motion.article / motion.figure 等元素直接展开） */

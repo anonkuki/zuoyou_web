@@ -13,6 +13,11 @@ import { MusicShowcase } from './showcase/MusicShowcase';
 import { DepartmentMediaShelf } from './DepartmentMediaShelf';
 import { DepartmentPhotoGallery } from './DepartmentPhotoGallery';
 import { BlogPostBoard } from '../blog/BlogPostBoard';
+import { useAuth } from '../../auth';
+import { isExecutiveRole } from '@guild/contracts';
+import { PageContentSurface, type PageSectionDefinition } from '../page-content/PageContentSurface';
+import { departmentPageSections } from '../../pages-page-editor';
+import { BilibiliPreviewBoundary } from './BilibiliPreviewBoundary';
 
 export interface ShowcaseProps { dept: DepartmentInfo; show: DeptShowcase }
 
@@ -74,8 +79,11 @@ function GenericShowcase({ dept }: { dept: DepartmentInfo }) {
 }
 
 export function DeptShowcasePage({ department }: { department: DepartmentInfo }) {
+  const { user } = useAuth();
   const show = showcaseBySlug[department.slug];
-  if (!show) return <GenericShowcase dept={department} />;
+  const sections: PageSectionDefinition[] = departmentPageSections(department.slug);
+  const canEdit = Boolean(user && (isExecutiveRole(user.role) || (user.role !== 'MEMBER' && user.departmentId === (department.id ?? `dept-${department.slug}`))));
+  if (!show) return <PageContentSurface pageKey={`department:${department.slug}`} sections={sections} editTo={`/admin/page-editor/department/${department.slug}`} canEdit={canEdit}><GenericShowcase dept={department} /></PageContentSurface>;
   const Themed = themed[show.slug];
-  return <><Themed dept={department} show={show} /><BlogPostBoard departmentSlug={department.slug} /></>;
+  return <BilibiliPreviewBoundary><PageContentSurface pageKey={`department:${department.slug}`} sections={sections} editTo={`/admin/page-editor/department/${department.slug}`} canEdit={canEdit}><Themed dept={department} show={show} /><div className="page-section-boundary" id="department-post-board"><BlogPostBoard departmentSlug={department.slug} /></div></PageContentSurface></BilibiliPreviewBoundary>;
 }

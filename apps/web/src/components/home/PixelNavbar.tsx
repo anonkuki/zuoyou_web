@@ -14,6 +14,7 @@ const navigation = [
   ['/departments', '职业大厅'],
   ['/activities', '冒险档案'],
   ['/works', '作品图鉴'],
+  ['/tavern', '冒险者酒馆'],
   ['/join', '加入我们'],
 ] as const;
 

@@ -13,6 +13,7 @@ import './home-scroll-story.css';
 import './home-social-outposts.css';
 import './announcements.css';
 import './blog.css';
+import './page-editor.css';
 import { App } from './app';
 
 const queryClient=new QueryClient({defaultOptions:{queries:{staleTime:20_000,retry:1}}});

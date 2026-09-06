@@ -18,11 +18,19 @@ export interface PageContentItem {
 export interface PageContentConfig {
   hiddenSectionIds: string[];
   hiddenImageUrls: string[];
+  hiddenPresetIds: string[];
   items: PageContentItem[];
   imageLinks: Array<{ imageUrl: string; linkUrl: string }>;
+  sectionOverrides: Array<{ sectionId: string; title: string; subtitle: string; description: string }>;
 }
 
-export interface PageSectionDefinition { id: string; name: string; description?: string }
+export interface PageSectionDefinition {
+  id: string;
+  name: string;
+  subtitle?: string;
+  description?: string;
+  defaultItems?: PageContentItem[];
+}
 
 export interface PageContentResponse {
   pageKey: string;
@@ -30,11 +38,20 @@ export interface PageContentResponse {
   updatedAt: string | null;
 }
 
-export const emptyPageContentConfig = (): PageContentConfig => ({ hiddenSectionIds: [], hiddenImageUrls: [], items: [], imageLinks: [] });
+export const emptyPageContentConfig = (): PageContentConfig => ({ hiddenSectionIds: [], hiddenImageUrls: [], hiddenPresetIds: [], items: [], imageLinks: [], sectionOverrides: [] });
 export const pageContentQueryKey = (pageKey: string) => ['page-content', pageKey] as const;
 const PageContentContext = createContext<PageContentConfig | null>(null);
 export const usePageContentConfig = () => useContext(PageContentContext) ?? emptyPageContentConfig();
 export const usePageSectionItems = (sectionId: string) => usePageContentConfig().items.filter(item => item.sectionId === sectionId);
+export const usePageSectionHeading = (sectionId: string, title: string, subtitle: string, description: string) => {
+  const override = usePageContentConfig().sectionOverrides.find(item => item.sectionId === sectionId);
+  return override ?? { sectionId, title, subtitle, description };
+};
+export const useEditablePresetItems = (sectionId: string, defaults: PageContentItem[]) => {
+  const config = usePageContentConfig();
+  const overrides = new Map(config.items.filter(item => item.sectionId === sectionId).map(item => [item.id, item]));
+  return defaults.map(item => overrides.get(item.id) ?? item).filter(item => !config.hiddenPresetIds.includes(item.id));
+};
 
 const integratedImageSections = new Set([
   'department-photo-gallery',
@@ -97,7 +114,7 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
   children: ReactNode;
 }) {
   const query = useQuery({ queryKey: pageContentQueryKey(pageKey), queryFn: () => api<PageContentResponse>(`/api/public/page-content/${encodeURIComponent(pageKey)}`) });
-  const config = query.data?.config ?? emptyPageContentConfig();
+  const config = { ...emptyPageContentConfig(), ...(query.data?.config ?? {}) };
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [linkPreview, setLinkPreview] = useState<{ url: string; left: number; top: number } | null>(null);
   const [imagePreview, setImagePreview] = useState<{ src: string; alt: string; left: number; top: number; width: number; height: number } | null>(null);
@@ -112,6 +129,7 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
     return result;
   }, [config.imageLinks, config.items]);
   const sectionIds = useMemo(() => sections.map(section => section.id), [sections]);
+  const presetIds = useMemo(() => new Set(sections.flatMap(section => section.defaultItems?.map(item => item.id) ?? [])), [sections]);
 
   useEffect(() => {
     const hidden = new Set(config.hiddenSectionIds);
@@ -138,6 +156,62 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
     });
     return () => changed.forEach(({ element, display }) => { element.style.display = display; });
   }, [config.hiddenImageUrls, config.items]);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    const replaceText = (root: Element, original: string | undefined, next: string) => {
+      if (!original || original === next) return;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        const value = node.nodeValue?.trim();
+        if (value === original.trim() || value?.startsWith(original.trim())) { node.nodeValue = node.nodeValue!.replace(original.trim(), next); return; }
+        node = walker.nextNode();
+      }
+    };
+    const findByImage = (section: Element, src: string) => [...section.querySelectorAll('img')].find(image => image.getAttribute('src') === src);
+    const apply = () => {
+      for (const section of sections) {
+        const root = surface.querySelector(`#${CSS.escape(section.id)}`);
+        if (!root) continue;
+        const heading = config.sectionOverrides.find(item => item.sectionId === section.id);
+        if (heading) {
+          const header = root.querySelector(':scope > header');
+          const title = header?.querySelector('h2,h3');
+          const subtitle = header?.querySelector('small');
+          const description = header?.querySelector('p');
+          if (title && title.textContent !== heading.title) title.textContent = heading.title;
+          if (subtitle && subtitle.textContent !== heading.subtitle) subtitle.textContent = heading.subtitle;
+          if (description && description.textContent !== heading.description) description.textContent = heading.description;
+        }
+        for (const preset of section.defaultItems ?? []) {
+          const override = config.items.find(item => item.id === preset.id);
+          const image = preset.imageUrl ? findByImage(root, preset.imageUrl) : undefined;
+          let target = image?.closest('article,figure,li,a,details,[role="row"],.publicity-screening-table>div') as HTMLElement | null;
+          if (!target && preset.title) {
+            const textNode = [...root.querySelectorAll('article,figure,li,a,details,[role="row"],.publicity-screening-table>div')].find(element => element.textContent?.includes(preset.title));
+            target = textNode as HTMLElement | null;
+          }
+          if (!target) continue;
+          target.dataset.pagePresetId = preset.id;
+          target.style.display = config.hiddenPresetIds.includes(preset.id) ? 'none' : '';
+          if (!override) continue;
+          if (preset.imageUrl && override.imageUrl) target.querySelectorAll('img').forEach(candidate => {
+            if (candidate.getAttribute('src') === preset.imageUrl) candidate.setAttribute('src', override.imageUrl!);
+          });
+          replaceText(target, preset.title, override.title);
+          replaceText(target, preset.body, override.body);
+          const anchor = target instanceof HTMLAnchorElement ? target : target.querySelector('a');
+          if (anchor instanceof HTMLAnchorElement && override.linkUrl) anchor.href = override.linkUrl;
+        }
+      }
+    };
+    apply();
+    const observer = new MutationObserver(() => apply());
+    observer.observe(surface, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [config.hiddenPresetIds, config.items, config.sectionOverrides, sections]);
 
   const linkForImage = (image: HTMLImageElement) => links.get(image.getAttribute('src') ?? '') ?? links.get(image.currentSrc);
   const imageFromEvent = (event: MouseEvent<HTMLDivElement>) => {
@@ -209,7 +283,7 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
 
   const itemsBySection = sections.map(section => ({
     section,
-    items: config.items.filter(item => item.sectionId === section.id
+    items: config.items.filter(item => !presetIds.has(item.id) && item.sectionId === section.id
       && !(integratedImageSections.has(section.id) && item.imageUrl)
       && !(pageKey === 'department:tech' && techFullyIntegratedSections.has(section.id))
       && !(pageKey === 'department:dance' && danceFullyIntegratedSections.has(section.id))
@@ -222,7 +296,7 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
   let linkDetails: URL | null = null;
   try { linkDetails = linkPreview ? new URL(linkPreview.url) : null; } catch { linkDetails = null; }
 
-  return <PageContentContext.Provider value={config}><div ref={surfaceRef} className="page-content-surface" onClickCapture={handleImageClick} onMouseMove={showLinkPreview} onMouseLeave={() => setLinkPreview(null)}>
+  return <PageContentContext.Provider value={config}><div ref={surfaceRef} className="page-content-surface" data-page-key={pageKey} onClickCapture={handleImageClick} onMouseMove={showLinkPreview} onMouseLeave={() => setLinkPreview(null)}>
     {children}
     {itemsBySection.map(({ section, items }) => <SectionAdditions key={section.id} sectionId={section.id} items={items} />)}
     {unmatched.length > 0 && <section className="page-managed-fallback shell"><AddedItems items={unmatched} /></section>}

@@ -132,6 +132,7 @@ const pageAssetSchema = z.string().trim().min(1).max(2000).refine((value) => {
 const pageContentConfigSchema = z.object({
   hiddenSectionIds: z.array(z.string().trim().min(1).max(80)).max(30).default([]),
   hiddenImageUrls: z.array(pageAssetSchema).max(250).default([]),
+  hiddenPresetIds: z.array(z.string().trim().min(1).max(160)).max(500).default([]),
   items: z.array(z.object({
     id: z.string().trim().min(1).max(100),
     sectionId: z.string().trim().min(1).max(80),
@@ -142,6 +143,12 @@ const pageContentConfigSchema = z.object({
     instrument: z.enum(['主唱', '吉他', '贝斯', '鼓手', '键盘']).optional(),
   }).refine((item) => Boolean(item.title || item.body || item.imageUrl), '新增内容不能全部为空')).max(100).default([]),
   imageLinks: z.array(z.object({ imageUrl: pageAssetSchema, linkUrl: externalLinkSchema })).max(250).default([]),
+  sectionOverrides: z.array(z.object({
+    sectionId: z.string().trim().min(1).max(80),
+    title: z.string().trim().max(120),
+    subtitle: z.string().trim().max(120),
+    description: z.string().trim().max(500),
+  })).max(40).default([]),
 });
 const publicAnnouncement = (row: AnnouncementRow) => ({
   id: row.id,

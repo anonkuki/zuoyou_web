@@ -804,6 +804,8 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const homeConfig = {
       hiddenSectionIds: [],
       hiddenImageUrls: [],
+      hiddenPresetIds: [],
+      sectionOverrides: [],
       items: [{ id: 'welcome-card', sectionId: 'home-entry', title: '本周活动', body: '欢迎来看看。', imageUrl: null, linkUrl: null }],
       imageLinks: [{ imageUrl: '/assets/example.webp', linkUrl: 'https://example.com/activity' }],
     };
@@ -815,8 +817,9 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     expect(publicHome.json().data.config).toEqual(homeConfig);
 
     const musicConfig = {
-      hiddenSectionIds: [], hiddenImageUrls: [], imageLinks: [],
-      items: [{ id: 'music-member', sectionId: 'music-members', title: '小音', body: '负责低音声部。', imageUrl: '/assets/member.webp', linkUrl: null, instrument: '贝斯' }],
+      hiddenSectionIds: [], hiddenImageUrls: [], hiddenPresetIds: ['preset-music-members-1'], imageLinks: [],
+      sectionOverrides: [{ sectionId: 'music-members', title: '乐队成员', subtitle: 'BAND MEMBERS', description: '不同的声音，组成同一个乐队。' }],
+      items: [{ id: 'preset-music-members-0', sectionId: 'music-members', title: '小音', body: '负责低音声部。', imageUrl: '/assets/member.webp', linkUrl: null, instrument: '贝斯' }],
     };
     expect((await app.inject({
       method: 'PUT', url: '/api/admin/page-content/department%3Amusic', headers: { cookie: adminCookie }, payload: musicConfig,
@@ -827,6 +830,8 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const departmentConfig = {
       hiddenSectionIds: ['cos-henshin'],
       hiddenImageUrls: [],
+      hiddenPresetIds: [],
+      sectionOverrides: [],
       items: [{ id: 'cos-note', sectionId: 'cos-wardrobe', title: '道具通知', body: '新增展示内容', imageUrl: '/assets/example.webp', linkUrl: null }],
       imageLinks: [],
     };

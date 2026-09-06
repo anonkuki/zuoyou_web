@@ -9,6 +9,7 @@ import { WordReveal } from '../WordReveal';
 import { PixelDivider, PixelSprite } from '../pixel';
 import { ChapterRail, entranceProps, useHeroParallax } from '../shared';
 import { usePageContentConfig, usePageSectionItems, type PageContentItem } from '../../page-content/PageContentSurface';
+import { DepartmentGuestbook } from '../TechGuestbook';
 
 type RefObject<T> = { current: T | null };
 type OriginalVideo = Pick<DepartmentVideo, 'title' | 'cover' | 'href' | 'publishedAt' | 'duration'> & { description?: string };
@@ -102,7 +103,7 @@ export function OriginalShowcase({ dept, show }: ShowcaseProps) {
     <ChapterRail accent={show.accent} items={[
       { id: 'original-gallery', no: '01', label: '作品集锦' }, { id: 'original-characters', no: '02', label: '创作设定' },
       { id: 'department-photo-gallery', no: '03', label: '创作日常' }, { id: 'department-media-shelf', no: '04', label: '作品记录' },
-      { id: 'original-toolbox', no: '05', label: '画具箱' }, { id: 'original-join', no: '06', label: '加入原创部' },
+      { id: 'original-toolbox', no: '05', label: '画具箱' }, { id: 'original-guestbook', no: '06', label: '留言板' },
       { id: 'department-post-board', no: '07', label: '原创讨论区' },
     ]} />
 
@@ -131,7 +132,8 @@ export function OriginalShowcase({ dept, show }: ShowcaseProps) {
 
     <section className="original-toolbox-section" id="original-toolbox"><OriginalTitle no="05" icon={BookOpen} title="画具箱" en="TOOLBOX" note="一些创作路上的小工具，希望能够帮到你。" /><div className="original-toolbox-grid"><div>{toolbox.map(([title, note], index) => <details key={title}><summary><span>{index % 2 ? <Link2 aria-hidden="true" /> : <Lightbulb aria-hidden="true" />}{title}</span><b>＋</b></summary><p>{note}</p></details>)}{addedTools.map(item => item.linkUrl ? <a href={item.linkUrl} target="_blank" rel="noreferrer" key={item.id}><Link2 aria-hidden="true" /><span><strong>{item.title || '新增创作资源'}</strong><small>{item.body || '打开资源'}</small></span></a> : <details key={item.id}><summary><span><Lightbulb aria-hidden="true" />{item.title || '新增创作资源'}</span><b>＋</b></summary><p>{item.body || '由原创部成员整理。'}</p></details>)}</div><aside id="original-join"><PixelSprite slug="original" /><p>加入原创部，和我们一起创造更多可能。</p><strong>当前 {dept.memberCount ?? 0} 位在编成员</strong><Link to="/join?department=dept-original">申请加入原创部 <ArrowRight aria-hidden="true" /></Link></aside></div></section>
 
-    <section className="original-message-lead"><MessageSquareText aria-hidden="true" /><div><small>06 · MESSAGE BOARD</small><h2>把作品、灵感与问题带到讨论区</h2></div><a href="#department-post-board">前往原创讨论区 <ArrowRight aria-hidden="true" /></a></section>
+    <DepartmentGuestbook slug="original" departmentId="dept-original" departmentName="原创部" number="06" />
+    <section className="original-message-lead"><MessageSquareText aria-hidden="true" /><div><small>07 · CREATIVE FORUM</small><h2>把作品、灵感与问题带到讨论区</h2></div><a href="#department-post-board">前往原创讨论区 <ArrowRight aria-hidden="true" /></a></section>
     <PixelDivider flip />
   </main>;
 }

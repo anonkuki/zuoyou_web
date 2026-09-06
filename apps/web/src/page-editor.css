@@ -31,6 +31,28 @@
 
 .page-content-surface img:not([alt=""]) { cursor: zoom-in; }
 .page-content-surface a img:not([alt=""]),.page-content-surface [data-page-linked-image] img { cursor: pointer; }
+.page-editor-heading-fields { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 12px; padding: 14px; border-bottom: 1px dashed rgba(121,91,45,.32); background: rgba(255,255,255,.3); }
+.page-editor-heading-fields textarea { min-height: 58px; resize: vertical; }
+.page-editor-preset-label { display: block; width: fit-content; margin-bottom: 8px; padding: 4px 7px; color: #f5e8c0; background: #315e62; font-size: .72rem; font-weight: 800; }
+.page-editor-item.is-preset-hidden { opacity: .64; outline: 2px dashed #a85a4a; }
+@media (max-width: 760px) { .page-editor-heading-fields { grid-template-columns: 1fr; } }
+
+/* Department-owned controls inherit the visual language of the page around them. */
+.page-content-surface[data-page-key="department:publicity"] { --page-accent: #b53a31; --page-accent-soft: #ead0a4; --forum-deep: #492d29; --forum-green: #8e352f; --forum-mid: #ad5545; --forum-gold: #d7a74f; --forum-light-gold: #f2d88e; }
+.page-content-surface[data-page-key="department:tech"] { --page-accent: #cc8934; --page-accent-soft: #d9c49a; --forum-deep: #17393a; --forum-green: #285d58; --forum-mid: #53736a; --forum-gold: #d39c45; --forum-light-gold: #f2d78e; }
+.page-content-surface[data-page-key="department:original"] { --page-accent: #4c7890; --page-accent-soft: #e7d7b7; --forum-deep: #315767; --forum-green: #426f80; --forum-mid: #63889a; --forum-gold: #c99945; --forum-light-gold: #efd592; }
+.page-content-surface[data-page-key="department:dance"] { --page-accent: #c13f78; --page-accent-soft: #ead0d8; --forum-deep: #452c48; --forum-green: #8f365f; --forum-mid: #b45b7d; --forum-gold: #d8a14f; --forum-light-gold: #f3d38b; }
+.page-content-surface[data-page-key="department:cos"] { --page-accent: #a63873; --page-accent-soft: #ead0dc; --forum-deep: #4c2945; --forum-green: #8f326b; --forum-mid: #b45186; --forum-gold: #d5a14e; --forum-light-gold: #f1d38c; }
+.page-content-surface[data-page-key="department:music"] { --page-accent: #c18d32; --page-accent-soft: #e4d1a4; --forum-deep: #173f3d; --forum-green: #2f6660; --forum-mid: #527e72; --forum-gold: #d5a446; --forum-light-gold: #f0d583; }
+.page-content-surface[data-page-key^="department:"] .page-managed-item { border-color: var(--page-accent); background: color-mix(in srgb, var(--page-accent-soft) 30%, #fff8e3); box-shadow: 5px 6px 0 color-mix(in srgb, var(--page-accent) 22%, transparent); }
+.page-content-surface[data-page-key^="department:"] .page-managed-item h3 { color: var(--page-accent); }
+.page-content-surface[data-page-key^="department:"] .page-managed-image svg { background: var(--page-accent); }
+.page-content-surface[data-page-key="department:publicity"] .forum-board { --forum-deep: #492d29; --forum-green: #8e352f; --forum-mid: #ad5545; --forum-gold: #d7a74f; --forum-light-gold: #f2d88e; }
+.page-content-surface[data-page-key="department:tech"] .forum-board { --forum-deep: #17393a; --forum-green: #285d58; --forum-mid: #53736a; --forum-gold: #d39c45; --forum-light-gold: #f2d78e; }
+.page-content-surface[data-page-key="department:original"] .forum-board { --forum-deep: #315767; --forum-green: #426f80; --forum-mid: #63889a; --forum-gold: #c99945; --forum-light-gold: #efd592; }
+.page-content-surface[data-page-key="department:dance"] .forum-board { --forum-deep: #452c48; --forum-green: #8f365f; --forum-mid: #b45b7d; --forum-gold: #d8a14f; --forum-light-gold: #f3d38b; }
+.page-content-surface[data-page-key="department:cos"] .forum-board { --forum-deep: #4c2945; --forum-green: #8f326b; --forum-mid: #b45186; --forum-gold: #d5a14e; --forum-light-gold: #f1d38c; }
+.page-content-surface[data-page-key="department:music"] .forum-board { --forum-deep: #173f3d; --forum-green: #2f6660; --forum-mid: #527e72; --forum-gold: #d5a446; --forum-light-gold: #f0d583; }
 .page-image-float-zoom { position: fixed; z-index: 1001; display: block; padding: 0; overflow: hidden; background: #0c1717; border: 2px solid #d4a94c; box-shadow: 0 22px 58px rgba(0,0,0,.48), 7px 7px 0 rgba(25,21,14,.24); cursor: zoom-out; animation: page-float-zoom-in .18s ease-out both; }
 .page-image-float-zoom img { display: block; width: 100%; height: 100%; object-fit: contain; cursor: zoom-out !important; }
 @keyframes page-float-zoom-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: scale(1); } }

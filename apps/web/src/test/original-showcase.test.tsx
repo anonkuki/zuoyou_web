@@ -19,6 +19,8 @@ describe('original department showcase', () => {
     expect(screen.getByRole('heading', { name: '一起创作的日常' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '看看我们真的做过什么' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '画具箱' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '留言板' })).toBeInTheDocument();
+    expect(screen.getByText('登录原创部成员账号后即可查看并留言。')).toBeInTheDocument();
     expect(screen.getAllByAltText(/原创部原创作品照片/)).toHaveLength(4);
     expect(screen.getAllByAltText(/原创部周常活动照片/)).toHaveLength(1);
     expect(screen.getByRole('button', { name: '上一张创作日常' })).toBeInTheDocument();
@@ -26,5 +28,6 @@ describe('original department showcase', () => {
     expect(screen.getAllByRole('button', { name: /查看第 .* 张创作日常/ })).toHaveLength(7);
     expect(screen.getByRole('button', { name: '查看下一组原创作品' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '跳转到原创讨论区' })).toHaveTextContent('07');
+    expect(screen.getByRole('button', { name: '跳转到留言板' })).toHaveTextContent('06');
   });
 });

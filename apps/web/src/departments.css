@@ -1118,6 +1118,11 @@
 .tech-guestbook-gate, .tech-guestbook-member-note { max-width: 1280px; margin: 0 auto; padding: 20px; border: 1px dashed #8e6b36; text-align: center; }
 .tech-guestbook-gate a { margin-top: 8px; }
 .page-editor .tech-guestbook { width: 100%; margin-top: 28px; border-radius: 14px; }
+.original-guestbook { color: #37464b; background-color: #f3e5c8; background-image: linear-gradient(rgba(107,78,45,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(107,78,45,.045) 1px, transparent 1px); }
+.original-guestbook > header > span, .original-guestbook > header small { color: #a27338; }
+.original-guestbook > header > span svg { color: #3f697c; }
+.original-guestbook .tech-guestbook-notes { border-color: #55717a; background: #31515a; box-shadow: inset 0 0 22px rgba(16,43,49,.45), 6px 7px 0 rgba(63,42,16,.16); }
+.original-guestbook .tech-guestbook-form button, .original-guestbook .tech-guestbook-gate a { background: #356273; }
 .page-editor-tutorial-source { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; border: 1px dashed #b89963; background: rgba(255,255,255,.35); }
 .page-editor-tutorial-source > p { grid-column: 1 / -1; margin: 0; }
 

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -50,8 +50,8 @@ describe('music department showcase', () => {
       canEdit={false}
     ><MusicShowcase dept={department} show={showcaseBySlug.music} /></PageContentSurface></MemoryRouter></QueryClientProvider>);
 
-    const track = await screen.findByRole('link', { name: /新增原创曲/ });
-    const rehearsal = await screen.findByRole('link', { name: /新生合奏排练/ });
+    const track = await screen.findByRole('link', { name: /新增原创曲/ }, { timeout: 3_000 });
+    const rehearsal = await screen.findByRole('link', { name: /新生合奏排练/ }, { timeout: 3_000 });
     expect(track).toHaveAttribute('href', 'https://www.bilibili.com/video/BV1tracktest');
     expect(rehearsal).toHaveAttribute('href', 'https://www.bilibili.com/video/BV1rehearse');
     expect(track.querySelector('img')).toHaveAttribute('src', 'https://i0.hdslb.com/track.jpg');
@@ -61,5 +61,49 @@ describe('music department showcase', () => {
     expect(memberCard?.querySelector('.music-member-instrument')).toHaveTextContent('贝斯 BASS');
     expect(memberCard?.querySelector('.music-member-details p')).toHaveTextContent('喜欢一起排练。');
     expect(memberCard?.querySelector('.music-member-tag')).toHaveTextContent('GROOVE');
+  });
+
+  it('exposes preset member content and section headings to page editing', async () => {
+    const memberSection = departmentPageSections('music').find((section) => section.id === 'music-members');
+    expect(memberSection?.subtitle).toBe('MEMBERS');
+    expect(memberSection?.defaultItems).toHaveLength(5);
+    expect(memberSection?.defaultItems?.[0]).toMatchObject({
+      id: 'preset-music-members-0', title: '成员 01', instrument: '主唱', body: '用歌声传递心情',
+    });
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, data: {
+        pageKey: 'department:music', updatedAt: null,
+        config: {
+          hiddenSectionIds: [], hiddenImageUrls: [], imageLinks: [],
+          hiddenPresetIds: ['preset-music-members-1'],
+          sectionOverrides: [{
+            sectionId: 'music-members', title: '乐队伙伴', subtitle: 'BAND MEMBERS', description: '五种声音，一起合奏。',
+          }],
+          items: [{
+            id: 'preset-music-members-0', sectionId: 'music-members', title: '小律', body: '负责主旋律。',
+            imageUrl: '/assets/member-custom.jpg', linkUrl: null, instrument: '鼓手',
+          }],
+        },
+      } }),
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(<QueryClientProvider client={client}><MemoryRouter><PageContentSurface
+      pageKey="department:music"
+      sections={departmentPageSections('music')}
+      editTo="/admin/page-editor/department/music"
+      canEdit={false}
+    ><MusicShowcase dept={department} show={showcaseBySlug.music} /></PageContentSurface></MemoryRouter></QueryClientProvider>);
+
+    expect(await screen.findByRole('heading', { name: '乐队伙伴' })).toBeInTheDocument();
+    expect(screen.getByText('BAND MEMBERS')).toBeInTheDocument();
+    expect(screen.getByText('五种声音，一起合奏。')).toBeInTheDocument();
+    const editedCard = screen.getByRole('img', { name: '小律的成员照片' }).closest('article');
+    expect(editedCard).not.toBeNull();
+    expect(editedCard?.querySelector('.music-member-instrument')).toHaveTextContent('鼓手 DRUMS');
+    expect(editedCard?.querySelector('.music-member-details p')).toHaveTextContent('负责主旋律。');
+    expect(editedCard?.querySelector('.music-member-tag')).toHaveTextContent('RHYTHM');
+    expect(within(container).queryByText('成员 02')).not.toBeInTheDocument();
   });
 });

@@ -8,7 +8,7 @@ import { ChapterRail, entranceProps, useHeroParallax } from '../shared';
 import { WordReveal } from '../WordReveal';
 import { departmentMediaBySlug, type DepartmentVideo } from '../department-media';
 import { departmentPhotosBySlug } from '../department-photos';
-import { usePageContentConfig, usePageSectionItems, type PageContentItem } from '../../page-content/PageContentSurface';
+import { useEditablePresetItems, usePageContentConfig, usePageSectionHeading, usePageSectionItems, type PageContentItem } from '../../page-content/PageContentSurface';
 import { musicLyrics } from '../showcase-data';
 
 const LINE_MS = 3200;
@@ -40,16 +40,18 @@ const managedVideo = (item: PageContentItem): MusicVideo | null => item.imageUrl
   description: item.body,
 } : null;
 
-function MusicSectionTitle({ icon: Icon, title, en, note }: {
+function MusicSectionTitle({ sectionId, icon: Icon, title, en, note }: {
+  sectionId: string;
   icon: typeof Music2;
   title: string;
   en: string;
   note: string;
 }) {
+  const heading = usePageSectionHeading(sectionId, title, en, note);
   return <header className="music-section-title">
     <span><Icon aria-hidden="true" /></span>
-    <div><h2>{title}</h2><small>{en}</small></div>
-    <p>{note}</p>
+    <div><h2>{heading.title}</h2><small>{heading.subtitle}</small></div>
+    <p>{heading.description}</p>
   </header>;
 }
 
@@ -103,7 +105,7 @@ function MusicPhotoMemories() {
   ].filter(photo => !config.hiddenImageUrls.includes(photo.src)), [config.hiddenImageUrls, config.items]);
   if (!photos.length) return null;
   return <section className="music-photo-memories" id="department-photo-gallery" aria-label="轻音部活动影像">
-    <MusicSectionTitle icon={Camera} title="活动影像" en="PHOTO MEMORIES" note="定格下的，是音乐和伙伴们的闪闪发光时刻。" />
+    <MusicSectionTitle sectionId="department-photo-gallery" icon={Camera} title="活动影像" en="PHOTO MEMORIES" note="定格下的，是音乐和伙伴们的闪闪发光时刻。" />
     <MusicCarousel className="music-photo-strip" label="活动影像">
       {photos.map((photo, index) => <figure className={index === 0 ? 'is-featured' : ''} key={photo.src}>
         <img src={photo.src} alt={photo.alt} loading={index === 0 ? 'eager' : 'lazy'} decoding="async" />
@@ -120,11 +122,13 @@ export function MusicShowcase({ dept, show }: ShowcaseProps) {
   const reduce = useReducedMotion();
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLOListElement>(null);
-  const config = usePageContentConfig();
-  const addedMembers = usePageSectionItems('music-members').filter(item => item.imageUrl);
-  const addedTracks = usePageSectionItems('music-tracklist').map(managedVideo).filter((item): item is MusicVideo => Boolean(item));
+  const defaultMembers: PageContentItem[] = memberSeats.map((member, index) => ({ id: `preset-music-members-${index}`, sectionId: 'music-members', title: member.name, body: member.note, imageUrl: show.films[index % show.films.length].cover, linkUrl: null, instrument: member.instrument }));
+  const members = useEditablePresetItems('music-members', defaultMembers);
+  const addedMembers = usePageSectionItems('music-members').filter(item => !item.id.startsWith('preset-') && item.imageUrl);
+  const defaultTracks: PageContentItem[] = (departmentMediaBySlug.music.videos ?? []).map((video, index) => ({ id: `preset-music-tracklist-${index}`, sectionId: 'music-tracklist', title: video.title, body: video.note, imageUrl: video.cover, linkUrl: video.href }));
+  const presetTracks = useEditablePresetItems('music-tracklist', defaultTracks).map((item, index) => ({ ...managedVideo(item)!, publishedAt: departmentMediaBySlug.music.videos?.[index]?.publishedAt ?? 'NEW', duration: departmentMediaBySlug.music.videos?.[index]?.duration ?? 'BILIBILI' }));
+  const addedTracks = usePageSectionItems('music-tracklist').filter(item => !item.id.startsWith('preset-')).map(managedVideo).filter((item): item is MusicVideo => Boolean(item));
   const addedRehearsals = usePageSectionItems('music-rehearsal').map(managedVideo).filter((item): item is MusicVideo => Boolean(item));
-  const officialTracks = (departmentMediaBySlug.music.videos ?? []).filter(video => !config.hiddenImageUrls.includes(video.cover));
   const progress = active / (musicLyrics.length - 1);
   const vinylCover = show.films[active % show.films.length];
 
@@ -183,29 +187,17 @@ export function MusicShowcase({ dept, show }: ShowcaseProps) {
     <PixelDivider />
 
     <section className="music-members" id="music-members">
-      <MusicSectionTitle icon={Users} title="成员配置卡" en="MEMBERS" note="不同的声音，组成同一个乐队。" />
+      <MusicSectionTitle sectionId="music-members" icon={Users} title="成员配置卡" en="MEMBERS" note="不同的声音，组成同一个乐队。" />
       <MusicCarousel className="music-member-grid" label="成员配置卡">
-        {memberSeats.map((member, index) => {
-          const meta = instrumentMeta[member.instrument];
-          return <article className="music-member-card" key={member.instrument}>
-            <img src={show.films[index % show.films.length].cover} alt={`${member.name}的成员照片`} loading="lazy" decoding="async" />
-            <strong className="music-member-name">{member.name}</strong>
-            <div className="music-member-details">
-              <strong className="music-member-instrument">{member.instrument} <small>{meta.en}</small></strong>
-              <p>{member.note}</p>
-            </div>
-            <span className="music-member-tag">{meta.tag}</span>
-          </article>;
-        })}
-        {addedMembers.map(item => {
-          const instrument = item.instrument ?? '主唱';
+        {[...members, ...addedMembers].map(member => {
+          const instrument = member.instrument ?? '主唱';
           const meta = instrumentMeta[instrument];
-          return <article className="music-member-card is-managed" key={item.id}>
-            <img src={item.imageUrl!} alt={item.title || '新增成员'} loading="lazy" decoding="async" />
-            <strong className="music-member-name">{item.title || '新增成员'}</strong>
+          return <article className={`music-member-card${member.id.startsWith('preset-') ? '' : ' is-managed'}`} key={member.id}>
+            <img src={member.imageUrl!} alt={member.id.startsWith('preset-') ? `${member.title || '成员'}的成员照片` : member.title || '新增成员'} loading="lazy" decoding="async" />
+            <strong className="music-member-name">{member.title || '新增成员'}</strong>
             <div className="music-member-details">
               <strong className="music-member-instrument">{instrument} <small>{meta.en}</small></strong>
-              <p>{item.body || '这位成员还没有填写个人介绍。'}</p>
+              <p>{member.body || '这位成员还没有填写个人介绍。'}</p>
             </div>
             <span className="music-member-tag">{meta.tag}</span>
           </article>;
@@ -214,12 +206,12 @@ export function MusicShowcase({ dept, show }: ShowcaseProps) {
     </section>
 
     <section className="music-original-tracks" id="music-tracklist">
-      <MusicSectionTitle icon={Music2} title="原创曲目" en="ORIGINAL TRACKS" note="我们的声音，也在不断生长。" />
-      <MusicVideoCards videos={[...addedTracks, ...officialTracks]} />
+      <MusicSectionTitle sectionId="music-tracklist" icon={Music2} title="原创曲目" en="ORIGINAL TRACKS" note="我们的声音，也在不断生长。" />
+      <MusicVideoCards videos={[...presetTracks, ...addedTracks]} />
     </section>
 
     <section className="music-rehearsal-archive" id="music-rehearsal">
-      <MusicSectionTitle icon={CalendarDays} title="排练视频" en="REHEARSAL ARCHIVE" note="从排练室到舞台，每一次练习都促成成长。" />
+      <MusicSectionTitle sectionId="music-rehearsal" icon={CalendarDays} title="排练视频" en="REHEARSAL ARCHIVE" note="从排练室到舞台，每一次练习都促成成长。" />
       <MusicVideoCards videos={addedRehearsals} wide />
     </section>
 

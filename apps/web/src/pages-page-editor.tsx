@@ -44,6 +44,16 @@ export const homePageSections: PageSectionDefinition[] = [
 export function departmentPageSections(slug: string): PageSectionDefinition[] {
   const show = showcaseBySlug[slug];
   const ids = departmentSectionIds[slug] ?? [];
+  if (slug === 'publicity') return [
+    { id: 'publicity-show', name: '正在上映', description: '近期片单与放映内容轮播' },
+    { id: 'publicity-films', name: '年度片单', description: '年度动画片单与介绍' },
+    { id: 'department-photo-gallery', name: '放映、记录与社团现场', description: '外宣与幻想研全部活动照片轮播' },
+    { id: 'publicity-media-wall', name: '推文／海报墙', description: '公众号推文、活动海报与外部链接' },
+    { id: 'publicity-reviews', name: '幻想研影评专栏', description: '影评标题、封面、摘要与阅读全文链接' },
+    { id: 'publicity-screenings', name: '番看会放映记录', description: '放映时间、主题和活动记录' },
+    { id: 'publicity-press', name: '场刊', description: '选题、投稿、排版与海报资源' },
+    { id: 'department-post-board', name: '外宣＆幻想研讨论区', description: '置顶帖与普通帖子' },
+  ];
   if (slug === 'tech') return [
     { id: 'tech-focus', name: '技术部主视觉', description: 'TECH DEPARTMENT' },
     { id: 'tech-sheet', name: '底片夹', description: '技术部精选底片横向轮播' },
@@ -72,6 +82,16 @@ export function departmentPageSections(slug: string): PageSectionDefinition[] {
     { id: 'original-toolbox', name: '画具箱', description: '创作教程、投稿规范和外部资源' },
     { id: 'original-join', name: '加入原创部', description: '部门介绍与加入入口' },
     { id: 'department-post-board', name: '原创讨论区', description: '置顶帖与普通帖子' },
+  ];
+  if (slug === 'cos') return [
+    { id: 'cos-mirror', name: 'COS部主视觉', description: '保留原有镜中变身版头' },
+    { id: 'cos-henshin', name: '变身记录', description: '定妆照、角色名称与介绍' },
+    { id: 'department-photo-gallery', name: '镜头里的角色与伙伴', description: 'COS部全部活动照片轮播' },
+    { id: 'department-media-shelf', name: '作品记录', description: '粘贴 B 站链接，自动获取视频封面和标题' },
+    { id: 'cos-conventions', name: '漫展出展', description: '出展计划、活动信息与相关链接' },
+    { id: 'cos-wardrobe', name: '衣装间', description: '服装、妆造、道具与返图资源' },
+    { id: 'cos-join', name: '加入 COS 部', description: '部门介绍与加入入口' },
+    { id: 'department-post-board', name: 'COS部讨论区', description: '置顶帖与普通帖子' },
   ];
   const themed = slug === 'music'
     ? [
@@ -227,7 +247,7 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
                   {['主唱', '吉他', '贝斯', '鼓手', '键盘'].map(instrument => <option value={instrument} key={instrument}>{instrument}</option>)}
                 </select></Field>}
                 <Field label={isMusicMember ? '介绍你自己' : '正文'}><textarea value={item.body} maxLength={4000} rows={4} onChange={event => updateItem(item.id, { body: event.target.value })} /></Field>
-                {scope === 'department' && ((slug === 'music' && bilibiliVideoSectionIds.has(section.id)) || (slug === 'tech' && section.id === 'department-media-shelf')) ? <div className="page-editor-video-source">
+                {scope === 'department' && ((slug === 'music' && bilibiliVideoSectionIds.has(section.id)) || (['tech', 'cos'].includes(slug) && section.id === 'department-media-shelf')) ? <div className="page-editor-video-source">
                   <Field label="B站视频链接"><input value={item.linkUrl ?? ''} placeholder="https://www.bilibili.com/video/BV..." onChange={event => updateItem(item.id, { linkUrl: event.target.value || null })} onBlur={event => void fetchBilibiliPreview(item.id, event.target.value)} /></Field>
                   <button type="button" onClick={() => void fetchBilibiliPreview(item.id, item.linkUrl ?? '')} disabled={!item.linkUrl || videoLoadingId === item.id}>{videoLoadingId === item.id ? '正在读取…' : '自动获取封面与标题'}</button>
                   {item.imageUrl && <div className="page-editor-video-preview"><img src={item.imageUrl} alt="" referrerPolicy="no-referrer" /><strong>{item.title || '已读取视频'}</strong></div>}

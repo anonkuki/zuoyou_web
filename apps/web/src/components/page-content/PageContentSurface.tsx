@@ -55,6 +55,13 @@ const danceFullyIntegratedSections = new Set([
 const originalFullyIntegratedSections = new Set([
   'original-gallery', 'original-characters', 'department-photo-gallery', 'department-media-shelf', 'original-toolbox',
 ]);
+const cosFullyIntegratedSections = new Set([
+  'cos-henshin', 'department-photo-gallery', 'department-media-shelf', 'cos-conventions', 'cos-wardrobe',
+]);
+const publicityFullyIntegratedSections = new Set([
+  'publicity-show', 'publicity-films', 'department-photo-gallery', 'publicity-media-wall',
+  'publicity-reviews', 'publicity-screenings', 'publicity-press',
+]);
 
 function AddedItems({ items }: { items: PageContentItem[] }) {
   if (!items.length) return null;
@@ -206,7 +213,9 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
       && !(integratedImageSections.has(section.id) && item.imageUrl)
       && !(pageKey === 'department:tech' && techFullyIntegratedSections.has(section.id))
       && !(pageKey === 'department:dance' && danceFullyIntegratedSections.has(section.id))
-      && !(pageKey === 'department:original' && originalFullyIntegratedSections.has(section.id))),
+      && !(pageKey === 'department:original' && originalFullyIntegratedSections.has(section.id))
+      && !(pageKey === 'department:cos' && cosFullyIntegratedSections.has(section.id))
+      && !(pageKey === 'department:publicity' && publicityFullyIntegratedSections.has(section.id))),
   }));
   const unmatched = config.items.filter(item => !sectionIds.includes(item.sectionId));
 

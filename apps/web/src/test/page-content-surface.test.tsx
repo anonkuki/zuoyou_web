@@ -27,10 +27,12 @@ describe('editable page image presentation', () => {
       pageKey="department:cos"
       sections={[{ id: 'department-photo-gallery', name: '部门照片展示' }]}
       editTo="/admin/page-editor/department/cos"
+      historyTo="/page-history/department/cos"
       canEdit={false}
     ><DepartmentPhotoGallery slug="cos" /></PageContentSurface></MemoryRouter></QueryClientProvider>);
 
     const gallery = await screen.findByRole('region', { name: 'COS部照片实录' });
+    expect(screen.getByRole('link', { name: '历史页面' })).toHaveAttribute('href', '/page-history/department/cos');
     expect(await within(gallery).findByText('1 / 8', { exact: true })).toBeInTheDocument();
     expect(within(gallery).getByRole('button', { name: '查看第 8 张照片：编辑器新增照片' })).toBeInTheDocument();
     expect(screen.queryByText('相册说明')).not.toBeInTheDocument();
@@ -51,5 +53,32 @@ describe('editable page image presentation', () => {
     expect(within(preview).getByRole('img', { name: '编辑器新增照片' })).toBeInTheDocument();
     await userEvent.click(preview);
     expect(screen.queryByRole('dialog', { name: '图片悬浮预览' })).not.toBeInTheDocument();
+  });
+
+  it('renders a historical snapshot in place with a persistent return notice', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, data: {
+        pageKey: 'department:cos',
+        config: {
+          hiddenSectionIds: [], hiddenImageUrls: [], hiddenPresetIds: [], items: [], imageLinks: [], sectionOverrides: [],
+        },
+        revision: { id: 'revision-7', revisionNo: 7, changeType: 'UPDATE', createdAt: '2026-09-06T08:00:00.000Z' },
+      } }),
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/departments/cos?historyVersion=revision-7']}><PageContentSurface
+      pageKey="department:cos"
+      sections={[]}
+      editTo="/admin/page-editor/department/cos"
+      historyTo="/page-history/department/cos"
+      canEdit
+    ><section>历史版本页面内容</section></PageContentSurface></MemoryRouter></QueryClientProvider>);
+
+    const notice = await screen.findByText('你正在查看历史版本');
+    expect(notice.closest('.page-history-preview-banner')?.parentElement).toBe(document.body);
+    expect(await screen.findByText('版本 7', { exact: false })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '点击返回' })).toHaveAttribute('href', '/page-history/department/cos');
+    expect(screen.queryByRole('link', { name: '编辑页面' })).not.toBeInTheDocument();
   });
 });

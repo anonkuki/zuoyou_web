@@ -721,6 +721,7 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
   let app: FastifyInstance;
   let root: string;
   let adminCookie: string;
+  let viceCookie: string;
   let leadCookie: string;
   let techLeadCookie: string;
   let memberCookie: string;
@@ -734,6 +735,7 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
       sessionSecret: 'integration-test-secret-that-is-long',
     });
     adminCookie = await login(app, 'admin', 'DemoAdmin!2026');
+    viceCookie = await login(app, 'vice.president', 'DemoVice!2026');
     leadCookie = await login(app, 'cos.lead', 'DemoLead!2026');
     const { sqlite } = await openDatabase(`${root}/guild.sqlite`);
     const leadPassword = sqlite.prepare("SELECT password_hash FROM users WHERE id='user-lead'").get() as { password_hash: string };
@@ -816,6 +818,46 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const publicHome = await app.inject({ method: 'GET', url: '/api/public/page-content/home' });
     expect(publicHome.json().data.config).toEqual(homeConfig);
 
+    const updatedHomeConfig = {
+      ...homeConfig,
+      hiddenSectionIds: ['home-tavern'],
+      items: [{ ...homeConfig.items[0], body: '本周活动安排已经更新。' }],
+    };
+    expect((await app.inject({
+      method: 'PUT', url: '/api/admin/page-content/home', headers: { cookie: adminCookie }, payload: updatedHomeConfig,
+    })).statusCode).toBe(200);
+    const publicHistory = await app.inject({ method: 'GET', url: '/api/public/page-content/home/history?page=1&pageSize=20' });
+    expect(publicHistory.statusCode).toBe(200);
+    expect(publicHistory.json().data.total).toBe(2);
+    expect(publicHistory.json().data.items[0]).toMatchObject({
+      revisionNo: 2,
+      changeType: 'UPDATE',
+      actor: { displayName: '星门总管' },
+      changedSections: expect.arrayContaining([
+        expect.objectContaining({ sectionId: 'home-entry', changeKinds: expect.arrayContaining(['ITEMS']) }),
+        expect.objectContaining({ sectionId: 'home-tavern', changeKinds: expect.arrayContaining(['VISIBILITY']) }),
+      ]),
+    });
+    const firstRevisionId = publicHistory.json().data.items[1].id as string;
+    const historicalSnapshot = await app.inject({ method: 'GET', url: `/api/public/page-content/home/history/${firstRevisionId}` });
+    expect(historicalSnapshot.statusCode).toBe(200);
+    expect(historicalSnapshot.json().data).toMatchObject({
+      pageKey: 'home', config: homeConfig, revision: { id: firstRevisionId, revisionNo: 1, changeType: 'UPDATE' },
+    });
+    expect((await app.inject({
+      method: 'POST', url: `/api/admin/page-content/home/history/${firstRevisionId}/restore`, headers: { cookie: leadCookie },
+    })).statusCode).toBe(403);
+    const restored = await app.inject({
+      method: 'POST', url: `/api/admin/page-content/home/history/${firstRevisionId}/restore`, headers: { cookie: viceCookie },
+    });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json().data.config).toEqual(homeConfig);
+    const historyAfterRestore = await app.inject({ method: 'GET', url: '/api/public/page-content/home/history?page=1&pageSize=20' });
+    expect(historyAfterRestore.json().data.items[0]).toMatchObject({
+      revisionNo: 3, changeType: 'RESTORE', restoredFromId: firstRevisionId, restoredFromRevisionNo: 1,
+    });
+    expect((await app.inject({ method: 'GET', url: '/api/public/page-content/home' })).json().data.config).toEqual(homeConfig);
+
     const musicConfig = {
       hiddenSectionIds: [], hiddenImageUrls: [], hiddenPresetIds: ['preset-music-members-1'], imageLinks: [],
       sectionOverrides: [{ sectionId: 'music-members', title: '乐队成员', subtitle: 'BAND MEMBERS', description: '不同的声音，组成同一个乐队。' }],
@@ -838,6 +880,11 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     expect((await app.inject({
       method: 'PUT', url: '/api/admin/page-content/department%3Acos', headers: { cookie: leadCookie }, payload: departmentConfig,
     })).statusCode).toBe(200);
+    const cosHistory = await app.inject({ method: 'GET', url: '/api/public/page-content/department%3Acos/history?page=1&pageSize=20' });
+    const cosRevisionId = cosHistory.json().data.items[0].id as string;
+    expect((await app.inject({
+      method: 'POST', url: `/api/admin/page-content/department%3Acos/history/${cosRevisionId}/restore`, headers: { cookie: leadCookie },
+    })).statusCode).toBe(403);
     expect((await app.inject({
       method: 'PUT', url: '/api/admin/page-content/department%3Atech', headers: { cookie: leadCookie }, payload: departmentConfig,
     })).statusCode).toBe(403);

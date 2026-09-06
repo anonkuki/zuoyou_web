@@ -47,6 +47,7 @@ describe('music department showcase', () => {
       pageKey="department:music"
       sections={departmentPageSections('music')}
       editTo="/admin/page-editor/department/music"
+      historyTo="/page-history/department/music"
       canEdit={false}
     ><MusicShowcase dept={department} show={showcaseBySlug.music} /></PageContentSurface></MemoryRouter></QueryClientProvider>);
 
@@ -93,6 +94,7 @@ describe('music department showcase', () => {
       pageKey="department:music"
       sections={departmentPageSections('music')}
       editTo="/admin/page-editor/department/music"
+      historyTo="/page-history/department/music"
       canEdit={false}
     ><MusicShowcase dept={department} show={showcaseBySlug.music} /></PageContentSurface></MemoryRouter></QueryClientProvider>);
 

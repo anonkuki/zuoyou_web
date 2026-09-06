@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
-import { ExternalLink, Pencil } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { ExternalLink, History, Pencil } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../api';
 
 export interface PageContentItem {
@@ -36,6 +36,12 @@ export interface PageContentResponse {
   pageKey: string;
   config: PageContentConfig;
   updatedAt: string | null;
+}
+
+interface PageContentRevisionResponse {
+  pageKey: string;
+  config: PageContentConfig;
+  revision: { id: string; revisionNo: number; changeType: 'BASELINE' | 'UPDATE' | 'RESTORE'; createdAt: string };
 }
 
 export const emptyPageContentConfig = (): PageContentConfig => ({ hiddenSectionIds: [], hiddenImageUrls: [], hiddenPresetIds: [], items: [], imageLinks: [], sectionOverrides: [] });
@@ -106,15 +112,24 @@ function SectionAdditions({ sectionId, items }: { sectionId: string; items: Page
   return host ? createPortal(<AddedItems items={items} />, host) : null;
 }
 
-export function PageContentSurface({ pageKey, sections, editTo, canEdit, children }: {
+export function PageContentSurface({ pageKey, sections, editTo, historyTo, canEdit, children }: {
   pageKey: string;
   sections: PageSectionDefinition[];
   editTo: string;
+  historyTo: string;
   canEdit: boolean;
   children: ReactNode;
 }) {
-  const query = useQuery({ queryKey: pageContentQueryKey(pageKey), queryFn: () => api<PageContentResponse>(`/api/public/page-content/${encodeURIComponent(pageKey)}`) });
-  const config = { ...emptyPageContentConfig(), ...(query.data?.config ?? {}) };
+  const [searchParams] = useSearchParams();
+  const revisionId = searchParams.get('historyVersion');
+  const query = useQuery({ queryKey: pageContentQueryKey(pageKey), queryFn: () => api<PageContentResponse>(`/api/public/page-content/${encodeURIComponent(pageKey)}`), enabled: !revisionId });
+  const revisionQuery = useQuery({
+    queryKey: ['page-content-revision', pageKey, revisionId],
+    queryFn: () => api<PageContentRevisionResponse>(`/api/public/page-content/${encodeURIComponent(pageKey)}/history/${encodeURIComponent(revisionId ?? '')}`),
+    enabled: Boolean(revisionId),
+    retry: false,
+  });
+  const config = { ...emptyPageContentConfig(), ...((revisionId ? revisionQuery.data?.config : query.data?.config) ?? {}) };
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [linkPreview, setLinkPreview] = useState<{ url: string; left: number; top: number } | null>(null);
   const [imagePreview, setImagePreview] = useState<{ src: string; alt: string; left: number; top: number; width: number; height: number } | null>(null);
@@ -300,7 +315,18 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
     {children}
     {itemsBySection.map(({ section, items }) => <SectionAdditions key={section.id} sectionId={section.id} items={items} />)}
     {unmatched.length > 0 && <section className="page-managed-fallback shell"><AddedItems items={unmatched} /></section>}
-    {canEdit && <div className="page-edit-entry shell"><Link className="guild-button" to={editTo}><Pencil aria-hidden="true" /> 编辑页面</Link></div>}
+    {!revisionId && <div className="page-content-entries shell">
+      {canEdit && <Link className="guild-button" to={editTo}><Pencil aria-hidden="true" /> 编辑页面</Link>}
+      <Link className="guild-button page-history-button" to={historyTo}><History aria-hidden="true" /> 历史页面</Link>
+    </div>}
+    {revisionId && createPortal(<aside className={`page-history-preview-banner${revisionQuery.isError ? ' is-error' : ''}`} role="status">
+      <div>
+        <History aria-hidden="true" />
+        <span>{revisionQuery.isError ? '历史版本读取失败' : '你正在查看历史版本'}</span>
+        {revisionQuery.data && <small>版本 {revisionQuery.data.revision.revisionNo} · {new Date(revisionQuery.data.revision.createdAt).toLocaleString('zh-CN')}</small>}
+      </div>
+      <Link to={historyTo}>点击返回</Link>
+    </aside>, document.body)}
     {linkPreview && linkDetails && createPortal(<aside className="page-link-preview" style={{ left: linkPreview.left, top: linkPreview.top }} role="status">
       <span><ExternalLink aria-hidden="true" /> EXTERNAL LINK</span>
       <strong>{linkDetails.hostname.replace(/^www\./, '')}</strong>

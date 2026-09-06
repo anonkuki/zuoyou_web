@@ -150,6 +150,43 @@ const pageContentConfigSchema = z.object({
     description: z.string().trim().max(500),
   })).max(40).default([]),
 });
+type PageContentConfig = z.infer<typeof pageContentConfigSchema>;
+type PageRevisionChangeKind = 'INITIAL' | 'VISIBILITY' | 'CONTENT' | 'ITEMS' | 'IMAGES';
+interface PageRevisionChange { sectionId: string; changeKinds: PageRevisionChangeKind[] }
+
+const changedPageSections = (before: PageContentConfig, after: PageContentConfig): PageRevisionChange[] => {
+  const sectionIds = new Set<string>([
+    ...before.hiddenSectionIds, ...after.hiddenSectionIds,
+    ...before.sectionOverrides.map((item) => item.sectionId), ...after.sectionOverrides.map((item) => item.sectionId),
+    ...before.items.map((item) => item.sectionId), ...after.items.map((item) => item.sectionId),
+  ]);
+  const presetSection = (id: string) => id.match(/^preset-(.+)-\d+$/)?.[1];
+  [...before.hiddenPresetIds, ...after.hiddenPresetIds].forEach((id) => {
+    const sectionId = presetSection(id);
+    if (sectionId) sectionIds.add(sectionId);
+  });
+  const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+  const changes: PageRevisionChange[] = [];
+  for (const sectionId of sectionIds) {
+    const changeKinds: PageRevisionChangeKind[] = [];
+    const beforeVisibility = {
+      hidden: before.hiddenSectionIds.includes(sectionId),
+      presets: before.hiddenPresetIds.filter((id) => presetSection(id) === sectionId),
+    };
+    const afterVisibility = {
+      hidden: after.hiddenSectionIds.includes(sectionId),
+      presets: after.hiddenPresetIds.filter((id) => presetSection(id) === sectionId),
+    };
+    if (!same(beforeVisibility, afterVisibility)) changeKinds.push('VISIBILITY');
+    if (!same(before.sectionOverrides.filter((item) => item.sectionId === sectionId), after.sectionOverrides.filter((item) => item.sectionId === sectionId))) changeKinds.push('CONTENT');
+    if (!same(before.items.filter((item) => item.sectionId === sectionId), after.items.filter((item) => item.sectionId === sectionId))) changeKinds.push('ITEMS');
+    if (changeKinds.length) changes.push({ sectionId, changeKinds });
+  }
+  if (!same(before.hiddenImageUrls, after.hiddenImageUrls) || !same(before.imageLinks, after.imageLinks)) {
+    changes.push({ sectionId: 'page-images', changeKinds: ['IMAGES'] });
+  }
+  return changes;
+};
 const publicAnnouncement = (row: AnnouncementRow) => ({
   id: row.id,
   title: row.title,
@@ -422,6 +459,60 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     if (!department) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
     return successResponse({ department });
   });
+  app.get('/api/public/page-content/:pageKey/history', async (request) => {
+    const pageKey = parse(pageKeySchema, (request.params as { pageKey: string }).pageKey);
+    if (pageKey.startsWith('department:')) {
+      const slug = pageKey.slice('department:'.length);
+      if (!sqlite.prepare('SELECT 1 FROM departments WHERE slug=?').get(slug)) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
+    }
+    const paging = getPaging(request.query);
+    const rows = sqlite.prepare(`SELECT r.id,r.revision_no,r.changed_sections_json,r.change_type,r.restored_from_id,r.created_at,
+      u.id actor_id,u.uid actor_uid,u.display_name actor_name,source.revision_no restored_from_revision_no
+      FROM page_content_revisions r
+      LEFT JOIN users u ON u.id=r.created_by
+      LEFT JOIN page_content_revisions source ON source.id=r.restored_from_id
+      WHERE r.page_key=? ORDER BY r.revision_no DESC LIMIT ? OFFSET ?`)
+      .all(pageKey, paging.pageSize, paging.offset) as Array<{
+        id: string; revision_no: number; changed_sections_json: string; change_type: 'BASELINE' | 'UPDATE' | 'RESTORE';
+        restored_from_id: string | null; created_at: string; actor_id: string | null; actor_uid: string | null;
+        actor_name: string | null; restored_from_revision_no: number | null;
+      }>;
+    const total = (sqlite.prepare('SELECT COUNT(*) count FROM page_content_revisions WHERE page_key=?').get(pageKey) as { count: number }).count;
+    return successResponse(pageData(rows.map((row) => ({
+      id: row.id,
+      revisionNo: row.revision_no,
+      changeType: row.change_type,
+      restoredFromId: row.restored_from_id,
+      restoredFromRevisionNo: row.restored_from_revision_no,
+      changedSections: JSON.parse(row.changed_sections_json) as PageRevisionChange[],
+      createdAt: row.created_at,
+      actor: row.actor_id ? { id: row.actor_id, uid: row.actor_uid, displayName: row.actor_name } : null,
+    })), total, paging.page, paging.pageSize));
+  });
+  app.get('/api/public/page-content/:pageKey/history/:revisionId', async (request) => {
+    const pageKey = parse(pageKeySchema, (request.params as { pageKey: string }).pageKey);
+    const { revisionId } = request.params as { revisionId: string };
+    if (pageKey.startsWith('department:')) {
+      const slug = pageKey.slice('department:'.length);
+      if (!sqlite.prepare('SELECT 1 FROM departments WHERE slug=?').get(slug)) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
+    }
+    const row = sqlite.prepare(`SELECT r.id,r.revision_no,r.config_json,r.change_type,r.created_at,
+      u.uid actor_uid,u.display_name actor_name
+      FROM page_content_revisions r LEFT JOIN users u ON u.id=r.created_by
+      WHERE r.id=? AND r.page_key=?`).get(revisionId, pageKey) as {
+        id: string; revision_no: number; config_json: string; change_type: 'BASELINE' | 'UPDATE' | 'RESTORE';
+        created_at: string; actor_uid: string | null; actor_name: string | null;
+      } | undefined;
+    if (!row) throw new HttpError(404, 'NOT_FOUND', '找不到这条页面修改记录');
+    return successResponse({
+      pageKey,
+      config: pageContentConfigSchema.parse(JSON.parse(row.config_json)),
+      revision: {
+        id: row.id, revisionNo: row.revision_no, changeType: row.change_type, createdAt: row.created_at,
+        actor: row.actor_name ? { uid: row.actor_uid, displayName: row.actor_name } : null,
+      },
+    });
+  });
   app.get('/api/public/page-content/:pageKey', async (request) => {
     const pageKey = parse(pageKeySchema, (request.params as { pageKey: string }).pageKey);
     if (pageKey.startsWith('department:')) {
@@ -439,13 +530,51 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     pageEditScope(principal, pageKey);
     const config = parse(pageContentConfigSchema, request.body);
     const timestamp = now();
-    sqlite.prepare(`INSERT INTO page_content_configs(page_key,config_json,updated_by,updated_at) VALUES (?,?,?,?)
-      ON CONFLICT(page_key) DO UPDATE SET config_json=excluded.config_json,updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
-      .run(pageKey, JSON.stringify(config), principal.id, timestamp);
-    audit(sqlite, principal.id, 'PAGE_CONTENT_UPDATED', 'page_content', pageKey, null, {
-      hiddenSectionCount: config.hiddenSectionIds.length, hiddenImageCount: config.hiddenImageUrls.length, itemCount: config.items.length, imageLinkCount: config.imageLinks.length,
-    });
+    sqlite.transaction(() => {
+      const previousRow = sqlite.prepare('SELECT config_json FROM page_content_configs WHERE page_key=?').get(pageKey) as { config_json: string } | undefined;
+      const previous = previousRow ? pageContentConfigSchema.parse(JSON.parse(previousRow.config_json)) : pageContentConfigSchema.parse({});
+      sqlite.prepare(`INSERT INTO page_content_configs(page_key,config_json,updated_by,updated_at) VALUES (?,?,?,?)
+        ON CONFLICT(page_key) DO UPDATE SET config_json=excluded.config_json,updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
+        .run(pageKey, JSON.stringify(config), principal.id, timestamp);
+      const revisionNo = (sqlite.prepare('SELECT COALESCE(MAX(revision_no),0)+1 revision_no FROM page_content_revisions WHERE page_key=?').get(pageKey) as { revision_no: number }).revision_no;
+      const revisionId = newId('page-revision');
+      sqlite.prepare(`INSERT INTO page_content_revisions(id,page_key,revision_no,config_json,changed_sections_json,change_type,created_by,created_at)
+        VALUES (?,?,?,?,?,'UPDATE',?,?)`)
+        .run(revisionId, pageKey, revisionNo, JSON.stringify(config), JSON.stringify(changedPageSections(previous, config)), principal.id, timestamp);
+      audit(sqlite, principal.id, 'PAGE_CONTENT_UPDATED', 'page_content', pageKey, null, {
+        revisionId, revisionNo, hiddenSectionCount: config.hiddenSectionIds.length, hiddenImageCount: config.hiddenImageUrls.length, itemCount: config.items.length, imageLinkCount: config.imageLinks.length,
+      });
+    })();
     return successResponse({ pageKey, config, updatedAt: timestamp });
+  });
+  app.post('/api/admin/page-content/:pageKey/history/:revisionId/restore', async (request, reply) => {
+    const principal = requireAdmin(request, reply);
+    if (!principal) return;
+    const pageKey = parse(pageKeySchema, (request.params as { pageKey: string }).pageKey);
+    const { revisionId } = request.params as { revisionId: string };
+    pageEditScope(principal, pageKey);
+    const target = sqlite.prepare('SELECT id,revision_no,config_json FROM page_content_revisions WHERE id=? AND page_key=?')
+      .get(revisionId, pageKey) as { id: string; revision_no: number; config_json: string } | undefined;
+    if (!target) throw new HttpError(404, 'NOT_FOUND', '找不到这条页面修改记录');
+    const config = pageContentConfigSchema.parse(JSON.parse(target.config_json));
+    const timestamp = now();
+    let createdRevisionNo = 0;
+    sqlite.transaction(() => {
+      const currentRow = sqlite.prepare('SELECT config_json FROM page_content_configs WHERE page_key=?').get(pageKey) as { config_json: string } | undefined;
+      const current = currentRow ? pageContentConfigSchema.parse(JSON.parse(currentRow.config_json)) : pageContentConfigSchema.parse({});
+      sqlite.prepare(`INSERT INTO page_content_configs(page_key,config_json,updated_by,updated_at) VALUES (?,?,?,?)
+        ON CONFLICT(page_key) DO UPDATE SET config_json=excluded.config_json,updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
+        .run(pageKey, JSON.stringify(config), principal.id, timestamp);
+      createdRevisionNo = (sqlite.prepare('SELECT COALESCE(MAX(revision_no),0)+1 revision_no FROM page_content_revisions WHERE page_key=?').get(pageKey) as { revision_no: number }).revision_no;
+      const restoreRevisionId = newId('page-revision');
+      sqlite.prepare(`INSERT INTO page_content_revisions(id,page_key,revision_no,config_json,changed_sections_json,change_type,restored_from_id,created_by,created_at)
+        VALUES (?,?,?,?,?,'RESTORE',?,?,?)`)
+        .run(restoreRevisionId, pageKey, createdRevisionNo, JSON.stringify(config), JSON.stringify(changedPageSections(current, config)), target.id, principal.id, timestamp);
+      audit(sqlite, principal.id, 'PAGE_CONTENT_RESTORED', 'page_content', pageKey, null, {
+        revisionId: restoreRevisionId, revisionNo: createdRevisionNo, restoredFromId: target.id, restoredFromRevisionNo: target.revision_no,
+      });
+    })();
+    return successResponse({ pageKey, config, updatedAt: timestamp, revisionNo: createdRevisionNo });
   });
   app.get('/api/admin/bilibili-preview', async (request, reply) => {
     const principal = requireManager(request, reply);

@@ -18,7 +18,7 @@ export function HomePage() {
   const [speaker, setSpeaker] = useState<SceneSpeaker | null>(null);
   const { user } = useAuth();
   const home = useQuery({ queryKey: ['public-home'], queryFn: () => api<HomeData>('/api/public/home') });
-  return <PageContentSurface pageKey="home" sections={homePageSections} editTo="/admin/page-editor/home" canEdit={Boolean(user && isExecutiveRole(user.role))}><main className="reference-home">
+  return <PageContentSurface pageKey="home" sections={homePageSections} editTo="/admin/page-editor/home" historyTo="/page-history/home" canEdit={Boolean(user && isExecutiveRole(user.role))}><main className="reference-home">
     <div className="page-section-boundary" id="home-hero"><GuildHero stats={home.data?.stats} loading={home.isLoading} onSelectSpeaker={setSpeaker} selectedSpeaker={speaker?.name}/></div>
     <MascotGuide speaker={speaker} onClearSpeaker={() => setSpeaker(null)}/>
     <div className="page-section-boundary" id="home-story"><GuildScrollStory /></div>

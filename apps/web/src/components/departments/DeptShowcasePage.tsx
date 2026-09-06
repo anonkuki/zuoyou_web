@@ -82,7 +82,7 @@ export function DeptShowcasePage({ department }: { department: DepartmentInfo })
   const show = showcaseBySlug[department.slug];
   const sections: PageSectionDefinition[] = departmentPageSections(department.slug);
   const canEdit = Boolean(user && (isExecutiveRole(user.role) || (user.role !== 'MEMBER' && user.departmentId === (department.id ?? `dept-${department.slug}`))));
-  if (!show) return <PageContentSurface pageKey={`department:${department.slug}`} sections={sections} editTo={`/admin/page-editor/department/${department.slug}`} canEdit={canEdit}><GenericShowcase dept={department} /></PageContentSurface>;
+  if (!show) return <PageContentSurface pageKey={`department:${department.slug}`} sections={sections} editTo={`/admin/page-editor/department/${department.slug}`} historyTo={`/page-history/department/${department.slug}`} canEdit={canEdit}><GenericShowcase dept={department} /></PageContentSurface>;
   const Themed = themed[show.slug];
-  return <PageContentSurface pageKey={`department:${department.slug}`} sections={sections} editTo={`/admin/page-editor/department/${department.slug}`} canEdit={canEdit}><Themed dept={department} show={show} /><div className="page-section-boundary" id="department-post-board"><BlogPostBoard departmentSlug={department.slug} /></div></PageContentSurface>;
+  return <PageContentSurface pageKey={`department:${department.slug}`} sections={sections} editTo={`/admin/page-editor/department/${department.slug}`} historyTo={`/page-history/department/${department.slug}`} canEdit={canEdit}><Themed dept={department} show={show} /><div className="page-section-boundary" id="department-post-board"><BlogPostBoard departmentSlug={department.slug} /></div></PageContentSurface>;
 }

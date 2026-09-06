@@ -748,6 +748,34 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     await rm(root, { recursive: true, force: true });
   });
 
+  it('lets technical department members post guestbook notes and its managers moderate them', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/member/departments/tech/guestbook' })).statusCode).toBe(401);
+    const crossDepartment = await app.inject({ method: 'POST', url: '/api/member/departments/tech/guestbook', headers: { cookie: memberCookie }, payload: { content: '跨部门留言' } });
+    expect(crossDepartment.statusCode).toBe(403);
+
+    const posted = await app.inject({ method: 'POST', url: '/api/member/departments/tech/guestbook', headers: { cookie: techLeadCookie }, payload: { content: '今晚检查直播机位。' } });
+    expect(posted.statusCode).toBe(201);
+    const messageId = posted.json().data.message.id as string;
+
+    const edited = await app.inject({ method: 'PATCH', url: `/api/admin/departments/tech/guestbook/${messageId}`, headers: { cookie: techLeadCookie }, payload: { content: '今晚八点检查直播机位。' } });
+    expect(edited.statusCode).toBe(200);
+    const list = await app.inject({ method: 'GET', url: '/api/member/departments/tech/guestbook', headers: { cookie: memberCookie } });
+    expect(list.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ id: messageId, content: '今晚八点检查直播机位。' })]));
+
+    expect((await app.inject({ method: 'DELETE', url: `/api/admin/departments/tech/guestbook/${messageId}`, headers: { cookie: leadCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'DELETE', url: `/api/admin/departments/tech/guestbook/${messageId}`, headers: { cookie: techLeadCookie } })).statusCode).toBe(200);
+  });
+
+  it('shows technical department applicants to its department managers', async () => {
+    const submitted = await app.inject({ method: 'POST', url: '/api/public/applications', payload: {
+      displayName: '技术申请人', email: 'tech-applicant@example.test', college: '计算机学院', departmentIds: ['dept-tech'], reason: '希望参加拍摄与后期工作。',
+    } });
+    expect(submitted.statusCode).toBe(201);
+    const applications = await app.inject({ method: 'GET', url: '/api/admin/applications?page=1&pageSize=100', headers: { cookie: techLeadCookie } });
+    expect(applications.statusCode).toBe(200);
+    expect(applications.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ display_name: '技术申请人', departmentIds: ['dept-tech'] })]));
+  });
+
   it('migrates announcements content, user attributes and tavern seed data', async () => {
     const announcements = await app.inject({ method: 'GET', url: '/api/public/announcements?page=1&pageSize=20' });
     expect(announcements.statusCode).toBe(200);

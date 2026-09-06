@@ -14,12 +14,20 @@ import { musicLyrics } from '../showcase-data';
 const LINE_MS = 3200;
 
 const memberSeats = [
-  { role: '主唱', en: 'VOCAL', note: '用歌声传递心情' },
-  { role: '吉他', en: 'GUITAR', note: '旋律与节奏的火花' },
-  { role: '贝斯', en: 'BASS', note: '低频，支撑起一切' },
-  { role: '鼓手', en: 'DRUMS', note: '用节奏推动心跳' },
-  { role: '键盘', en: 'KEYBOARD', note: '让音乐拥有更多色彩' },
+  { name: '成员 01', instrument: '主唱', note: '用歌声传递心情' },
+  { name: '成员 02', instrument: '吉他', note: '旋律与节奏的火花' },
+  { name: '成员 03', instrument: '贝斯', note: '低频，支撑起一切' },
+  { name: '成员 04', instrument: '鼓手', note: '用节奏推动心跳' },
+  { name: '成员 05', instrument: '键盘', note: '让音乐拥有更多色彩' },
 ] as const;
+
+const instrumentMeta = {
+  主唱: { en: 'VOCAL', tag: 'MELODY' },
+  吉他: { en: 'GUITAR', tag: 'CHORD' },
+  贝斯: { en: 'BASS', tag: 'GROOVE' },
+  鼓手: { en: 'DRUMS', tag: 'RHYTHM' },
+  键盘: { en: 'KEYBOARD', tag: 'HARMONY' },
+} as const;
 
 type MusicVideo = Pick<DepartmentVideo, 'title' | 'cover' | 'href' | 'publishedAt' | 'duration'> & { description?: string };
 
@@ -177,20 +185,31 @@ export function MusicShowcase({ dept, show }: ShowcaseProps) {
     <section className="music-members" id="music-members">
       <MusicSectionTitle icon={Users} title="成员配置卡" en="MEMBERS" note="不同的声音，组成同一个乐队。" />
       <MusicCarousel className="music-member-grid" label="成员配置卡">
-        {memberSeats.map((member, index) => <article className="music-member-card" key={member.en}>
-          <img src={show.films[index % show.films.length].cover} alt="" loading="lazy" decoding="async" />
-          <strong>{member.role} <small>{member.en}</small></strong>
-          <p>{member.note}</p>
-          <span>{index === 0 ? 'MELODY' : index === 1 ? 'CHORD' : index === 2 ? 'GROOVE' : index === 3 ? 'RHYTHM' : 'HARMONY'}</span>
-        </article>)}
-        {addedMembers.map(item => <article className="music-member-card is-managed" key={item.id}>
-          <img src={item.imageUrl!} alt={item.title || '新增成员'} loading="lazy" decoding="async" />
-          <strong>{item.title || '新增成员'}</strong>
-          <div className="music-member-details">
-            <span>{item.instrument ?? '主唱'}</span>
-            <p>{item.body || '这位成员还没有填写个人介绍。'}</p>
-          </div>
-        </article>)}
+        {memberSeats.map((member, index) => {
+          const meta = instrumentMeta[member.instrument];
+          return <article className="music-member-card" key={member.instrument}>
+            <img src={show.films[index % show.films.length].cover} alt={`${member.name}的成员照片`} loading="lazy" decoding="async" />
+            <strong className="music-member-name">{member.name}</strong>
+            <div className="music-member-details">
+              <strong className="music-member-instrument">{member.instrument} <small>{meta.en}</small></strong>
+              <p>{member.note}</p>
+            </div>
+            <span className="music-member-tag">{meta.tag}</span>
+          </article>;
+        })}
+        {addedMembers.map(item => {
+          const instrument = item.instrument ?? '主唱';
+          const meta = instrumentMeta[instrument];
+          return <article className="music-member-card is-managed" key={item.id}>
+            <img src={item.imageUrl!} alt={item.title || '新增成员'} loading="lazy" decoding="async" />
+            <strong className="music-member-name">{item.title || '新增成员'}</strong>
+            <div className="music-member-details">
+              <strong className="music-member-instrument">{instrument} <small>{meta.en}</small></strong>
+              <p>{item.body || '这位成员还没有填写个人介绍。'}</p>
+            </div>
+            <span className="music-member-tag">{meta.tag}</span>
+          </article>;
+        })}
       </MusicCarousel>
     </section>
 

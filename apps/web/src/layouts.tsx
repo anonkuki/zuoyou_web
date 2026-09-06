@@ -21,7 +21,7 @@ const adminLinks=[
 ] as const;
 
 export function ConsoleLayout({admin=false}:{admin?:boolean}){
-  const [collapsed,setCollapsed]=useState(false); const {user}=useAuth(); const client=useQueryClient(); const navigate=useNavigate(); const logout=useMutation({mutationFn:()=>api('/api/auth/logout',json('POST')),onSuccess:async()=>{client.clear();navigate('/');}}); const links=admin?(user&&isExecutiveRole(user.role)?adminLinks:adminLinks.filter(([to])=>['/admin/members','/admin/activities','/admin/works','/admin/files','/admin/tasks'].includes(to))):portalLinks;
+  const [collapsed,setCollapsed]=useState(false); const {user}=useAuth(); const client=useQueryClient(); const navigate=useNavigate(); const logout=useMutation({mutationFn:()=>api('/api/auth/logout',json('POST')),onSuccess:async()=>{client.clear();navigate('/');}}); const links=admin?(user&&isExecutiveRole(user.role)?adminLinks:adminLinks.filter(([to])=>['/admin/members','/admin/activities','/admin/recruitment','/admin/works','/admin/files','/admin/tasks'].includes(to))):portalLinks;
   return <div className={`console ${collapsed?'collapsed':''}`} data-workspace={admin?'admin':'member'}>
     <aside data-surface="guild-navigation">
       <span className="console-rail-ornament ornament-top" aria-hidden="true"/><span className="console-rail-ornament ornament-bottom" aria-hidden="true"/>

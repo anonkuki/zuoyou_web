@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, BookOpen, CalendarDays, Camera, Castle, ChevronRight, Crown, FileQuestion, Flame, Map, Scroll, Shield, Users } from 'lucide-react';
 import { api, json, type PageData } from './api';
@@ -186,8 +186,10 @@ export function ForumBoardPage() {
 
 export function JoinPage() {
   const navigate=useNavigate();
+  const [searchParams]=useSearchParams();
+  const preferredDepartment=searchParams.get('department');
   const [step,setStep]=useState(1);
-  const [form,setForm]=useState({displayName:'',email:'',college:'',departmentIds:[] as string[],reason:''});
+  const [form,setForm]=useState({displayName:'',email:'',college:'',departmentIds:preferredDepartment?[preferredDepartment]:[] as string[],reason:''});
   const departments=useQuery({queryKey:['departments'],queryFn:()=>api<{items:Department[]}>('/api/public/departments')});
   const mutation=useMutation({mutationFn:()=>api<{id:string;statusToken:string;status:string}>('/api/public/applications',json('POST',form)),onSuccess:data=>{localStorage.setItem('guild_application_token',data.statusToken);navigate(`/application/${data.statusToken}`);}});
   const submit=(e:FormEvent)=>{e.preventDefault();if(step===1){setStep(2);return;}mutation.mutate();};
@@ -204,7 +206,7 @@ export function JoinPage() {
           <label>自我介绍与加入理由<textarea required minLength={5} rows={6} value={form.reason} onChange={e=>setForm({...form,reason:e.target.value})}/></label>
           <button className="guild-button primary" type="submit">选择意向部门</button>
         </>:<>
-          <header className="form-intro"><span>DEPARTMENT INTERESTS</span><h2>选择感兴趣的部门</h2><p>可多选。这只是参与意向，不影响社员申请；通过后可再与各部门负责人沟通。</p></header>
+          <header className="form-intro"><span>DEPARTMENT INTERESTS</span><h2>选择感兴趣的部门</h2><p>{preferredDepartment==='dept-tech'?'已为你预选技术部，申请会同步给技术部部长与副部长查看。':'可多选。这只是参与意向，不影响社员申请；通过后可再与各部门负责人沟通。'}</p></header>
           {departments.isLoading?<LoadingPanel label="正在读取部门信息"/>:departments.error?<ErrorPanel error={departments.error}/>:<div className="class-options department-checklist">{departments.data?.items.map(d=>{
             const selected=form.departmentIds.includes(d.id);
             return <label className={selected?'selected':''} key={d.id}><input type="checkbox" name="departments" value={d.id} checked={selected} onChange={()=>toggleDepartment(d.id)}/><strong>{d.name}</strong><span>{d.description}</span>{selected&&<small>已选择</small>}</label>;

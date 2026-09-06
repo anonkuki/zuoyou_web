@@ -48,6 +48,7 @@ export interface User {
   email: string;
   role: 'MEMBER' | 'DEPARTMENT_ADMIN' | 'DEPARTMENT_HEAD' | 'VICE_PRESIDENT' | 'PRESIDENT';
   departmentId: string | null;
+  departmentIds?: string[];
   bio: string;
   guildTitle: string;
   college: string;

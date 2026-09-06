@@ -57,8 +57,9 @@ describe('music department showcase', () => {
     expect(track.querySelector('img')).toHaveAttribute('src', 'https://i0.hdslb.com/track.jpg');
     const memberCard = screen.getByRole('img', { name: '小音' }).closest('article');
     expect(memberCard).not.toBeNull();
-    expect(memberCard?.children[1]).toHaveTextContent('小音');
-    expect(memberCard?.children[2]).toHaveTextContent('贝斯');
-    expect(memberCard?.children[2]).toHaveTextContent('喜欢一起排练。');
+    expect(memberCard?.querySelector('.music-member-name')).toHaveTextContent('小音');
+    expect(memberCard?.querySelector('.music-member-instrument')).toHaveTextContent('贝斯 BASS');
+    expect(memberCard?.querySelector('.music-member-details p')).toHaveTextContent('喜欢一起排练。');
+    expect(memberCard?.querySelector('.music-member-tag')).toHaveTextContent('GROOVE');
   });
 });

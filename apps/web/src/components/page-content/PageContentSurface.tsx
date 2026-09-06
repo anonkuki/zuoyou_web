@@ -46,6 +46,16 @@ const integratedImageSections = new Set([
   'cos-henshin',
 ]);
 
+const techFullyIntegratedSections = new Set([
+  'tech-sheet', 'department-photo-gallery', 'department-media-shelf', 'tech-tutorials',
+]);
+const danceFullyIntegratedSections = new Set([
+  'dance-floor', 'dance-setlist', 'department-photo-gallery', 'department-media-shelf', 'dance-backstage',
+]);
+const originalFullyIntegratedSections = new Set([
+  'original-gallery', 'original-characters', 'department-photo-gallery', 'department-media-shelf', 'original-toolbox',
+]);
+
 function AddedItems({ items }: { items: PageContentItem[] }) {
   if (!items.length) return null;
   return <div className="page-managed-items" aria-label="页面新增内容">
@@ -190,7 +200,14 @@ export function PageContentSurface({ pageKey, sections, editTo, canEdit, childre
     setLinkPreview(current => current?.url === url && current.left === left && current.top === top ? current : { url, left, top });
   };
 
-  const itemsBySection = sections.map(section => ({ section, items: config.items.filter(item => item.sectionId === section.id && !(integratedImageSections.has(section.id) && item.imageUrl)) }));
+  const itemsBySection = sections.map(section => ({
+    section,
+    items: config.items.filter(item => item.sectionId === section.id
+      && !(integratedImageSections.has(section.id) && item.imageUrl)
+      && !(pageKey === 'department:tech' && techFullyIntegratedSections.has(section.id))
+      && !(pageKey === 'department:dance' && danceFullyIntegratedSections.has(section.id))
+      && !(pageKey === 'department:original' && originalFullyIntegratedSections.has(section.id))),
+  }));
   const unmatched = config.items.filter(item => !sectionIds.includes(item.sectionId));
 
   let linkDetails: URL | null = null;

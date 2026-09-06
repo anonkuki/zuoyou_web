@@ -7,6 +7,7 @@ import { api, json } from './api';
 import { useAuth } from './auth';
 import { departmentPhotosBySlug, originalPortfolioPhotos } from './components/departments/department-photos';
 import { showcaseBySlug } from './components/departments/showcase-data';
+import { TechGuestbook } from './components/departments/TechGuestbook';
 import {
   emptyPageContentConfig, pageContentQueryKey, type PageContentConfig, type PageContentItem,
   type PageContentResponse, type PageSectionDefinition,
@@ -21,7 +22,7 @@ const departmentSectionIds: Record<string, string[]> = {
   cos: ['cos-mirror', 'cos-henshin', 'cos-wardrobe'],
 };
 
-const musicVideoSectionIds = new Set(['music-tracklist', 'music-rehearsal']);
+const bilibiliVideoSectionIds = new Set(['music-tracklist', 'music-rehearsal', 'department-media-shelf']);
 
 interface BilibiliPreview {
   bvid: string;
@@ -43,6 +44,35 @@ export const homePageSections: PageSectionDefinition[] = [
 export function departmentPageSections(slug: string): PageSectionDefinition[] {
   const show = showcaseBySlug[slug];
   const ids = departmentSectionIds[slug] ?? [];
+  if (slug === 'tech') return [
+    { id: 'tech-focus', name: '技术部主视觉', description: 'TECH DEPARTMENT' },
+    { id: 'tech-sheet', name: '底片夹', description: '技术部精选底片横向轮播' },
+    { id: 'department-photo-gallery', name: '取景器后的现场记录', description: '技术部全部活动照片轮播' },
+    { id: 'department-media-shelf', name: '项目作品', description: '粘贴 B 站链接，自动获取视频封面和标题' },
+    { id: 'tech-tutorials', name: '教程资源库', description: '教程、经验与外部资源' },
+    { id: 'tech-exif', name: '常见问题与加入我们', description: '部门介绍与加入入口' },
+    { id: 'department-post-board', name: '部门讨论区', description: '置顶帖与普通帖子' },
+  ];
+  if (slug === 'dance') return [
+    { id: 'dance-stage', name: '舞装部主视觉', description: '保留原有星轨舞台版头' },
+    { id: 'dance-floor', name: '成员介绍', description: '成员照片、姓名和个人介绍' },
+    { id: 'dance-setlist', name: '节目单', description: '舞台节目的名称与介绍' },
+    { id: 'department-photo-gallery', name: '舞台记忆', description: '排练、演出和谢幕照片轮播' },
+    { id: 'department-media-shelf', name: '作品记录', description: '粘贴 B 站链接，自动获取视频封面和标题' },
+    { id: 'dance-backstage', name: '演出曲目库', description: '演出曲目、出处与筹备记录' },
+    { id: 'dance-join', name: '加入舞装部', description: '部门介绍、加入入口与常见问题' },
+    { id: 'department-post-board', name: '舞装部讨论区', description: '置顶帖与普通帖子' },
+  ];
+  if (slug === 'original') return [
+    { id: 'original-atelier', name: '原创部主视觉', description: '保留原有梦色画室版头' },
+    { id: 'original-gallery', name: '作品集锦', description: '原创作品图片轮播' },
+    { id: 'original-characters', name: 'OC / 设定集', description: '角色图片、名称与设定介绍' },
+    { id: 'department-photo-gallery', name: '一起创作的日常', description: '原创部周常活动照片轮播' },
+    { id: 'department-media-shelf', name: '作品记录', description: '粘贴 B 站链接，自动获取视频封面和标题' },
+    { id: 'original-toolbox', name: '画具箱', description: '创作教程、投稿规范和外部资源' },
+    { id: 'original-join', name: '加入原创部', description: '部门介绍与加入入口' },
+    { id: 'department-post-board', name: '原创讨论区', description: '置顶帖与普通帖子' },
+  ];
   const themed = slug === 'music'
     ? [
       { id: 'music-playing', name: '轻音部主视觉', description: 'LIGHT MUSIC DEPARTMENT' },
@@ -80,6 +110,8 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [videoLoadingId, setVideoLoadingId] = useState<string | null>(null);
   const [videoError, setVideoError] = useState<Record<string, string>>({});
+  const [tutorialFileLoadingId, setTutorialFileLoadingId] = useState<string | null>(null);
+  const [tutorialFileError, setTutorialFileError] = useState<Record<string, string>>({});
 
   useEffect(() => { if (query.data) setDraft(query.data.config); }, [query.data]);
 
@@ -138,6 +170,23 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
       setVideoLoadingId(current => current === itemId ? null : current);
     }
   };
+  const uploadTutorialFile = async (itemId: string, file: File) => {
+    setTutorialFileLoadingId(itemId);
+    setTutorialFileError(current => ({ ...current, [itemId]: '' }));
+    const body = new FormData();
+    body.append('visibility', 'PUBLIC');
+    body.append('category', 'OTHER');
+    body.append('departmentId', 'dept-tech');
+    body.append('file', file);
+    try {
+      const uploaded = await api<{ id: string; name: string }>('/api/admin/files/upload', { method: 'POST', body });
+      updateItem(itemId, { title: uploaded.name, linkUrl: `/api/files/${uploaded.id}/content` });
+    } catch (error) {
+      setTutorialFileError(current => ({ ...current, [itemId]: error instanceof Error ? error.message : '文件上传失败' }));
+    } finally {
+      setTutorialFileLoadingId(current => current === itemId ? null : current);
+    }
+  };
   const addImageLink = () => {
     const imageUrl = newImageUrl.trim();
     const linkUrl = newLinkUrl.trim();
@@ -171,17 +220,24 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
             <div className="page-editor-items">
               {items.map(item => {
                 const isMusicMember = scope === 'department' && slug === 'music' && section.id === 'music-members';
+                const isTechTutorial = scope === 'department' && slug === 'tech' && section.id === 'tech-tutorials';
                 return <div className="page-editor-item" key={item.id}>
                 <Field label={isMusicMember ? '姓名' : '标题'}><input value={item.title} maxLength={120} onChange={event => updateItem(item.id, { title: event.target.value })} /></Field>
                 {isMusicMember && <Field label="乐器"><select value={item.instrument ?? '主唱'} onChange={event => updateItem(item.id, { instrument: event.target.value as PageContentItem['instrument'] })}>
                   {['主唱', '吉他', '贝斯', '鼓手', '键盘'].map(instrument => <option value={instrument} key={instrument}>{instrument}</option>)}
                 </select></Field>}
                 <Field label={isMusicMember ? '介绍你自己' : '正文'}><textarea value={item.body} maxLength={4000} rows={4} onChange={event => updateItem(item.id, { body: event.target.value })} /></Field>
-                {scope === 'department' && slug === 'music' && musicVideoSectionIds.has(section.id) ? <div className="page-editor-video-source">
+                {scope === 'department' && ((slug === 'music' && bilibiliVideoSectionIds.has(section.id)) || (slug === 'tech' && section.id === 'department-media-shelf')) ? <div className="page-editor-video-source">
                   <Field label="B站视频链接"><input value={item.linkUrl ?? ''} placeholder="https://www.bilibili.com/video/BV..." onChange={event => updateItem(item.id, { linkUrl: event.target.value || null })} onBlur={event => void fetchBilibiliPreview(item.id, event.target.value)} /></Field>
                   <button type="button" onClick={() => void fetchBilibiliPreview(item.id, item.linkUrl ?? '')} disabled={!item.linkUrl || videoLoadingId === item.id}>{videoLoadingId === item.id ? '正在读取…' : '自动获取封面与标题'}</button>
                   {item.imageUrl && <div className="page-editor-video-preview"><img src={item.imageUrl} alt="" referrerPolicy="no-referrer" /><strong>{item.title || '已读取视频'}</strong></div>}
                   {videoError[item.id] && <p className="page-editor-error" role="alert">{videoError[item.id]}</p>}
+                </div> : isTechTutorial ? <div className="page-editor-tutorial-source">
+                  <Field label="外部链接（与文件任选其一）"><input value={item.linkUrl?.startsWith('/api/files/') ? '' : item.linkUrl ?? ''} placeholder="https://..." onChange={event => updateItem(item.id, { linkUrl: event.target.value || null })} /></Field>
+                  <Field label="上传教程文件"><input type="file" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadTutorialFile(item.id, file); }} /></Field>
+                  {tutorialFileLoadingId === item.id && <p>正在上传文件……</p>}
+                  {item.linkUrl?.startsWith('/api/files/') && <p className="form-success">已绑定文件：{item.title}</p>}
+                  {tutorialFileError[item.id] && <p className="page-editor-error" role="alert">{tutorialFileError[item.id]}</p>}
                 </div> : <div className="page-editor-item-row"><Field label="图片地址（选填）"><input value={item.imageUrl ?? ''} placeholder="/assets/... 或 https://..." onChange={event => updateItem(item.id, { imageUrl: event.target.value || null })} /></Field><Field label="点击图片跳转（选填）"><input value={item.linkUrl ?? ''} placeholder="https://..." onChange={event => updateItem(item.id, { linkUrl: event.target.value || null })} /></Field></div>}
                 <button className="page-editor-delete" type="button" onClick={() => deleteItem(item.id)}><Trash2 aria-hidden="true" /> 删除这条内容</button>
               </div>;})}
@@ -205,5 +261,6 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
       {knownImages.length > 0 && <details className="page-editor-image-picker"><summary><ImagePlus aria-hidden="true" /> 浏览、删除或恢复本页现有图片（{knownImages.length}）</summary><div>{knownImages.map(src => <article key={src} className={draft.hiddenImageUrls.includes(src) ? 'is-hidden' : ''}><button type="button" className={newImageUrl === src ? 'is-selected' : ''} onClick={() => setNewImageUrl(src)}><img src={src} alt="" loading="lazy" /><span>{src.split('/').pop()}</span></button><button type="button" className="page-editor-image-visibility" onClick={() => toggleImageVisibility(src)}>{draft.hiddenImageUrls.includes(src) ? <><Eye aria-hidden="true" />恢复</> : <><Trash2 aria-hidden="true" />从页面删除</>}</button></article>)}</div></details>}
       <div className="page-editor-links">{draft.imageLinks.length === 0 ? <p>当前没有设置图片跳转。</p> : draft.imageLinks.map(item => <article key={item.imageUrl}><img src={item.imageUrl} alt="" /><div><strong>{item.imageUrl}</strong><a href={item.linkUrl} target="_blank" rel="noreferrer">{item.linkUrl}</a></div><button type="button" aria-label="删除图片跳转" onClick={() => setDraft(current => ({ ...current, imageLinks: current.imageLinks.filter(link => link.imageUrl !== item.imageUrl) }))}><Trash2 aria-hidden="true" /></button></article>)}</div>
     </section>
+    {scope === 'department' && slug === 'tech' && <TechGuestbook management />}
   </main>;
 }

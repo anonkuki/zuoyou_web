@@ -756,6 +756,58 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ deleted: true });
   });
 
+  const departmentGuestbook = (slug: string) => {
+    const department = sqlite.prepare('SELECT id,slug,name FROM departments WHERE slug=?').get(slug) as { id: string; slug: string; name: string } | undefined;
+    if (!department) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
+    return department;
+  };
+  const guestbookItems = (slug: string) => (sqlite.prepare(`SELECT m.id,m.content,m.created_at,u.id sender_id,u.display_name,u.avatar_color
+    FROM area_messages m JOIN users u ON u.id=m.sender_id
+    WHERE m.area_id=? AND m.deleted_at IS NULL ORDER BY m.created_at DESC,m.id DESC LIMIT 50`).all(slug) as Array<Record<string, unknown>>).map((row) => ({
+      id: row.id, content: row.content, createdAt: row.created_at,
+      sender: { id: row.sender_id, displayName: row.display_name, avatarColor: row.avatar_color },
+    }));
+
+  app.get('/api/member/departments/:slug/guestbook', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const { slug } = request.params as { slug: string };
+    departmentGuestbook(slug);
+    return successResponse({ items: guestbookItems(slug) });
+  });
+  app.post('/api/member/departments/:slug/guestbook', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const { slug } = request.params as { slug: string };
+    const department = departmentGuestbook(slug);
+    if (!memberBelongsToDepartment(principal.id, department.id) && !isExecutiveRole(principal.role)) throw new HttpError(403, 'FORBIDDEN', '仅本部门成员可以留言');
+    const { content } = parse(areaMessageCreateSchema, request.body);
+    const message = world.postMessage(principal, slug, content);
+    audit(sqlite, principal.id, 'DEPARTMENT_GUESTBOOK_MESSAGE_CREATED', 'area_message', String(message.id), principal.id, { departmentId: department.id });
+    return reply.status(201).send(successResponse({ message }));
+  });
+  app.patch('/api/admin/departments/:slug/guestbook/:id', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const { slug, id } = request.params as { slug: string; id: string };
+    const department = departmentGuestbook(slug);
+    scopeDepartment(principal, department.id);
+    const { content } = parse(areaMessageCreateSchema, request.body);
+    const message = sqlite.prepare('SELECT sender_id FROM area_messages WHERE id=? AND area_id=? AND deleted_at IS NULL').get(id, slug) as { sender_id: string } | undefined;
+    if (!message) throw new HttpError(404, 'NOT_FOUND', '留言不存在或已删除');
+    sqlite.prepare('UPDATE area_messages SET content=? WHERE id=?').run(content, id);
+    audit(sqlite, principal.id, 'DEPARTMENT_GUESTBOOK_MESSAGE_UPDATED', 'area_message', id, message.sender_id, { departmentId: department.id });
+    return successResponse({ updated: true });
+  });
+  app.delete('/api/admin/departments/:slug/guestbook/:id', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const { slug, id } = request.params as { slug: string; id: string };
+    const department = departmentGuestbook(slug);
+    scopeDepartment(principal, department.id);
+    const message = sqlite.prepare('SELECT sender_id FROM area_messages WHERE id=? AND area_id=? AND deleted_at IS NULL').get(id, slug) as { sender_id: string } | undefined;
+    if (!message) throw new HttpError(404, 'NOT_FOUND', '留言不存在或已删除');
+    sqlite.prepare('UPDATE area_messages SET deleted_at=? WHERE id=?').run(now(), id);
+    audit(sqlite, principal.id, 'DEPARTMENT_GUESTBOOK_MESSAGE_DELETED', 'area_message', id, message.sender_id, { departmentId: department.id });
+    return successResponse({ deleted: true });
+  });
+
   app.post('/api/member/activities/:id/register', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
     const activityId = (request.params as { id: string }).id;
@@ -1326,9 +1378,15 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
 
   app.get('/api/admin/applications', async (request, reply) => {
-    const principal = requireAdmin(request, reply); if (!principal) return;
+    const principal = requireManager(request, reply); if (!principal) return;
     const paging = getPaging(request.query);
-    const rows = sqlite.prepare('SELECT id,display_name,email,college,department_id,reason,status,rejection_reason,created_at FROM applications ORDER BY created_at DESC LIMIT ? OFFSET ?').all(paging.pageSize, paging.offset) as Array<Record<string, unknown> & { id: string; department_id: string }>;
+    const scoped = !isExecutiveRole(principal.role);
+    const where = scoped ? `WHERE (a.department_id=? OR EXISTS(
+      SELECT 1 FROM application_departments scope_ad WHERE scope_ad.application_id=a.id AND scope_ad.department_id=?
+    ))` : '';
+    const parameters = scoped ? [principal.departmentId, principal.departmentId] : [];
+    const rows = sqlite.prepare(`SELECT a.id,a.display_name,a.email,a.college,a.department_id,a.reason,a.status,a.rejection_reason,a.created_at
+      FROM applications a ${where} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`).all(...parameters, paging.pageSize, paging.offset) as Array<Record<string, unknown> & { id: string; department_id: string }>;
     const selectedDepartments = sqlite.prepare(`SELECT ad.department_id,d.name FROM application_departments ad JOIN departments d ON d.id=ad.department_id
       WHERE ad.application_id=? ORDER BY ad.preference_order,ad.rowid`);
     const items = rows.map((row) => {
@@ -1336,7 +1394,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       const fallback = selected.length ? selected : [{ department_id: row.department_id, name: row.department_id }];
       return { ...row, departmentIds: fallback.map((department) => department.department_id), departmentNames: fallback.map((department) => department.name) };
     });
-    const total = (sqlite.prepare('SELECT COUNT(*) count FROM applications').get() as { count: number }).count;
+    const total = (sqlite.prepare(`SELECT COUNT(*) count FROM applications a ${where}`).get(...parameters) as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
 

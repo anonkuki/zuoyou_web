@@ -30,11 +30,11 @@ const presence = (lastSeenAt: string | null, timestamp: string) => {
 
 interface ProfileRow {
   id: string; uid: string; display_name: string; role: Role; department_id: string | null; department_name: string | null; department_title: string | null;
-  bio: string; guild_title: string; college: string; grade: string; skills: string; interests: string; attributes: string; avatar_color: string; avatar_config: string | null; profile_visibility: 'MEMBERS' | 'PRIVATE';
-  last_seen_at: string | null; created_at: string;
+  bio: string; guild_title: string; college: string; grade: string; skills: string; interests: string; attributes: string; avatar_color: string; avatar_config: string | null; avatar_storage_key: string | null; profile_visibility: 'MEMBERS' | 'PRIVATE';
+  last_seen_at: string | null; created_at: string; updated_at: string;
 }
 
-const PROFILE_COLUMNS = 'u.id,u.uid,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.guild_title,u.college,u.grade,u.skills,u.interests,u.attributes,u.avatar_color,u.avatar_config,u.profile_visibility,u.last_seen_at,u.created_at';
+const PROFILE_COLUMNS = 'u.id,u.uid,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.guild_title,u.college,u.grade,u.skills,u.interests,u.attributes,u.avatar_color,u.avatar_config,u.avatar_storage_key,u.profile_visibility,u.last_seen_at,u.created_at,u.updated_at';
 const POST_BOARD_SECTION_LIMIT = 5;
 
 export class GuildSocialRepository {
@@ -44,7 +44,7 @@ export class GuildSocialRepository {
     return {
       id: row.id, uid: row.uid, displayName: row.display_name, role: row.role, departmentId: row.department_id, departmentName: row.department_name,
       departmentTitle: row.department_title, bio: row.bio, guildTitle: row.guild_title, college: row.college, grade: row.grade,
-      skills: safeTags(row.skills), interests: safeTags(row.interests), attributes: safeTags(row.attributes), avatarColor: row.avatar_color, avatarConfig: resolveAvatarConfig(row.id, row.avatar_config), profileVisibility: row.profile_visibility,
+      skills: safeTags(row.skills), interests: safeTags(row.interests), attributes: safeTags(row.attributes), avatarColor: row.avatar_color, avatarConfig: resolveAvatarConfig(row.id, row.avatar_config), avatarUrl: row.avatar_storage_key ? `/api/public/avatars/${row.id}?v=${encodeURIComponent(row.updated_at)}` : null, profileVisibility: row.profile_visibility,
       presence: presence(row.last_seen_at, this.timestamp()), lastSeenAt: row.last_seen_at, joinedAt: row.created_at,
     };
   }
@@ -58,7 +58,12 @@ export class GuildSocialRepository {
   updateProfile(userId: string, input: MemberProfileUpdate) {
     const row = this.sqlite.prepare('SELECT * FROM users WHERE id=? AND is_active=1').get(userId) as Record<string, unknown> | undefined;
     if (!row) throw new SocialError(404, 'NOT_FOUND', '成员不存在');
+    if (input.uid) {
+      const duplicate = this.sqlite.prepare('SELECT id FROM users WHERE lower(uid)=lower(?) AND id<>?').get(input.uid, userId) as { id: string } | undefined;
+      if (duplicate) throw new SocialError(409, 'UID_TAKEN', '这个 ID 已被其他账号使用');
+    }
     const next = {
+      uid: input.uid ?? row.uid,
       displayName: input.displayName ?? row.display_name,
       bio: input.bio ?? row.bio,
       guildTitle: input.guildTitle ?? row.guild_title,
@@ -71,8 +76,8 @@ export class GuildSocialRepository {
       avatarColor: input.avatarColor ?? row.avatar_color,
       visibility: input.profileVisibility ?? row.profile_visibility,
     };
-    this.sqlite.prepare(`UPDATE users SET display_name=?,bio=?,guild_title=?,college=?,grade=?,skills=?,interests=?,attributes=?,avatar_config=?,avatar_color=?,profile_visibility=?,last_seen_at=?,updated_at=? WHERE id=?`)
-      .run(next.displayName, next.bio, next.guildTitle, next.college, next.grade, next.skills, next.interests, next.attributes, next.avatarConfig, next.avatarColor, next.visibility, this.timestamp(), this.timestamp(), userId);
+    this.sqlite.prepare(`UPDATE users SET uid=?,display_name=?,bio=?,guild_title=?,college=?,grade=?,skills=?,interests=?,attributes=?,avatar_config=?,avatar_color=?,profile_visibility=?,last_seen_at=?,updated_at=? WHERE id=?`)
+      .run(next.uid, next.displayName, next.bio, next.guildTitle, next.college, next.grade, next.skills, next.interests, next.attributes, next.avatarConfig, next.avatarColor, next.visibility, this.timestamp(), this.timestamp(), userId);
     return this.serializeProfile(this.getProfileRow(userId));
   }
 
@@ -249,7 +254,7 @@ export class GuildSocialRepository {
       id: row.id, title: row.title, subtitle: row.subtitle ?? '', content: row.content, body, departmentId: row.department_id ?? null, departmentName: row.department_name ?? null, subboardId: row.subboard_id ?? null, subboardName: subboard?.name ?? null,
       pinned: Boolean(row.placement_pinned) || Boolean(row.pinned), featured: Boolean(row.placement_featured), visibleOnGuild: Boolean(row.visible_on_guild), visibleOnDepartment: Boolean(row.visible_on_department),
       upvoteCount: Number(row.upvote_count ?? 0), downvoteCount: Number(row.downvote_count ?? 0), score: Number(row.rating_score ?? 0), myRating: Number(row.my_rating ?? 0), voteCount: Number(row.upvote_count ?? row.vote_count ?? 0), commentCount: Number(row.comment_count ?? 0),
-      author: { id: row.user_id, displayName: row.author_name, avatarColor: row.author_color },
+      author: { id: row.user_id, displayName: row.author_name, avatarColor: row.author_color, avatarUrl: row.author_avatar_key ? `/api/public/avatars/${row.user_id}?v=${encodeURIComponent(String(row.author_updated_at ?? ''))}` : null },
       attachments,
       createdAt: row.created_at, updatedAt: row.updated_at,
     };
@@ -258,14 +263,14 @@ export class GuildSocialRepository {
   private serializeComment(row: Record<string, unknown>) {
     return {
       id: row.id, postId: row.post_id, content: row.content,
-      author: { id: row.user_id, displayName: row.author_name, avatarColor: row.author_color },
+      author: { id: row.user_id, displayName: row.author_name, avatarColor: row.author_color, avatarUrl: row.author_avatar_key ? `/api/public/avatars/${row.user_id}?v=${encodeURIComponent(String(row.author_updated_at ?? ''))}` : null },
       createdAt: row.created_at,
     };
   }
 
   listPosts(page: number, pageSize: number) {
     const total = (this.sqlite.prepare('SELECT COUNT(*) count FROM posts WHERE deleted_at IS NULL').get() as { count: number }).count;
-    const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,
+    const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,u.avatar_storage_key author_avatar_key,u.updated_at author_updated_at,d.name department_name,
       (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,
@@ -287,6 +292,8 @@ export class GuildSocialRepository {
     const body = input.body?.length ? input.body : [{ type: 'PARAGRAPH' as const, text: input.content }];
     this.sqlite.prepare('INSERT INTO posts(id,user_id,title,subtitle,content,body_json,department_id,subboard_id,pinned,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,0,?,?)')
       .run(id, principal.id, input.title, input.subtitle || null, input.content, JSON.stringify(body), input.departmentId, input.subboardId, createdAt, createdAt);
+    this.sqlite.prepare('INSERT INTO post_placements(id,post_id,scope_type,department_id,pinned,featured,placed_by,placed_at,updated_at) VALUES (?,?,?,?,0,0,?,?,?)')
+      .run(this.makeId('placement'), id, input.departmentId ? 'DEPARTMENT' : 'GUILD', input.departmentId || null, principal.id, createdAt, createdAt);
     return this.getPost(id).post;
   }
 
@@ -296,10 +303,13 @@ export class GuildSocialRepository {
   }
 
   editPost(principal: SocialPrincipal, postId: string, input: PostCreate) {
-    const post = this.sqlite.prepare('SELECT id,department_id FROM posts WHERE id=? AND deleted_at IS NULL').get(postId) as { id: string; department_id: string | null } | undefined;
+    const post = this.sqlite.prepare('SELECT id,user_id,department_id FROM posts WHERE id=? AND deleted_at IS NULL').get(postId) as { id: string; user_id: string; department_id: string | null } | undefined;
     if (!post) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
-    if (!this.canModerateDepartment(principal, post.department_id) || (!isExecutiveRole(principal.role) && input.departmentId !== post.department_id)) {
-      throw new SocialError(403, 'FORBIDDEN', '只能编辑本部门帖子，且不可改变所属部门');
+    if (post.user_id !== principal.id && !this.canModerateDepartment(principal, post.department_id)) {
+      throw new SocialError(403, 'FORBIDDEN', '只能编辑自己的帖子或管理范围内的帖子');
+    }
+    if (!isExecutiveRole(principal.role) && input.departmentId !== post.department_id) {
+      throw new SocialError(403, 'FORBIDDEN', '不可改变帖子的所属板块');
     }
     if (input.departmentId && !this.sqlite.prepare('SELECT 1 FROM departments WHERE id=?').get(input.departmentId)) throw new SocialError(400, 'INVALID_DEPARTMENT', '所属部门不存在');
     this.assertSubboard(input.departmentId, input.subboardId);
@@ -310,7 +320,7 @@ export class GuildSocialRepository {
   }
 
   getPost(postId: string, viewerId?: string) {
-    const row = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,
+    const row = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,u.avatar_storage_key author_avatar_key,u.updated_at author_updated_at,d.name department_name,
       (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,
@@ -322,11 +332,11 @@ export class GuildSocialRepository {
       EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='DEPARTMENT') visible_on_department
       FROM posts p JOIN users u ON u.id=p.user_id LEFT JOIN departments d ON d.id=p.department_id WHERE p.id=? AND p.deleted_at IS NULL`).get(viewerId ?? '', postId) as Record<string, unknown> | undefined;
     if (!row) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
-    const comments = this.sqlite.prepare(`SELECT c.*,u.display_name author_name,u.avatar_color author_color
+    const comments = this.sqlite.prepare(`SELECT c.*,u.display_name author_name,u.avatar_color author_color,u.avatar_storage_key author_avatar_key,u.updated_at author_updated_at
       FROM post_comments c JOIN users u ON u.id=c.user_id WHERE c.post_id=? AND c.deleted_at IS NULL ORDER BY c.created_at,c.id`).all(postId) as Array<Record<string, unknown>>;
-    const supporters = this.sqlite.prepare(`SELECT u.id,u.display_name displayName,u.avatar_color avatarColor
+    const supporters = this.sqlite.prepare(`SELECT u.id,u.display_name displayName,u.avatar_color avatarColor,u.avatar_storage_key avatarStorageKey,u.updated_at avatarUpdatedAt
       FROM post_votes v JOIN users u ON u.id=v.user_id WHERE v.post_id=? AND v.value=1 ORDER BY v.created_at,u.id`).all(postId);
-    return { post: this.serializePost(row), comments: comments.map((comment) => this.serializeComment(comment)), supporters };
+    return { post: this.serializePost(row), comments: comments.map((comment) => this.serializeComment(comment)), supporters: (supporters as Array<Record<string, unknown>>).map((supporter) => ({ id: supporter.id, displayName: supporter.displayName, avatarColor: supporter.avatarColor, avatarUrl: supporter.avatarStorageKey ? `/api/public/avatars/${supporter.id}?v=${encodeURIComponent(String(supporter.avatarUpdatedAt ?? ''))}` : null })) };
   }
 
   addComment(principal: SocialPrincipal, postId: string, content: string) {
@@ -335,7 +345,7 @@ export class GuildSocialRepository {
     const id = this.makeId('comment');
     const createdAt = this.timestamp();
     this.sqlite.prepare('INSERT INTO post_comments(id,post_id,user_id,content,created_at) VALUES (?,?,?,?,?)').run(id, postId, principal.id, content, createdAt);
-    const row = this.sqlite.prepare(`SELECT c.*,u.display_name author_name,u.avatar_color author_color
+    const row = this.sqlite.prepare(`SELECT c.*,u.display_name author_name,u.avatar_color author_color,u.avatar_storage_key author_avatar_key,u.updated_at author_updated_at
       FROM post_comments c JOIN users u ON u.id=c.user_id WHERE c.id=?`).get(id) as Record<string, unknown>;
     return this.serializeComment(row);
   }
@@ -343,7 +353,10 @@ export class GuildSocialRepository {
   deletePost(principal: SocialPrincipal, postId: string): { ownerId: string; moderated: boolean } {
     const post = this.sqlite.prepare('SELECT user_id,department_id,deleted_at FROM posts WHERE id=?').get(postId) as { user_id: string; department_id: string | null; deleted_at: string | null } | undefined;
     if (!post || post.deleted_at) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
-    if (post.user_id !== principal.id && !this.canModerateDepartment(principal, post.department_id)) throw new SocialError(403, 'FORBIDDEN', '只能删除自己的帖子或管理范围内的帖子');
+    const permitted = post.department_id === null
+      ? isExecutiveRole(principal.role)
+      : post.user_id === principal.id || this.canModerateDepartment(principal, post.department_id);
+    if (!permitted) throw new SocialError(403, 'FORBIDDEN', '无权删除这个板块中的帖子');
     this.sqlite.prepare('UPDATE posts SET deleted_at=?,updated_at=? WHERE id=?').run(this.timestamp(), this.timestamp(), postId);
     return { ownerId: post.user_id, moderated: post.user_id !== principal.id };
   }
@@ -420,7 +433,7 @@ export class GuildSocialRepository {
       departmentId = department.id;
     }
     if (subboardId) this.assertSubboard(departmentId, subboardId);
-    const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,x.pinned placement_pinned,x.featured placement_featured,
+    const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,u.avatar_storage_key author_avatar_key,u.updated_at author_updated_at,d.name department_name,x.pinned placement_pinned,x.featured placement_featured,
       (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,
@@ -433,12 +446,28 @@ export class GuildSocialRepository {
   }
 
   publicTopics(departmentSlug: string, subboardId: string | undefined, page: number, pageSize: number) {
+    if (departmentSlug === 'guild') {
+      if (subboardId) throw new SocialError(400, 'INVALID_SUBBOARD', '全社团板块不包含子板块');
+      const filter = `p.deleted_at IS NULL AND p.department_id IS NULL AND x.scope_type='GUILD'`;
+      const total = (this.sqlite.prepare(`SELECT COUNT(*) count FROM post_placements x JOIN posts p ON p.id=x.post_id WHERE ${filter}`).get() as { count: number }).count;
+      const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,u.avatar_storage_key author_avatar_key,u.updated_at author_updated_at,NULL department_name,x.pinned placement_pinned,x.featured placement_featured,
+        (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
+        (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
+        (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,
+        (SELECT COALESCE(SUM(v.value),0) FROM post_votes v WHERE v.post_id=p.id) rating_score,
+        COALESCE((SELECT c.created_at FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL ORDER BY c.created_at DESC,c.id DESC LIMIT 1),p.created_at) last_activity_at,
+        COALESCE((SELECT cu.display_name FROM post_comments c JOIN users cu ON cu.id=c.user_id WHERE c.post_id=p.id AND c.deleted_at IS NULL ORDER BY c.created_at DESC,c.id DESC LIMIT 1),u.display_name) latest_author_name
+        FROM post_placements x JOIN posts p ON p.id=x.post_id JOIN users u ON u.id=p.user_id WHERE ${filter}
+        ORDER BY x.pinned DESC,last_activity_at DESC,p.id LIMIT ? OFFSET ?`).all(pageSize, (page - 1) * pageSize) as Array<Record<string, unknown>>;
+      const items = rows.map((row) => ({ ...this.serializePost(row), lastActivityAt: row.last_activity_at, latestAuthorName: row.latest_author_name }));
+      return { department: { id: 'guild', name: '佐佑动漫社', slug: 'guild' }, subboard: null, items, page, pageSize, total };
+    }
     const department = this.sqlite.prepare('SELECT id,name,slug FROM departments WHERE slug=?').get(departmentSlug) as { id: string; name: string; slug: string } | undefined;
     if (!department) throw new SocialError(404, 'NOT_FOUND', '部门不存在');
     if (subboardId) this.assertSubboard(department.id, subboardId);
     const filter = `p.deleted_at IS NULL AND x.scope_type='DEPARTMENT' AND x.department_id=? AND (? IS NULL OR p.subboard_id=?)`;
     const total = (this.sqlite.prepare(`SELECT COUNT(*) count FROM post_placements x JOIN posts p ON p.id=x.post_id WHERE ${filter}`).get(department.id, subboardId ?? null, subboardId ?? null) as { count: number }).count;
-    const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,x.pinned placement_pinned,x.featured placement_featured,
+    const rows = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,u.avatar_storage_key author_avatar_key,u.updated_at author_updated_at,d.name department_name,x.pinned placement_pinned,x.featured placement_featured,
       (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,
@@ -468,15 +497,62 @@ export class GuildSocialRepository {
       const count = stats.get(departmentId, subboardId, subboardId) as { topicCount: number; replyCount: number };
       return { topicCount: Number(count.topicCount), replyCount: Number(count.replyCount), latestPost: latest.get(departmentId, subboardId, subboardId) ?? null };
     };
-    return { groups: departments.map((department) => ({
+    const guildStats = this.sqlite.prepare(`SELECT COUNT(*) topicCount,COALESCE(SUM((SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL)),0) replyCount
+      FROM posts p WHERE p.deleted_at IS NULL AND p.department_id IS NULL
+      AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='GUILD')`).get() as { topicCount: number; replyCount: number };
+    const guildLatest = this.sqlite.prepare(`SELECT p.id,p.title,u.display_name authorName,
+      COALESCE((SELECT c.created_at FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL ORDER BY c.created_at DESC,c.id DESC LIMIT 1),p.created_at) createdAt,
+      COALESCE((SELECT cu.display_name FROM post_comments c JOIN users cu ON cu.id=c.user_id WHERE c.post_id=p.id AND c.deleted_at IS NULL ORDER BY c.created_at DESC,c.id DESC LIMIT 1),u.display_name) latestAuthorName
+      FROM posts p JOIN users u ON u.id=p.user_id WHERE p.deleted_at IS NULL AND p.department_id IS NULL
+      AND EXISTS(SELECT 1 FROM post_placements x WHERE x.post_id=p.id AND x.scope_type='GUILD') ORDER BY createdAt DESC,p.id LIMIT 1`).get() ?? null;
+    const guild = { id: 'guild', slug: 'guild', name: '佐佑动漫社', title: '全社团讨论', description: '面向全体社员的公告、交流与共同话题', topicCount: Number(guildStats.topicCount), replyCount: Number(guildStats.replyCount), latestPost: guildLatest, subboards: [] };
+    return { groups: [guild, ...departments.map((department) => ({
       ...department,
       ...summarize(department.id, null),
       subboards: subboards.filter((item) => item.departmentId === department.id).map((item) => ({ ...item, ...summarize(department.id, item.id) })),
-    })) };
+    }))] };
+  }
+
+  private postSnapshot(postId: string) {
+    const post = this.sqlite.prepare('SELECT title,subtitle,content,body_json bodyJson,department_id departmentId,subboard_id subboardId FROM posts WHERE id=? AND deleted_at IS NULL').get(postId) as Record<string, unknown> | undefined;
+    if (!post) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    const assets = this.sqlite.prepare('SELECT id,asset_kind assetKind FROM post_assets WHERE post_id=? ORDER BY created_at,id').all(postId) as Array<{ id: string; assetKind: string }>;
+    return { ...post, imageAssetIds: assets.filter((item) => item.assetKind === 'IMAGE').map((item) => item.id), attachmentIds: assets.filter((item) => item.assetKind === 'ATTACHMENT').map((item) => item.id) };
+  }
+
+  recordPostRevision(postId: string, actorId: string, changeType: 'CREATE' | 'UPDATE' | 'RESTORE', restoredFromId?: string) {
+    const revisionNo = Number((this.sqlite.prepare('SELECT COALESCE(MAX(revision_no),0)+1 next FROM post_revisions WHERE post_id=?').get(postId) as { next: number }).next);
+    this.sqlite.prepare('INSERT INTO post_revisions(id,post_id,revision_no,snapshot_json,change_type,restored_from_id,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(this.makeId('post-revision'), postId, revisionNo, JSON.stringify(this.postSnapshot(postId)), changeType, restoredFromId ?? null, actorId, this.timestamp());
+  }
+
+  listPostRevisions(postId: string) {
+    const post = this.sqlite.prepare('SELECT user_id FROM posts WHERE id=? AND deleted_at IS NULL').get(postId) as { user_id: string } | undefined;
+    if (!post) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    if (!this.sqlite.prepare('SELECT 1 FROM post_revisions WHERE post_id=?').get(postId)) this.recordPostRevision(postId, post.user_id, 'CREATE');
+    const rows = this.sqlite.prepare(`SELECT r.id,r.revision_no revisionNo,r.snapshot_json snapshotJson,r.change_type changeType,r.restored_from_id restoredFromId,r.created_at createdAt,
+      u.id actorId,u.display_name actorName,u.uid actorUid FROM post_revisions r LEFT JOIN users u ON u.id=r.created_by WHERE r.post_id=? ORDER BY r.revision_no DESC`).all(postId) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({ id: row.id, revisionNo: row.revisionNo, snapshot: JSON.parse(String(row.snapshotJson)), changeType: row.changeType, restoredFromId: row.restoredFromId, createdAt: row.createdAt, actor: row.actorId ? { id: row.actorId, displayName: row.actorName, uid: row.actorUid } : null }));
+  }
+
+  restorePostRevision(principal: SocialPrincipal, postId: string, revisionId: string) {
+    const post = this.sqlite.prepare('SELECT user_id,department_id FROM posts WHERE id=? AND deleted_at IS NULL').get(postId) as { user_id: string; department_id: string | null } | undefined;
+    if (!post) throw new SocialError(404, 'NOT_FOUND', '帖子不存在或已被删除');
+    if (post.user_id !== principal.id && !this.canModerateDepartment(principal, post.department_id)) throw new SocialError(403, 'FORBIDDEN', '无权还原这篇帖子');
+    const revision = this.sqlite.prepare('SELECT snapshot_json FROM post_revisions WHERE id=? AND post_id=?').get(revisionId, postId) as { snapshot_json: string } | undefined;
+    if (!revision) throw new SocialError(404, 'NOT_FOUND', '历史版本不存在');
+    const snapshot = JSON.parse(revision.snapshot_json) as { title: string; subtitle: string | null; content: string; bodyJson: string; departmentId: string | null; subboardId: string | null; imageAssetIds?: string[]; attachmentIds?: string[] };
+    if (!isExecutiveRole(principal.role) && snapshot.departmentId !== post.department_id) throw new SocialError(403, 'FORBIDDEN', '不可通过历史版本改变所属板块');
+    this.sqlite.prepare('UPDATE posts SET title=?,subtitle=?,content=?,body_json=?,department_id=?,subboard_id=?,updated_at=? WHERE id=?')
+      .run(snapshot.title, snapshot.subtitle, snapshot.content, snapshot.bodyJson, snapshot.departmentId, snapshot.subboardId, this.timestamp(), postId);
+    this.sqlite.prepare('UPDATE post_assets SET post_id=NULL WHERE post_id=?').run(postId);
+    for (const assetId of [...(snapshot.imageAssetIds ?? []), ...(snapshot.attachmentIds ?? [])]) this.sqlite.prepare('UPDATE post_assets SET post_id=? WHERE id=?').run(postId, assetId);
+    this.recordPostRevision(postId, principal.id, 'RESTORE', revisionId);
+    return this.getPost(postId, principal.id).post;
   }
 
   publicPost(postId: string) {
-    const row = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,d.name department_name,
+    const row = this.sqlite.prepare(`SELECT p.*,u.display_name author_name,u.avatar_color author_color,u.avatar_storage_key author_avatar_key,u.updated_at author_updated_at,d.name department_name,
       (SELECT COUNT(*) FROM post_comments c WHERE c.post_id=p.id AND c.deleted_at IS NULL) comment_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=1) upvote_count,
       (SELECT COUNT(*) FROM post_votes v WHERE v.post_id=p.id AND v.value=-1) downvote_count,

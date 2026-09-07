@@ -52,6 +52,21 @@
 .delete-confirm-dialog button { padding: 9px 14px; border: 2px solid #735c72; background: #eee8dc; }
 .delete-confirm-dialog button.danger { border-color: #8e3030; background: #8e3030; color: #fff; }
 .delete-confirm-dialog button:disabled { opacity: .55; }
+.tavern-public-compose { display: grid; gap: 14px; margin-top: -22px; margin-bottom: 18px; position: relative; z-index: 2; }
+.tavern-public-compose-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 14px; background: #f7e8b8; border: 2px solid #173f3c; box-shadow: 5px 6px #173f3c33; }
+.tavern-public-compose > .guild-button { justify-self: end; }
+.tavern-public-compose .inline-create { margin: 0; }
+.post-history-panel { display: grid; gap: 12px; margin-top: 18px; padding: 16px; background: #f4ead2; border: 2px solid #82673e; }
+.post-history-panel > header { display: flex; justify-content: space-between; gap: 16px; align-items: end; border-bottom: 1px dashed #a48352; padding-bottom: 10px; }
+.post-history-panel h2, .post-history-panel p { margin: 0; }
+.post-history-panel header small, .post-history-panel header > span { color: #786342; font-size: .7rem; }
+.post-history-panel ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.post-history-panel li { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 11px; background: #fffaf0; border: 1px solid #c2a676; }
+.post-history-version { padding: 7px; background: #173f3c; color: #f2c45c; font: .65rem "Press Start 2P", monospace; }
+.post-history-panel li > div { display: grid; gap: 3px; }
+.post-history-panel li small, .post-history-panel li p { color: #74634e; font-size: .72rem; }
+.post-history-panel li button { display: inline-flex; align-items: center; gap: 5px; padding: 8px; border: 1px solid #775c38; background: #f0d590; }
+.post-history-panel li button svg { width: 15px; }
 
 @media (max-width: 640px) {
   .tavern-editor-block figure { grid-template-columns: 1fr; }

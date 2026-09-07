@@ -1,28 +1,30 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, ChevronDown, Download, Edit3, FileText, ImagePlus, Link2, MessageCircle, Paperclip, Pin, Plus, Send, Sparkles, Star, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, ChevronDown, Download, Edit3, FileText, History, ImagePlus, Link2, MessageCircle, Paperclip, Pin, Plus, RotateCcw, Send, Sparkles, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react';
 import { isExecutiveRole, isManagementRole, memberAttributePool } from '@guild/contracts';
-import { api, ApiError, json, type PageData, type User } from './api';
+import { api, ApiError, json, type User } from './api';
 import { useAuth } from './auth';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero } from './components';
 import { PixelFrame, PixelSprite } from './components/departments/pixel';
 import { WikiText } from './components/blog/WikiText';
 import './tavern-editor.css';
 
-interface PostAuthor { id: string; displayName: string; avatarColor: string }
+interface PostAuthor { id: string; displayName: string; avatarColor: string; avatarUrl?: string | null }
 interface PostBlock { type: 'PARAGRAPH' | 'IMAGE' | 'LINK'; text?: string; assetId?: string; alt?: string; url?: string; label?: string }
 interface PostAttachment { id: string; name: string; mimeType: string; size: number }
 export interface TavernPost { id: string; title: string; subtitle: string; content: string; body: PostBlock[]; attachments?: PostAttachment[]; departmentId: string | null; departmentName: string | null; subboardId: string | null; subboardName: string | null; pinned: boolean; featured: boolean; visibleOnGuild: boolean; visibleOnDepartment: boolean; upvoteCount: number; downvoteCount: number; score: number; myRating: -1 | 0 | 1; commentCount: number; author: PostAuthor; createdAt: string; updatedAt: string }
 interface TavernComment { id: string; postId: string; content: string; author: PostAuthor; createdAt: string }
 interface DepartmentOption { id: string; name: string; slug: string }
 interface PostSubboard { id: string; name: string; description: string; departmentId: string; departmentSlug: string; postCount: number }
+interface PostRevision { id: string; revisionNo: number; changeType: 'CREATE' | 'UPDATE' | 'RESTORE'; restoredFromId: string | null; createdAt: string; snapshot: { title: string; subtitle: string | null; content: string }; actor: { id: string; displayName: string; uid: string } | null }
 interface MatchProfile { id: string; displayName: string; avatarColor: string; guildTitle: string; departmentName?: string | null; bio: string; presence?: 'ONLINE' | 'AWAY' | 'OFFLINE' }
 interface MatchItem { score: number; sharedAttributes: string[]; sharedTags: string[]; profile: MatchProfile }
 
 const canModeratePost = (user: User | null, post: TavernPost): boolean => Boolean(user && (
   isExecutiveRole(user.role) || (isManagementRole(user.role) && Boolean(post.departmentId) && post.departmentId === user.departmentId)
 ));
+const PostAvatar = ({ author, className = 'small' }: { author: PostAuthor; className?: string }) => <span className={`social-avatar ${className}`} style={{ '--avatar-color': author.avatarColor } as React.CSSProperties}>{author.avatarUrl ? <img src={author.avatarUrl} alt="" /> : <b>{author.displayName.slice(0, 1)}</b>}</span>;
 
 type EditorBlock =
   | { key: string; type: 'PARAGRAPH'; text: string }
@@ -173,7 +175,10 @@ function PostBody({ post }: { post: TavernPost }) {
 
 export function PublicPostPage() {
   const { id = '' } = useParams();
-  const query = useQuery({ queryKey: ['public-post', id], queryFn: () => api<{ post: TavernPost }>(`/api/public/posts/${id}`), enabled: Boolean(id) });
+  const { user, loading } = useAuth();
+  const query = useQuery({ queryKey: ['public-post', id], queryFn: () => api<{ post: TavernPost }>(`/api/public/posts/${id}`), enabled: Boolean(id) && !loading && !user });
+  if (loading) return <main><LoadingPanel label="正在核验公会身份" /></main>;
+  if (user) return <PostDetailPage />;
   if (query.isLoading) return <main><LoadingPanel label="正在读取公开日志" /></main>;
   if (query.error || !query.data) return <main className="social-profile-error"><ErrorPanel error={query.error} /><Link to="/">返回主页</Link></main>;
   const post = query.data.post;
@@ -187,27 +192,31 @@ export function PublicPostPage() {
   </article></main>;
 }
 
-export function PostsPage() {
+export function TavernComposer() {
   const { user } = useAuth();
   const client = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [open, setOpen] = useState(searchParams.get('compose') === '1');
   const [form, setForm] = useState({ title: '', subtitle: '', departmentId: '', subboardId: '' });
   const [subboardOpen, setSubboardOpen] = useState(false);
   const [subboardForm, setSubboardForm] = useState({ departmentId: '', name: '', description: '' });
   const [blocks, setBlocks] = useState<EditorBlock[]>(emptyEditor);
   const [attachments, setAttachments] = useState<PostAttachment[]>([]);
-  const [deletePost, setDeletePost] = useState<TavernPost | null>(null);
-  const [placementNotice, setPlacementNotice] = useState<string | null>(null);
+  useEffect(() => { if (searchParams.get('compose') === '1') setOpen(true); }, [searchParams]);
   const departments = useQuery({ queryKey: ['public', 'departments'], queryFn: () => api<{ items: DepartmentOption[] }>('/api/public/departments') });
   const selectedDepartmentSlug = departments.data?.items?.find((department) => department.id === form.departmentId)?.slug;
   const subboards = useQuery({ queryKey: ['public-post-subboards', selectedDepartmentSlug], queryFn: () => api<{ items: PostSubboard[] }>(`/api/public/post-subboards?departmentSlug=${encodeURIComponent(selectedDepartmentSlug!)}`), enabled: Boolean(selectedDepartmentSlug) });
-  const query = useQuery({ queryKey: ['tavern', 'posts'], queryFn: () => api<PageData<TavernPost>>('/api/member/posts?page=1&pageSize=50') });
-  const refresh = () => client.invalidateQueries({ queryKey: ['tavern'] });
+  const refresh = () => {
+    void client.invalidateQueries({ queryKey: ['tavern'] });
+    void client.invalidateQueries({ queryKey: ['public-post-board'] });
+    void client.invalidateQueries({ queryKey: ['public-forum-topics'] });
+    void client.invalidateQueries({ queryKey: ['public-forum-categories'] });
+  };
   const create = useMutation({
     mutationFn: () => api<{ post: TavernPost }>('/api/member/posts', json('POST', {
       title: form.title, subtitle: form.subtitle, content: editorContent(blocks), departmentId: form.departmentId || null, subboardId: form.subboardId || null, body: editorBody(blocks), attachmentIds: attachments.map((attachment) => attachment.id),
     })),
-    onSuccess: () => { blocks.forEach((block) => { if (block.type === 'IMAGE' && block.previewUrl.startsWith('blob:')) URL.revokeObjectURL(block.previewUrl); }); setOpen(false); setForm({ title: '', subtitle: '', departmentId: '', subboardId: '' }); setBlocks(emptyEditor()); setAttachments([]); refresh(); },
+    onSuccess: () => { blocks.forEach((block) => { if (block.type === 'IMAGE' && block.previewUrl.startsWith('blob:')) URL.revokeObjectURL(block.previewUrl); }); setOpen(false); setSearchParams({}, { replace: true }); setForm({ title: '', subtitle: '', departmentId: '', subboardId: '' }); setBlocks(emptyEditor()); setAttachments([]); refresh(); },
   });
   const createSubboard = useMutation({
     mutationFn: () => api<{ subboard: PostSubboard }>('/api/member/post-subboards', json('POST', subboardForm)),
@@ -222,21 +231,13 @@ export function PostsPage() {
     mutationFn: (file: File) => { const data = new FormData(); data.append('file', file); return api<{ attachment: PostAttachment }>('/api/member/post-attachments', { method: 'POST', body: data }); },
     onSuccess: ({ attachment }) => setAttachments((items) => items.some((item) => item.id === attachment.id) ? items : [...items, attachment]),
   });
-  const place = useMutation({
-    mutationFn: ({ post, scope, visible = true, pinned, featured }: { post: TavernPost; scope: 'GUILD' | 'DEPARTMENT'; visible?: boolean; pinned?: boolean; featured?: boolean }) => api(`/api/member/posts/${post.id}/placement`, json('PUT', { scope, departmentId: scope === 'DEPARTMENT' ? post.departmentId : null, visible, pinned, featured })),
-    onMutate: () => setPlacementNotice(null),
-    onSuccess: refresh,
-    onError: (error) => { if (error instanceof ApiError && (error.code === 'PINNED_POST_LIMIT' || error.code === 'FEATURED_POST_LIMIT')) setPlacementNotice(error.message); },
-  });
-  const remove = useMutation({ mutationFn: (id: string) => api(`/api/member/posts/${id}`, json('DELETE')), onSuccess: () => { setDeletePost(null); refresh(); } });
-  const manager = Boolean(user && isManagementRole(user.role));
   const submit = (event: FormEvent) => { event.preventDefault(); create.mutate(); };
-  return <main className="social-page tavern-page">
-    <PageHero eyebrow="ADVENTURER TAVERN" title="冒险者酒馆" description="成员公开的交流区：分享进度、招募搭档、约团约展，真实写入公会档案。">
-      <button className="guild-button primary" onClick={() => setOpen(!open)}>{open ? '收起表单' : '发布新帖'}</button>
+  if (!user) return <section className="shell tavern-public-compose"><Link className="guild-button primary" to="/login?from=%2Ftavern%3Fcompose%3D1">登录后发布新帖</Link></section>;
+  return <section className="shell tavern-public-compose" aria-label="酒馆发帖操作">
+    <div className="tavern-public-compose-actions">
+      <button className="guild-button primary" onClick={() => { const next = !open; setOpen(next); setSearchParams(next ? { compose: '1' } : {}, { replace: true }); }}>{open ? '收起发帖表单' : '发布新帖'}</button>
       {user?.role !== 'MEMBER' && <button className="guild-button" onClick={() => { setSubboardOpen(!subboardOpen); setSubboardForm((current) => ({ ...current, departmentId: isExecutiveRole(user!.role) ? current.departmentId : user?.departmentId ?? '' })); }}>{subboardOpen ? '收起子板块表单' : '创建部门子板块'}</button>}
-    </PageHero>
-    <section className="shell">
+    </div>
       {subboardOpen && <form className="inline-create subboard-create" onSubmit={(event) => { event.preventDefault(); createSubboard.mutate(); }}>
         <label>所属部门<select required value={subboardForm.departmentId} disabled={!isExecutiveRole(user!.role)} onChange={(event) => setSubboardForm({ ...subboardForm, departmentId: event.target.value })}><option value="">选择部门</option>{departments.data?.items.filter((department) => isExecutiveRole(user!.role) || department.id === user?.departmentId).map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
         <label>子板块名称<input required minLength={2} maxLength={40} value={subboardForm.name} onChange={(event) => setSubboardForm({ ...subboardForm, name: event.target.value })} placeholder="例如：番剧吐槽" /></label>
@@ -247,7 +248,7 @@ export function PostsPage() {
       {open && <form className="inline-create tavern-create" onSubmit={submit}>
         <label>帖子标题<input required minLength={2} maxLength={60} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="例如：周末道具修补互助" /></label>
         <label>小标题（选填）<input maxLength={160} value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} placeholder="给正文加一句引子" /></label>
-        <label>所属范围<select value={form.departmentId} onChange={(e) => setForm({ ...form, departmentId: e.target.value, subboardId: '' })}><option value="">公会全域</option>{departments.data?.items?.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+        <label>所属范围<select value={form.departmentId} onChange={(e) => setForm({ ...form, departmentId: e.target.value, subboardId: '' })}><option value="">佐佑动漫社（全社团）</option>{departments.data?.items?.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
         {form.departmentId && <label>子板块（选填）<select value={form.subboardId} onChange={(event) => setForm({ ...form, subboardId: event.target.value })}><option value="">不加入子板块</option>{subboards.data?.items.map((subboard) => <option key={subboard.id} value={subboard.id}>{subboard.name}</option>)}</select></label>}
         <PostContentEditor blocks={blocks} onChange={setBlocks} uploading={upload.isPending} uploadError={upload.error} onUpload={(file, afterIndex) => upload.mutate({ file, afterIndex, previewUrl: URL.createObjectURL(file) })} />
         <PostAttachmentEditor attachments={attachments} onChange={setAttachments} uploading={attachmentUpload.isPending} uploadError={attachmentUpload.error} onUpload={(files) => files.forEach((file) => attachmentUpload.mutate(file))} />
@@ -255,31 +256,16 @@ export function PostsPage() {
         {create.error && <p className="form-error">{create.error.message}</p>}
         <button className="guild-button primary" disabled={create.isPending || upload.isPending || attachmentUpload.isPending || editorContent(blocks).length < 5}>发布到酒馆</button>
       </form>}
-      {query.isLoading ? <LoadingPanel label="正在翻开酒馆留言板" /> : query.error ? <ErrorPanel error={query.error} /> : !query.data?.items.length ? <EmptyPanel label="酒馆还没有帖子，来发第一帖" /> : <div className="tavern-post-list">
-        {query.data.items.map((post) => <PixelFrame key={post.id} className="tavern-post-card">
-          <div className="tavern-post-head">
-            <span className="social-avatar small" style={{ '--avatar-color': post.author.avatarColor } as React.CSSProperties}><b>{post.author.displayName.slice(0, 1)}</b></span>
-            <div><strong>{post.author.displayName}</strong><time>{formatDate(post.createdAt)}</time></div>
-            {post.pinned && <span className="tavern-pin"><Pin />置顶</span>}
-          </div>
-          <Link className="tavern-post-title" to={`/portal/tavern/${post.id}`}><h2>{post.title}</h2></Link>
-          {post.subtitle && <p className="tavern-post-subtitle">{post.subtitle}</p>}
-          <span className="tavern-scope">{post.departmentName ?? '公会全域'}{post.subboardName ? ` / ${post.subboardName}` : ''}</span>
-          <p className="tavern-post-excerpt">{post.content.split('\n')[0]}</p>
-          <div className="tavern-post-foot">
-            <Link to={`/portal/tavern/${post.id}`}><MessageCircle />{post.commentCount} 条评论</Link>
-            {manager && (isExecutiveRole(user!.role) || (user?.role === 'DEPARTMENT_HEAD' && post.departmentId === user.departmentId)) && <button onClick={() => place.mutate({ post, scope: 'GUILD', visible: !post.visibleOnGuild })}><Sparkles/>{post.visibleOnGuild ? '撤下主页' : '展示在主页'}</button>}
-            {manager && post.departmentId && (isExecutiveRole(user!.role) || post.departmentId === user?.departmentId) && <button onClick={() => place.mutate({ post, scope: 'DEPARTMENT', visible: !post.visibleOnDepartment })}><Star/>{post.visibleOnDepartment ? '撤下部门页' : '展示在部门页'}</button>}
-            {manager && (isExecutiveRole(user!.role) || post.departmentId === user?.departmentId) && <button onClick={() => place.mutate({ post, scope: post.departmentId ? 'DEPARTMENT' : 'GUILD', pinned: !post.pinned })}><Pin/>{post.pinned ? '取消置顶' : '置顶'}</button>}
-            {manager && (isExecutiveRole(user!.role) || post.departmentId === user?.departmentId) && <button onClick={() => place.mutate({ post, scope: post.departmentId ? 'DEPARTMENT' : 'GUILD', featured: !post.featured })}><Sparkles/>{post.featured ? '取消精选' : '精选'}</button>}
-            {(canModeratePost(user, post) || user?.id === post.author.id) && <button className="danger" aria-label={`删除 ${post.title}`} onClick={() => { remove.reset(); setDeletePost(post); }}><Trash2 />删除</button>}
-          </div>
-        </PixelFrame>)}
-      </div>}
-    </section>
-    {deletePost && <DeleteConfirmDialog kind="帖子" pending={remove.isPending} error={remove.error} onCancel={() => setDeletePost(null)} onConfirm={() => remove.mutate(deletePost.id)} />}
-    {placementNotice && <NoticeDialog message={placementNotice} onClose={() => setPlacementNotice(null)} />}
-  </main>;
+  </section>;
+}
+
+export function PostsPage() {
+  return <Navigate to="/tavern" replace />;
+}
+
+export function LegacyPostDetailPage() {
+  const { id = '' } = useParams();
+  return <Navigate to={`/posts/${id}`} replace />;
 }
 
 export function PostDetailPage() {
@@ -289,6 +275,8 @@ export function PostDetailPage() {
   const [content, setContent] = useState('');
   const [editForm, setEditForm] = useState<{ title: string; subtitle: string; blocks: EditorBlock[]; attachments: PostAttachment[] } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ kind: '帖子' | '评论'; id: string } | null>(null);
+  const [placementNotice, setPlacementNotice] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const query = useQuery({ queryKey: ['tavern', 'post', id], queryFn: () => api<{ post: TavernPost; comments: TavernComment[]; supporters: PostAuthor[] }>(`/api/member/posts/${id}`), enabled: Boolean(id) });
   const refresh = () => client.invalidateQueries({ queryKey: ['tavern'] });
   const comment = useMutation({
@@ -298,6 +286,12 @@ export function PostDetailPage() {
   const removeComment = useMutation({ mutationFn: (commentId: string) => api(`/api/member/comments/${commentId}`, json('DELETE')), onSuccess: () => { setDeleteTarget(null); refresh(); } });
   const removePost = useMutation({ mutationFn: () => api(`/api/member/posts/${id}`, json('DELETE')), onSuccess: () => { refresh(); } });
   const rate = useMutation({ mutationFn: (value: -1 | 0 | 1) => api(`/api/member/posts/${id}/rating`, json('PUT', { value })), onSuccess: refresh });
+  const place = useMutation({
+    mutationFn: (post: TavernPost) => api(`/api/member/posts/${post.id}/placement`, json('PUT', { scope: post.departmentId ? 'DEPARTMENT' : 'GUILD', departmentId: post.departmentId, visible: true, pinned: !post.pinned })),
+    onMutate: () => setPlacementNotice(null),
+    onSuccess: refresh,
+    onError: (error) => { if (error instanceof ApiError && error.code === 'PINNED_POST_LIMIT') setPlacementNotice(error.message); },
+  });
   const edit = useMutation({ mutationFn: () => api(`/api/member/posts/${id}`, json('PATCH', {
     title: editForm!.title, subtitle: editForm!.subtitle, content: editorContent(editForm!.blocks), departmentId: query.data!.post.departmentId, subboardId: query.data!.post.subboardId, body: editorBody(editForm!.blocks), attachmentIds: editForm!.attachments.map((attachment) => attachment.id),
   })), onSuccess: () => { editForm?.blocks.forEach((block) => { if (block.type === 'IMAGE' && block.previewUrl.startsWith('blob:')) URL.revokeObjectURL(block.previewUrl); }); setEditForm(null); refresh(); } });
@@ -310,17 +304,24 @@ export function PostDetailPage() {
     mutationFn: (file: File) => { const data = new FormData(); data.append('file', file); return api<{ attachment: PostAttachment }>('/api/member/post-attachments', { method: 'POST', body: data }); },
     onSuccess: ({ attachment }) => setEditForm((current) => current ? { ...current, attachments: current.attachments.some((item) => item.id === attachment.id) ? current.attachments : [...current.attachments, attachment] } : current),
   });
+  const history = useQuery({ queryKey: ['tavern', 'post', id, 'history'], queryFn: () => api<{ items: PostRevision[] }>(`/api/member/posts/${id}/history`), enabled: Boolean(id) && historyOpen });
+  const restore = useMutation({
+    mutationFn: (revisionId: string) => api(`/api/member/posts/${id}/history/${revisionId}/restore`, json('POST')),
+    onSuccess: () => { refresh(); void client.invalidateQueries({ queryKey: ['tavern', 'post', id, 'history'] }); },
+  });
   const navigate = useNavigate();
   if (query.isLoading) return <main><LoadingPanel label="正在读取帖子" /></main>;
-    if (query.error || !query.data) return <main className="social-profile-error"><ErrorPanel error={query.error} /><Link to="/portal/tavern">返回冒险者酒馆</Link></main>;
+    if (query.error || !query.data) return <main className="social-profile-error"><ErrorPanel error={query.error} /><button type="button" onClick={() => navigate(-1)}>返回上一页</button></main>;
     const { post, comments, supporters = [] } = query.data;
     const canModerate = canModeratePost(user, post);
+    const canEdit = Boolean(user && (user.id === post.author.id || canModerate));
+    const canDelete = Boolean(user && (post.departmentId ? user.id === post.author.id || canModerate : isExecutiveRole(user.role)));
   return <main className="social-page tavern-page">
     <section className="shell tavern-detail">
-      <Link className="tavern-back" to="/portal/tavern"><ArrowLeft />返回酒馆</Link>
+      <button type="button" className="tavern-back" onClick={() => navigate(-1)}><ArrowLeft />返回酒馆</button>
       <PixelFrame className="tavern-post-card detail">
         <div className="tavern-post-head">
-          <span className="social-avatar small" style={{ '--avatar-color': post.author.avatarColor } as React.CSSProperties}><b>{post.author.displayName.slice(0, 1)}</b></span>
+          <PostAvatar author={post.author} />
           <div><strong>{post.author.displayName}</strong><time>{formatDate(post.createdAt)}</time></div>
           {post.pinned && <span className="tavern-pin"><Pin />置顶</span>}
         </div>
@@ -342,16 +343,27 @@ export function PostDetailPage() {
             <strong>{post.score > 0 ? `+${post.score}` : post.score}</strong>
             <button className={post.myRating === -1 ? 'active down' : ''} aria-label={`反对，当前 ${post.downvoteCount} 人`} onClick={() => rate.mutate(post.myRating === -1 ? 0 : -1)}><ThumbsDown/>{post.downvoteCount}</button>
           </div>
-          {canModerate && <button onClick={() => setEditForm({ title: post.title, subtitle: post.subtitle, blocks: blocksFromPost(post), attachments: post.attachments ?? [] })}><Edit3/>编辑帖子</button>}
-          {(canModerate || user?.id === post.author.id) && <button className="danger" onClick={() => { removePost.reset(); setDeleteTarget({ kind: '帖子', id: post.id }); }}><Trash2 />删除帖子</button>}
+          {canModerate && <button onClick={() => place.mutate(post)} disabled={place.isPending}><Pin/>{post.pinned ? '取消置顶' : '置顶帖子'}</button>}
+          {canEdit && <button onClick={() => setEditForm({ title: post.title, subtitle: post.subtitle, blocks: blocksFromPost(post), attachments: post.attachments ?? [] })}><Edit3/>编辑帖子</button>}
+          <button onClick={() => setHistoryOpen((value) => !value)}><History/>{historyOpen ? '收起历史记录' : '历史记录'}</button>
+          {canDelete && <button className="danger" onClick={() => { removePost.reset(); setDeleteTarget({ kind: '帖子', id: post.id }); }}><Trash2 />删除帖子</button>}
         </div>
+        {historyOpen && <section className="post-history-panel" aria-label="帖子历史记录">
+          <header><div><small>POST ARCHIVE</small><h2>帖子历史记录</h2></div><span>每次编辑和还原都会留下记录</span></header>
+          {history.isLoading ? <LoadingPanel label="正在读取帖子历史" /> : history.error ? <ErrorPanel error={history.error} /> : <ol>{history.data?.items.map((revision, index) => <li key={revision.id}>
+            <span className="post-history-version">V{String(revision.revisionNo).padStart(2, '0')}</span>
+            <div><strong>{revision.snapshot.title}</strong><small>{revision.changeType === 'CREATE' ? '初始版本' : revision.changeType === 'RESTORE' ? '还原记录' : '编辑记录'} · {revision.actor?.displayName ?? '已停用账号'} · {formatDate(revision.createdAt)}</small>{revision.snapshot.subtitle && <p>{revision.snapshot.subtitle}</p>}</div>
+            {canEdit && index > 0 && <button type="button" disabled={restore.isPending} onClick={() => restore.mutate(revision.id)}><RotateCcw/>还原此版本</button>}
+          </li>)}</ol>}
+          {restore.error && <p className="form-error">{restore.error.message}</p>}
+        </section>}
         <PostAttachmentAppendix attachments={post.attachments ?? []} />
-        <details className="post-supporters"><summary><ChevronDown/>查看赞成这篇帖子的成员（{post.upvoteCount}）</summary>{supporters.length ? <ul>{supporters.map((supporter) => <li key={supporter.id}><span className="social-avatar small" style={{ '--avatar-color': supporter.avatarColor } as React.CSSProperties}><b>{supporter.displayName.slice(0, 1)}</b></span>{supporter.displayName}</li>)}</ul> : <p>还没有成员赞成这篇帖子。</p>}</details>
+        <details className="post-supporters"><summary><ChevronDown/>查看赞成这篇帖子的成员（{post.upvoteCount}）</summary>{supporters.length ? <ul>{supporters.map((supporter) => <li key={supporter.id}><PostAvatar author={supporter}/>{supporter.displayName}</li>)}</ul> : <p>还没有成员赞成这篇帖子。</p>}</details>
       </PixelFrame>
       <section className="tavern-comments">
         <h2>评论 · {comments.length}</h2>
         {comments.map((item) => <article key={item.id}>
-          <span className="social-avatar small" style={{ '--avatar-color': item.author.avatarColor } as React.CSSProperties}><b>{item.author.displayName.slice(0, 1)}</b></span>
+          <PostAvatar author={item.author} />
           <div><strong>{item.author.displayName}<time>{formatDate(item.createdAt)}</time></strong><p>{item.content}</p></div>
           {(canModerate || user?.id === item.author.id) && <button className="danger" aria-label={`删除 ${item.author.displayName} 的评论`} onClick={() => { removeComment.reset(); setDeleteTarget({ kind: '评论', id: item.id }); }}><Trash2 /></button>}
         </article>)}
@@ -363,9 +375,10 @@ export function PostDetailPage() {
       </section>
     </section>
     {deleteTarget && <DeleteConfirmDialog kind={deleteTarget.kind} pending={deleteTarget.kind === '帖子' ? removePost.isPending : removeComment.isPending} error={deleteTarget.kind === '帖子' ? removePost.error : removeComment.error} onCancel={() => setDeleteTarget(null)} onConfirm={() => {
-      if (deleteTarget.kind === '帖子') removePost.mutate(undefined, { onSuccess: () => navigate('/portal/tavern') });
+      if (deleteTarget.kind === '帖子') removePost.mutate(undefined, { onSuccess: () => navigate(-1) });
       else removeComment.mutate(deleteTarget.id);
     }} />}
+    {placementNotice && <NoticeDialog message={placementNotice} onClose={() => setPlacementNotice(null)} />}
   </main>;
 }
 

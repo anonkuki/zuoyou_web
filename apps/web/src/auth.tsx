@@ -1,8 +1,8 @@
-import { createContext, useContext, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Navigate, useLocation } from 'react-router-dom';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { isExecutiveRole } from '@guild/contracts';
-import { api, type User } from './api';
+import { api, AUTH_SESSION_EXPIRED_EVENT, json, type User } from './api';
 import { LoadingPanel } from './components';
 
 interface AuthValue {
@@ -11,13 +11,26 @@ interface AuthValue {
 }
 
 const AuthContext = createContext<AuthValue>({ user: null, loading: true });
+export const AUTH_QUERY_KEY = ['auth', 'me'] as const;
+
+export function clearAuthenticatedCache(client: QueryClient) {
+  void client.cancelQueries();
+  client.setQueryData(AUTH_QUERY_KEY, null);
+  client.removeQueries({ predicate: query => query.queryKey[0] !== 'auth' });
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const client = useQueryClient();
   const query = useQuery({
-    queryKey: ['auth', 'me'],
-    queryFn: async () => (await api<{ user: User | null }>('/api/auth/session')).user,
+    queryKey: AUTH_QUERY_KEY,
+    queryFn: async ({ signal }) => (await api<{ user: User | null }>('/api/auth/session', { signal })).user,
     retry: false,
   });
+  useEffect(() => {
+    const expireSession = () => clearAuthenticatedCache(client);
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, expireSession);
+    return () => window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, expireSession);
+  }, [client]);
   return (
     <AuthContext.Provider value={{ user: query.data ?? null, loading: query.isLoading }}>
       {children}
@@ -26,6 +39,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
+
+export function useLogout() {
+  const client = useQueryClient();
+  const navigate = useNavigate();
+  return useMutation({
+    mutationFn: () => api<{ loggedOut: boolean }>('/api/auth/logout', json('POST')),
+    onSuccess: () => {
+      clearAuthenticatedCache(client);
+      navigate('/', { replace: true });
+    },
+  });
+}
 
 export function Protected({ children, manager = false, adminOnly = false }: { children: ReactNode; manager?: boolean; adminOnly?: boolean }) {
   const { user, loading } = useAuth();

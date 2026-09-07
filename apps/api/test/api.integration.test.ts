@@ -109,13 +109,13 @@ describe('production seed safety', () => {
     });
   });
 
-  it('assigns every account a unique five-digit UID enforced by the database', async () => {
+  it('assigns every seed account a unique five-digit UID and permits later custom IDs', async () => {
     await withDevelopmentSeed(async (sqlite) => {
       const counts = sqlite.prepare("SELECT COUNT(*) total,COUNT(DISTINCT uid) unique_uids,SUM(CASE WHEN length(uid)=5 AND uid NOT GLOB '*[^0-9]*' THEN 1 ELSE 0 END) valid_uids FROM users").get() as { total: number; unique_uids: number; valid_uids: number };
       expect(counts).toEqual({ total: 84, unique_uids: 84, valid_uids: 84 });
       const adminUid = (sqlite.prepare("SELECT uid FROM users WHERE id='user-admin'").get() as { uid: string }).uid;
       expect(() => sqlite.prepare("UPDATE users SET uid=? WHERE id='user-member'").run(adminUid)).toThrow();
-      expect(() => sqlite.prepare("UPDATE users SET uid='ABC12' WHERE id='user-member'").run()).toThrow();
+      expect(() => sqlite.prepare("UPDATE users SET uid='ABC12' WHERE id='user-member'").run()).not.toThrow();
     });
   });
 
@@ -345,10 +345,20 @@ describe.sequential('Adventurer Guild API', () => {
     }
   });
 
-  it('completes recruitment approval, status lookup, one-time activation and login', async () => {
+  it('adds an authenticated applicant directly to selected departments after approval', async () => {
+    const unauthenticated = await app.inject({ method: 'POST', url: '/api/public/applications', payload: {
+      displayName: '未登录申请人', email: 'anonymous@example.test', college: '计算机学院', departmentIds: ['dept-tech'], reason: '希望参加社团活动',
+    } });
+    expect(unauthenticated.statusCode).toBe(401);
+    const accountRequest = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
+      username: 'starsand.member', password: 'StrongPass!2026', contact: 'starsand@example.test', note: '准备提交社员申请',
+    } });
+    expect(accountRequest.statusCode).toBe(201);
+    expect((await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${accountRequest.json().data.id}/approve`, headers: { cookie: adminCookie } })).statusCode).toBe(200);
+    const applicantCookie = await login(app, 'starsand.member', 'StrongPass!2026');
     const submitted = await app.inject({ method: 'POST', url: '/api/public/applications', payload: {
       displayName: '星砂同学', email: 'starsand@example.test', college: '计算机学院 2026级', departmentIds: ['dept-tech', 'dept-original'], reason: '希望认识同好并参与社团活动',
-    } });
+    }, headers: { cookie: applicantCookie } });
     expect(submitted.statusCode).toBe(201);
     const { id, statusToken } = submitted.json().data;
     expect(statusToken.length).toBeGreaterThan(30);
@@ -365,30 +375,21 @@ describe.sequential('Adventurer Guild API', () => {
     const approvedDepartments = database.sqlite.prepare(`SELECT ud.department_id,ud.is_primary FROM user_departments ud
       JOIN applications a ON a.user_id=ud.user_id WHERE a.id=? ORDER BY ud.is_primary DESC,ud.rowid`).all(id);
     database.sqlite.close();
-    expect(approvedDepartments).toEqual([
+    expect(approvedDepartments).toEqual(expect.arrayContaining([
       { department_id: 'dept-tech', is_primary: 1 },
       { department_id: 'dept-original', is_primary: 0 },
-    ]);
+    ]));
     const status = await app.inject({ method: 'GET', url: `/api/public/applications/status/${statusToken}` });
     expect(status.json().data).toMatchObject({ status: 'APPROVED' });
-    const activationCode = status.json().data.activationCode;
-    expect(activationCode).toBeTypeOf('string');
-
-    const activationAttempts = await Promise.all(['starsand', 'starsand2'].map((username) => app.inject({
-      method: 'POST', url: '/api/auth/activate', payload: { token: activationCode, username, password: 'StrongPass!2026' },
-    })));
-    expect(activationAttempts.map((response) => response.statusCode).sort()).toEqual([200, 409]);
-    const consumedStatus = await app.inject({ method: 'GET', url: `/api/public/applications/status/${statusToken}` });
-    expect(consumedStatus.json().data.activationCode).toBeUndefined();
-    const winner = activationAttempts[0].statusCode === 200 ? 'starsand' : 'starsand2';
-    expect(await login(app, winner, 'StrongPass!2026')).toContain('guild_session=');
-    expect((await app.inject({ method: 'POST', url: `/api/admin/applications/${id}/regenerate-activation`, headers: { cookie: adminCookie } })).statusCode).toBe(409);
+    expect(status.json().data).not.toHaveProperty('activationCode');
+    const refreshedSession = await app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie: applicantCookie } });
+    expect(refreshedSession.json().data.user.departmentIds).toEqual(expect.arrayContaining(['dept-tech', 'dept-original']));
   });
 
   it('lets guests request accounts and limits approval data and actions to the president layer', async () => {
     const password = 'GuestStrong!2026';
     const submitted = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
-      username: 'guest.alpha', password, contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。',
+      username: '星砂访客', password, contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。',
     } });
     expect(submitted.statusCode).toBe(201);
     const requestId = submitted.json().data.id as string;
@@ -396,21 +397,21 @@ describe.sequential('Adventurer Guild API', () => {
     const database = await openDatabase(`${root}/guild.sqlite`);
     const stored = database.sqlite.prepare('SELECT username,password_hash,contact,note,status FROM registration_requests WHERE id=?').get(requestId) as Record<string, string>;
     database.sqlite.close();
-    expect(stored).toMatchObject({ username: 'guest.alpha', contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。', status: 'PENDING' });
+    expect(stored).toMatchObject({ username: '星砂访客', contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。', status: 'PENDING' });
     expect(stored.password_hash).not.toBe(password);
     expect(stored.password_hash).toMatch(/^scrypt\$/);
 
     expect((await app.inject({ method: 'GET', url: '/api/admin/registration-requests', headers: { cookie: memberCookie } })).statusCode).toBe(403);
     const presidentList = await app.inject({ method: 'GET', url: '/api/admin/registration-requests?page=1&pageSize=100', headers: { cookie: adminCookie } });
     const visible = presidentList.json().data.items.find((item: { id: string }) => item.id === requestId);
-    expect(visible).toMatchObject({ username: 'guest.alpha', contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。', status: 'PENDING' });
+    expect(visible).toMatchObject({ username: '星砂访客', contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。', status: 'PENDING' });
     expect(visible).not.toHaveProperty('password_hash');
     expect(visible).not.toHaveProperty('passwordHash');
 
     expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-member/assign', headers: { cookie: adminCookie }, payload: { role: 'VICE_PRESIDENT' } })).statusCode).toBe(201);
     expect((await app.inject({ method: 'GET', url: '/api/admin/registration-requests', headers: { cookie: memberCookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${requestId}/approve`, headers: { cookie: memberCookie } })).statusCode).toBe(200);
-    expect(await login(app, 'guest.alpha', password)).toContain('guild_session=');
+    expect(await login(app, '星砂访客', password)).toContain('guild_session=');
 
     const rejected = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
       username: 'guest.beta', password: 'OtherStrong!2026', contact: '13800000002', note: '',
@@ -676,6 +677,28 @@ describe.sequential('Adventurer Guild API', () => {
     expect((await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { profileVisibility: 'MEMBERS' } })).statusCode).toBe(200);
   });
 
+  it('lets every member change their unique ID and upload a profile avatar', async () => {
+    const changed = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { uid: '白羽_2026' } });
+    expect(changed.statusCode).toBe(200);
+    expect(changed.json().data.profile.uid).toBe('白羽_2026');
+    const duplicate = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: leadCookie }, payload: { uid: '白羽_2026' } });
+    expect(duplicate.statusCode).toBe(409);
+
+    const boundary = '----guild-avatar-boundary';
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="avatar.png"\r\nContent-Type: image/png\r\n\r\n`),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const uploaded = await app.inject({ method: 'POST', url: '/api/member/profile/avatar', headers: { cookie: memberCookie, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body });
+    expect(uploaded.statusCode).toBe(201);
+    const avatarUrl = uploaded.json().data.avatarUrl as string;
+    expect(avatarUrl).toContain('/api/public/avatars/user-member');
+    const avatar = await app.inject({ method: 'GET', url: avatarUrl });
+    expect(avatar.statusCode).toBe(200);
+    expect(avatar.headers['content-type']).toContain('image/png');
+  });
+
   it('closes direct and department chat with unread, reply, edit, delete, and ownership rules', async () => {
     const list = await app.inject({ method: 'GET', url: '/api/member/conversations', headers: { cookie: memberCookie } });
     expect(list.statusCode).toBe(200);
@@ -770,12 +793,12 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
 
   it('shows technical department applicants to its department managers', async () => {
     const submitted = await app.inject({ method: 'POST', url: '/api/public/applications', payload: {
-      displayName: '技术申请人', email: 'tech-applicant@example.test', college: '计算机学院', departmentIds: ['dept-tech'], reason: '希望参加拍摄与后期工作。',
-    } });
+      displayName: '技术申请人', email: 'tech-applicant@example.test', college: '计算机学院', departmentIds: ['dept-tech', 'dept-music'], reason: '希望参加拍摄与后期工作。',
+    }, headers: { cookie: memberCookie } });
     expect(submitted.statusCode).toBe(201);
     const applications = await app.inject({ method: 'GET', url: '/api/admin/applications?page=1&pageSize=100', headers: { cookie: techLeadCookie } });
     expect(applications.statusCode).toBe(200);
-    expect(applications.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ display_name: '技术申请人', departmentIds: ['dept-tech'] })]));
+    expect(applications.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ display_name: '技术申请人', departmentIds: expect.arrayContaining(['dept-tech']) })]));
   });
 
   it('migrates announcements content, user attributes and tavern seed data', async () => {
@@ -788,7 +811,8 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     expect(posts.json().data.items[0].author.displayName).toBe('星门总管');
     const directory = await app.inject({ method: 'GET', url: '/api/public/forum/categories' });
     expect(directory.statusCode).toBe(200);
-    expect(directory.json().data.groups).toHaveLength(6);
+    expect(directory.json().data.groups).toHaveLength(7);
+    expect(directory.json().data.groups[0]).toMatchObject({ id: 'guild', slug: 'guild', name: '佐佑动漫社' });
     expect(directory.json().data.groups.find((group: { slug: string }) => group.slug === 'publicity')).toEqual(expect.objectContaining({
       name: '外宣&幻想研', topicCount: expect.any(Number), replyCount: expect.any(Number),
       subboards: expect.arrayContaining([expect.objectContaining({ id: 'subboard-publicity-anime', name: '番剧吐槽', topicCount: expect.any(Number) })]),
@@ -894,6 +918,24 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     expect((await app.inject({
       method: 'PUT', url: '/api/admin/page-content/department%3Acos', headers: { cookie: memberCookie }, payload: departmentConfig,
     })).statusCode).toBe(403);
+  });
+
+  it('uploads local images for editable pages within the editors scope', async () => {
+    const boundary = '----guild-page-image-boundary';
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="page.webp"\r\nContent-Type: image/webp\r\n\r\n`),
+      Buffer.from('RIFF-test-WEBP'),
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const upload = (cookie: string, pageKey: string) => app.inject({ method: 'POST', url: `/api/admin/page-images?pageKey=${encodeURIComponent(pageKey)}`, headers: { cookie, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: body });
+    expect((await upload(memberCookie, 'department:cos')).statusCode).toBe(403);
+    expect((await upload(leadCookie, 'department:tech')).statusCode).toBe(403);
+    const uploaded = await upload(leadCookie, 'department:cos');
+    expect(uploaded.statusCode).toBe(201);
+    const imageUrl = uploaded.json().data.image.url as string;
+    const publicImage = await app.inject({ method: 'GET', url: imageUrl });
+    expect(publicImage.statusCode).toBe(200);
+    expect(publicImage.headers['content-type']).toContain('image/webp');
   });
 
   it('loads Bilibili title and cover data for music-page editors', async () => {
@@ -1037,10 +1079,10 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     expect(memberAttachment.statusCode).toBe(200);
     expect(memberAttachment.body).toBe('fake-pdf-bytes');
     expect(memberAttachment.headers['content-disposition']).toContain("filename*=UTF-8''");
-    expect((await app.inject({ method: 'GET', url: `/api/public/post-attachments/${attachmentId}/content` })).statusCode).toBe(404);
-    expect((await app.inject({ method: 'GET', url: `/api/public/post-assets/${assetId}` })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: `/api/public/post-attachments/${attachmentId}/content` })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: `/api/public/post-assets/${assetId}` })).statusCode).toBe(200);
 
-    expect((await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}`, headers: { cookie: memberCookie }, payload: { title: '成员不可编辑', content: '普通成员不可编辑。', departmentId: 'dept-cos' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}`, headers: { cookie: memberCookie }, payload: { title: '发帖人自行校对', content: '发帖人可以编辑自己的帖子。', departmentId: 'dept-cos', body: [{ type: 'PARAGRAPH', text: '发帖人可以编辑自己的帖子。' }, { type: 'IMAGE', assetId, alt: '上色后的道具' }], attachmentIds: [attachmentId] } })).statusCode).toBe(200);
     const edited = await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}`, headers: { cookie: leadCookie }, payload: { title: '幻装工坊网络日志（已校对）', subtitle: '部长校对', content: '内容已经完成校对。', departmentId: 'dept-cos', body: [{ type: 'PARAGRAPH', text: '内容已经完成校对。' }, { type: 'IMAGE', assetId, alt: '上色后的道具' }] } });
     expect(edited.statusCode).toBe(200);
 
@@ -1081,6 +1123,36 @@ describe.sequential('Guild tavern, resonance match and announcement content', ()
     const guildPostId = guildPost.json().data.post.id as string;
     expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${guildPostId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${guildPostId}/placement`, headers: { cookie: adminCookie }, payload: { scope: 'GUILD', visible: true } })).statusCode).toBe(200);
+  });
+
+  it('adds a guild-wide board and lets authors and executives manage post history within scope', async () => {
+    const created = await app.inject({ method: 'POST', url: '/api/member/posts', headers: { cookie: memberCookie }, payload: { title: '全社团共同话题', subtitle: '第一版', content: '这是面向全社团成员的帖子。' } });
+    expect(created.statusCode).toBe(201);
+    const postId = created.json().data.post.id as string;
+
+    const topics = await app.inject({ method: 'GET', url: '/api/public/forum/topics?departmentSlug=guild' });
+    expect(topics.statusCode).toBe(200);
+    expect(topics.json().data.department).toMatchObject({ id: 'guild', name: '佐佑动漫社' });
+    expect(topics.json().data.items).toEqual(expect.arrayContaining([expect.objectContaining({ id: postId })]));
+
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: leadCookie }, payload: { scope: 'GUILD', visible: true, pinned: true } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: `/api/member/posts/${postId}/placement`, headers: { cookie: viceCookie }, payload: { scope: 'GUILD', visible: true, pinned: true } })).statusCode).toBe(200);
+
+    const edited = await app.inject({ method: 'PATCH', url: `/api/member/posts/${postId}`, headers: { cookie: memberCookie }, payload: { title: '全社团共同话题（作者修订）', subtitle: '第二版', content: '作者完成了第二版内容。' } });
+    expect(edited.statusCode).toBe(200);
+    const history = await app.inject({ method: 'GET', url: `/api/member/posts/${postId}/history`, headers: { cookie: memberCookie } });
+    expect(history.statusCode).toBe(200);
+    expect(history.json().data.items).toHaveLength(2);
+    const firstRevisionId = history.json().data.items[1].id as string;
+
+    const restored = await app.inject({ method: 'POST', url: `/api/member/posts/${postId}/history/${firstRevisionId}/restore`, headers: { cookie: memberCookie } });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json().data.post).toMatchObject({ title: '全社团共同话题', subtitle: '第一版' });
+    const restoredHistory = await app.inject({ method: 'GET', url: `/api/member/posts/${postId}/history`, headers: { cookie: memberCookie } });
+    expect(restoredHistory.json().data.items[0]).toMatchObject({ changeType: 'RESTORE', restoredFromId: firstRevisionId });
+
+    expect((await app.inject({ method: 'DELETE', url: `/api/member/posts/${postId}`, headers: { cookie: memberCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'DELETE', url: `/api/member/posts/${postId}`, headers: { cookie: viceCookie } })).statusCode).toBe(200);
   });
 
   it('creates department subboards with scoped management and filters their public posts', async () => {

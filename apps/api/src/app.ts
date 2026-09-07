@@ -16,7 +16,7 @@ import {
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
 import { canTransitionActivity } from './activity.js';
-import { allocateUserUid, openDatabase, seedDatabase } from './database.js';
+import { openDatabase, seedDatabase } from './database.js';
 import { canAccessDepartment, canAccessFile } from './policies.js';
 import { decryptSecret, encryptSecret, hashPassword, sha256, verifyPassword } from './security.js';
 import { GuildSocialRepository, SocialError, safeTags } from './social.js';
@@ -51,9 +51,11 @@ interface UserRow {
   interests: string;
   avatar_color: string;
   avatar_config: string | null;
+  avatar_storage_key: string | null;
   profile_visibility: 'MEMBERS' | 'PRIVATE';
   last_seen_at: string | null;
   is_active: number;
+  updated_at: string;
 }
 
 interface Principal {
@@ -73,6 +75,7 @@ interface Principal {
   interests: string[];
   avatarColor: string;
   avatarConfig: AvatarConfig;
+  avatarUrl: string | null;
   profileVisibility: 'MEMBERS' | 'PRIVATE';
   lastSeenAt: string | null;
 }
@@ -201,7 +204,7 @@ const publicAnnouncement = (row: AnnouncementRow) => ({
 const cleanUser = (user: UserRow, departmentIds: string[] = user.department_id ? [user.department_id] : []): Principal => ({
   id: user.id, uid: user.uid, username: user.username, displayName: user.display_name, email: user.email,
   role: user.role, departmentId: user.department_id, departmentIds, bio: user.bio, guildTitle: user.guild_title, college: user.college, grade: user.grade,
-  skills: safeTags(user.skills), interests: safeTags(user.interests), avatarColor: user.avatar_color, avatarConfig: resolveAvatarConfig(user.id, user.avatar_config), profileVisibility: user.profile_visibility, lastSeenAt: user.last_seen_at,
+  skills: safeTags(user.skills), interests: safeTags(user.interests), avatarColor: user.avatar_color, avatarConfig: resolveAvatarConfig(user.id, user.avatar_config), avatarUrl: user.avatar_storage_key ? `/api/public/avatars/${user.id}?v=${encodeURIComponent(user.updated_at)}` : null, profileVisibility: user.profile_visibility, lastSeenAt: user.last_seen_at,
 });
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -523,6 +526,37 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const config = row ? pageContentConfigSchema.parse(JSON.parse(row.config_json)) : pageContentConfigSchema.parse({});
     return successResponse({ pageKey, config, updatedAt: row?.updated_at ?? null });
   });
+  app.post('/api/admin/page-images', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const { pageKey } = parse(z.object({ pageKey: pageKeySchema }), request.query);
+    pageEditScope(principal, pageKey);
+    const part = await request.file();
+    if (!part) throw new HttpError(400, 'FILE_REQUIRED', '请选择要上传的页面图片');
+    const extensions: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+    const extension = extensions[part.mimetype];
+    if (!extension) throw new HttpError(415, 'INVALID_IMAGE_TYPE', '页面图片仅支持 JPG、PNG、WebP 或 GIF');
+    const id = newId('page-image');
+    const storageKey = `page-images/${id}${extension}`;
+    const path = resolve(options.uploadRoot, storageKey);
+    await mkdir(resolve(options.uploadRoot, 'page-images'), { recursive: true });
+    await pipeline(part.file, createWriteStream(path, { flags: 'wx' }));
+    const info = await stat(path);
+    if (part.file.truncated || info.size > 12 * 1024 * 1024) { await unlink(path); throw new HttpError(413, 'IMAGE_TOO_LARGE', '页面图片不能超过 12MB'); }
+    sqlite.prepare('INSERT INTO page_uploads(id,page_key,owner_id,storage_key,mime_type,size,created_at) VALUES (?,?,?,?,?,?,?)')
+      .run(id, pageKey, principal.id, storageKey, part.mimetype, info.size, now());
+    audit(sqlite, principal.id, 'PAGE_IMAGE_UPLOADED', 'page_upload', id, null, { pageKey, size: info.size });
+    return reply.status(201).send(successResponse({ image: { id, url: `/api/public/page-images/${id}`, mimeType: part.mimetype, size: info.size } }));
+  });
+
+  app.get('/api/public/page-images/:id', async (request, reply) => {
+    const item = sqlite.prepare('SELECT storage_key,mime_type FROM page_uploads WHERE id=?').get((request.params as { id: string }).id) as { storage_key: string; mime_type: string } | undefined;
+    if (!item) throw new HttpError(404, 'NOT_FOUND', '页面图片不存在');
+    const uploadRoot = resolve(options.uploadRoot);
+    const filePath = resolve(uploadRoot, item.storage_key);
+    if (!filePath.startsWith(`${uploadRoot}${sep}`)) throw new HttpError(400, 'INVALID_STORAGE_KEY', '页面图片路径无效');
+    reply.type(item.mime_type).header('Cache-Control', 'public, max-age=31536000, immutable').header('X-Content-Type-Options', 'nosniff');
+    return reply.send(createReadStream(filePath));
+  });
   app.put('/api/admin/page-content/:pageKey', async (request, reply) => {
     const principal = requireManager(request, reply);
     if (!principal) return;
@@ -647,17 +681,20 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     departmentIds: z.array(z.string().min(1)).min(1).max(6).optional(), departmentId: z.string().min(1).optional(), reason: z.string().trim().min(5).max(1000),
   }).refine((body) => Boolean(body.departmentIds?.length || body.departmentId), { message: '请至少选择一个感兴趣的部门', path: ['departmentIds'] });
   app.post('/api/public/applications', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const applicant = requireMember(request, reply);
+    if (!applicant) return;
     const body = parse(applicationSchema, request.body);
     const departmentIds = body.departmentIds ?? [body.departmentId!];
     if (new Set(departmentIds).size !== departmentIds.length) throw new HttpError(400, 'VALIDATION_ERROR', '请勿重复选择同一部门');
     const departmentExists = sqlite.prepare('SELECT 1 FROM departments WHERE id=?');
     if (departmentIds.some((departmentId) => !departmentExists.get(departmentId))) throw new HttpError(400, 'VALIDATION_ERROR', '所选部门不存在');
-    if (sqlite.prepare("SELECT 1 FROM applications WHERE email=? AND status='PENDING'").get(body.email)) throw new HttpError(409, 'CONFLICT', '该邮箱已有待审申请');
+    if (sqlite.prepare("SELECT 1 FROM applications WHERE user_id=? AND status='PENDING'").get(applicant.id)) throw new HttpError(409, 'CONFLICT', '该账号已有待审社员申请');
+    if (departmentIds.every((departmentId) => memberBelongsToDepartment(applicant.id, departmentId))) throw new HttpError(409, 'ALREADY_MEMBER', '该账号已经属于所选部门');
     const id = newId('application');
     const statusToken = randomBytes(32).toString('base64url');
     sqlite.transaction(() => {
-      sqlite.prepare('INSERT INTO applications(id,status_token_hash,display_name,email,college,department_id,reason,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
-        .run(id, sha256(statusToken), body.displayName, body.email, body.college, departmentIds[0], body.reason, 'PENDING', now(), now());
+      sqlite.prepare('INSERT INTO applications(id,status_token_hash,display_name,email,college,department_id,reason,status,user_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+        .run(id, sha256(statusToken), body.displayName, body.email, body.college, departmentIds[0], body.reason, 'PENDING', applicant.id, now(), now());
       const insertDepartment = sqlite.prepare('INSERT INTO application_departments(application_id,department_id,preference_order) VALUES (?,?,?)');
       departmentIds.forEach((departmentId, index) => insertDepartment.run(id, departmentId, index));
       audit(sqlite, null, 'APPLICATION_SUBMITTED', 'application', id, null, { departmentIds });
@@ -671,12 +708,12 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
 
   const registrationRequestSchema = z.object({
-    username: z.string().trim().regex(/^[a-zA-Z0-9._-]{3,40}$/, '用户名需为 3-40 位字母、数字、点、下划线或连字符'),
+    username: z.string().trim().regex(/^[\p{L}\p{N}._-]{2,40}$/u, '用户名需为 2-40 位中文、字母、数字、点、下划线或连字符'),
     password: z.string().min(10).max(200),
     contact: z.string().trim().min(3).max(160),
     note: z.string().trim().max(1000).default(''),
   });
-  app.post('/api/public/registration-requests', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
+  app.post('/api/public/registration-requests', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = parse(registrationRequestSchema, request.body);
     if (sqlite.prepare('SELECT 1 FROM users WHERE username=? COLLATE NOCASE').get(body.username)) throw new HttpError(409, 'USERNAME_TAKEN', '该用户名已被使用');
     if (sqlite.prepare("SELECT 1 FROM registration_requests WHERE username=? COLLATE NOCASE AND status='PENDING'").get(body.username)) throw new HttpError(409, 'REQUEST_PENDING', '该用户名已有待审核注册请求');
@@ -714,7 +751,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ user: principal });
   });
   app.get('/api/auth/session', async (request) => successResponse({ user: principalFor(request) }));
-  const activateSchema = z.object({ token: z.string().min(20), username: z.string().regex(/^[a-zA-Z0-9._-]{3,40}$/), password: z.string().min(10).max(200) });
+  const activateSchema = z.object({ token: z.string().min(20), username: z.string().trim().regex(/^[\p{L}\p{N}._-]{2,40}$/u), password: z.string().min(10).max(200) });
   app.post('/api/auth/activate', { config: { rateLimit: { max: 8, timeWindow: '1 hour' } } }, async (request) => {
     const body = parse(activateSchema, request.body);
     const tokenHash = sha256(body.token);
@@ -744,6 +781,41 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const body = parse(memberProfileUpdateSchema, request.body);
     const profile = social.updateProfile(principal.id, body);
     return successResponse({ updated: true, profile });
+  });
+  app.post('/api/member/profile/avatar', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const part = await request.file();
+    if (!part) throw new HttpError(400, 'FILE_REQUIRED', '请选择头像图片');
+    const extensions: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+    const extension = extensions[part.mimetype];
+    if (!extension) throw new HttpError(415, 'INVALID_IMAGE_TYPE', '头像仅支持 JPG、PNG、WebP 或 GIF 图片');
+    const storageKey = `avatars/${principal.id}-${randomUUID()}${extension}`;
+    const path = resolve(options.uploadRoot, storageKey);
+    await mkdir(resolve(options.uploadRoot, 'avatars'), { recursive: true });
+    await pipeline(part.file, createWriteStream(path, { flags: 'wx' }));
+    const info = await stat(path);
+    if (part.file.truncated || info.size > 8 * 1024 * 1024) { await unlink(path); throw new HttpError(413, 'IMAGE_TOO_LARGE', '头像图片不能超过 8MB'); }
+    const previous = sqlite.prepare('SELECT avatar_storage_key FROM users WHERE id=?').get(principal.id) as { avatar_storage_key: string | null };
+    const timestamp = now();
+    sqlite.prepare('UPDATE users SET avatar_storage_key=?,updated_at=? WHERE id=?').run(storageKey, timestamp, principal.id);
+    if (previous.avatar_storage_key) {
+      const previousPath = resolve(options.uploadRoot, previous.avatar_storage_key);
+      if (previousPath.startsWith(`${resolve(options.uploadRoot)}${sep}`)) await unlink(previousPath).catch(() => undefined);
+    }
+    audit(sqlite, principal.id, 'PROFILE_AVATAR_UPDATED', 'user', principal.id, principal.id);
+    return reply.status(201).send(successResponse({ avatarUrl: `/api/public/avatars/${principal.id}?v=${encodeURIComponent(timestamp)}` }));
+  });
+
+  app.get('/api/public/avatars/:id', async (request, reply) => {
+    const userId = (request.params as { id: string }).id;
+    const avatar = sqlite.prepare('SELECT avatar_storage_key FROM users WHERE id=? AND is_active=1').get(userId) as { avatar_storage_key: string | null } | undefined;
+    if (!avatar?.avatar_storage_key) throw new HttpError(404, 'NOT_FOUND', '该账号尚未上传头像');
+    const uploadRoot = resolve(options.uploadRoot);
+    const filePath = resolve(uploadRoot, avatar.avatar_storage_key);
+    if (!filePath.startsWith(`${uploadRoot}${sep}`)) throw new HttpError(400, 'INVALID_STORAGE_KEY', '头像路径无效');
+    const mimeType = ({ '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' } as Record<string, string>)[extname(filePath).toLowerCase()] ?? 'application/octet-stream';
+    reply.type(mimeType).header('Cache-Control', 'public, max-age=3600').header('X-Content-Type-Options', 'nosniff');
+    return reply.send(createReadStream(filePath));
   });
 
   app.get('/api/member/directory', async (request, reply) => {
@@ -811,6 +883,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const post = sqlite.transaction(() => {
       const created = social.createPost(principal, body);
       social.syncAssets(principal, String(created.id), body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? [], body.attachmentIds);
+      social.recordPostRevision(String(created.id), principal.id, 'CREATE');
       return social.getPost(String(created.id), principal.id).post;
     })();
     return reply.status(201).send(successResponse({ post }));
@@ -822,6 +895,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const post = sqlite.transaction(() => {
       const edited = social.editPost(principal, id, body);
       social.syncAssets(principal, id, body.body?.filter((block) => block.type === 'IMAGE').map((block) => block.assetId) ?? [], body.attachmentIds);
+      social.recordPostRevision(id, principal.id, 'UPDATE');
       return social.getPost(String(edited.id), principal.id).post;
     })();
     audit(sqlite, principal.id, 'POST_EDITED', 'post', id);
@@ -830,6 +904,17 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.get('/api/member/posts/:id', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
     return successResponse(social.getPost((request.params as { id: string }).id, principal.id));
+  });
+  app.get('/api/member/posts/:id/history', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    return successResponse({ items: social.listPostRevisions((request.params as { id: string }).id) });
+  });
+  app.post('/api/member/posts/:id/history/:revisionId/restore', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const { id, revisionId } = request.params as { id: string; revisionId: string };
+    const post = sqlite.transaction(() => social.restorePostRevision(principal, id, revisionId))();
+    audit(sqlite, principal.id, 'POST_REVISION_RESTORED', 'post', id, undefined, { revisionId });
+    return successResponse({ post });
   });
   app.post('/api/member/posts/:id/comments', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
@@ -1597,24 +1682,29 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ rejected: true });
   });
 
-  async function approveApplication(id: string, actor: Principal): Promise<string> {
-    const application = sqlite.prepare('SELECT * FROM applications WHERE id=?').get(id) as { display_name: string; email: string; department_id: string; status: string } | undefined;
+  function approveApplication(id: string, actor: Principal): { userId: string; departmentIds: string[] } {
+    const application = sqlite.prepare('SELECT * FROM applications WHERE id=?').get(id) as { display_name: string; email: string; department_id: string; status: string; user_id: string | null } | undefined;
     if (!application) throw new HttpError(404, 'NOT_FOUND', '申请不存在'); if (application.status !== 'PENDING') throw new HttpError(409, 'INVALID_STATE', '申请已处理');
-    const userId = newId('user'); const { rawToken, record } = createActivationToken(userId);
+    const account = (application.user_id
+      ? sqlite.prepare('SELECT id,department_id FROM users WHERE id=? AND is_active=1').get(application.user_id)
+      : sqlite.prepare('SELECT id,department_id FROM users WHERE email=? COLLATE NOCASE AND is_active=1').get(application.email)) as { id: string; department_id: string | null } | undefined;
+    if (!account) throw new HttpError(409, 'ACCOUNT_REQUIRED', '申请人需要先注册并登录账号，然后重新提交社员申请');
+    const userId = account.id;
     const selected = sqlite.prepare('SELECT department_id FROM application_departments WHERE application_id=? ORDER BY preference_order,rowid').all(id) as Array<{ department_id: string }>;
     const departmentIds = selected.length ? selected.map((department) => department.department_id) : [application.department_id];
     sqlite.transaction(() => {
       const createdAt = now();
-      sqlite.prepare('INSERT INTO users(id,uid,display_name,email,role,department_id,bio,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(userId, allocateUserUid(sqlite), application.display_name, application.email, 'MEMBER', departmentIds[0], '', 0, createdAt, createdAt);
-      const insertMembership = sqlite.prepare('INSERT INTO user_departments(user_id,department_id,is_primary,joined_at) VALUES (?,?,?,?)');
-      departmentIds.forEach((departmentId, index) => insertMembership.run(userId, departmentId, index === 0 ? 1 : 0, createdAt));
-      sqlite.prepare('INSERT INTO activation_tokens(id,user_id,token_hash,expires_at,used_at,created_at) VALUES (?,?,?,?,?,?)').run(newId('activation'), userId, record.tokenHash, record.expiresAt, null, now());
-      sqlite.prepare("UPDATE applications SET status='APPROVED',user_id=?,activation_code_encrypted=?,updated_at=? WHERE id=?").run(userId, encryptSecret(rawToken, options.sessionSecret), now(), id);
-      audit(sqlite, actor.id, 'APPLICATION_APPROVED', 'application', id, userId);
+      const hasPrimaryMembership = Boolean(sqlite.prepare('SELECT 1 FROM user_departments WHERE user_id=? AND is_primary=1').get(userId));
+      const insertMembership = sqlite.prepare('INSERT OR IGNORE INTO user_departments(user_id,department_id,is_primary,joined_at) VALUES (?,?,?,?)');
+      departmentIds.forEach((departmentId, index) => insertMembership.run(userId, departmentId, !hasPrimaryMembership && index === 0 ? 1 : 0, createdAt));
+      if (!account.department_id) sqlite.prepare('UPDATE users SET department_id=?,updated_at=? WHERE id=?').run(departmentIds[0], createdAt, userId);
+      const claimed = sqlite.prepare("UPDATE applications SET status='APPROVED',user_id=?,activation_code_encrypted=NULL,updated_at=? WHERE id=? AND status='PENDING'").run(userId, createdAt, id);
+      if (claimed.changes !== 1) throw new HttpError(409, 'INVALID_STATE', '申请已处理');
+      audit(sqlite, actor.id, 'APPLICATION_APPROVED', 'application', id, userId, { departmentIds, directMembership: true });
     })();
-    return rawToken;
+    return { userId, departmentIds };
   }
-  app.post('/api/admin/applications/:id/approve', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; const activationCode = await approveApplication((request.params as { id: string }).id, principal); return successResponse({ approved: true, activationCode }); });
+  app.post('/api/admin/applications/:id/approve', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; const result = approveApplication((request.params as { id: string }).id, principal); return successResponse({ approved: true, ...result }); });
   app.post('/api/admin/applications/:id/reject', async (request, reply) => { const principal = requireAdmin(request, reply); if (!principal) return; const { reason } = parse(z.object({ reason: z.string().min(2) }), request.body); const id = (request.params as { id: string }).id; const result = sqlite.prepare("UPDATE applications SET status='REJECTED',rejection_reason=?,updated_at=? WHERE id=? AND status='PENDING'").run(reason, now(), id); if (!result.changes) throw new HttpError(409, 'INVALID_STATE', '申请不存在或已处理'); audit(sqlite, principal.id, 'APPLICATION_REJECTED', 'application', id); return successResponse({ rejected: true }); });
   app.post('/api/admin/applications/:id/regenerate-activation', async (request, reply) => {
     const principal = requireAdmin(request, reply); if (!principal) return; const id = (request.params as { id: string }).id;

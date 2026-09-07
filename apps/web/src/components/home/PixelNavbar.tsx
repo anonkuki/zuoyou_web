@@ -1,10 +1,8 @@
 import { ChevronDown, LayoutDashboard, LogIn, LogOut, Menu, Palette, Search, UserPlus, UserRound, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { api, json } from '../../api';
-import { useAuth } from '../../auth';
+import { useAuth, useLogout } from '../../auth';
 import { PixelAvatar } from '../avatar/PixelAvatar';
 import { roleLabels } from '@guild/contracts';
 
@@ -21,17 +19,12 @@ const navigation = [
 /** 右上角用户芯片：迷你像素小人 + 昵称，展开账号菜单 */
 function UserMenu() {
   const { user, loading } = useAuth();
-  const client = useQueryClient();
-  const navigate = useNavigate();
   const location = useLocation();
   const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
   const [guestPromptVisible, setGuestPromptVisible] = useState(true);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const logout = useMutation({
-    mutationFn: () => api('/api/auth/logout', json('POST')),
-    onSuccess: async () => { client.clear(); navigate('/'); },
-  });
+  const logout = useLogout();
 
   useEffect(() => {
     if (!open) return;
@@ -49,6 +42,10 @@ function UserMenu() {
     setGuestPromptVisible(true);
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerType && event.pointerType !== 'mouse') return;
+      if (event.target instanceof Node && rootRef.current?.contains(event.target)) {
+        setGuestPromptVisible(true);
+        return;
+      }
       const nearTopRight = event.clientX >= window.innerWidth - 380 && event.clientY <= 190;
       setGuestPromptVisible(nearTopRight);
     };
@@ -78,7 +75,7 @@ function UserMenu() {
       aria-label={`${user.displayName} 的账号菜单`}
       onClick={() => setOpen(!open)}
     >
-      <PixelAvatar config={user.avatarConfig} seed={user.id} size={26} label="" />
+      {user.avatarUrl ? <img className="uploaded-account-avatar" src={user.avatarUrl} alt="" /> : <PixelAvatar config={user.avatarConfig} seed={user.id} size={26} label="" />}
       <span>{user.displayName}</span>
       <ChevronDown />
     </button>
@@ -93,14 +90,15 @@ function UserMenu() {
         transition={{ duration: 0.16 }}
       >
         <div className="pixel-user-dropdown-head">
-          <PixelAvatar config={user.avatarConfig} seed={user.id} size={40} label={`${user.displayName} 的像素小人`} />
+          {user.avatarUrl ? <img className="uploaded-account-avatar large" src={user.avatarUrl} alt={`${user.displayName} 的头像`} /> : <PixelAvatar config={user.avatarConfig} seed={user.id} size={40} label={`${user.displayName} 的像素小人`} />}
           <div><strong>{user.displayName}</strong><small>{roleLabels[user.role]}</small></div>
         </div>
         <Link role="menuitem" to={`/portal/members/${user.id}`} onClick={close}><UserRound />个人主页</Link>
         <Link role="menuitem" to="/portal/avatar" onClick={close}><Palette />形象工房 · 捏脸</Link>
         <Link role="menuitem" to={home} onClick={close}><LayoutDashboard />{user.role === 'MEMBER' ? '成员中心' : '管理台'}</Link>
         {user.role !== 'MEMBER' && <Link role="menuitem" to="/portal" onClick={close}><Users />成员中心</Link>}
-        <button role="menuitem" onClick={() => logout.mutate()} disabled={logout.isPending}><LogOut />退出登录</button>
+        <button role="menuitem" onClick={() => logout.mutate()} disabled={logout.isPending}><LogOut />{logout.isPending ? '正在退出…' : '退出登录'}</button>
+        {logout.error && <p className="form-error" role="alert">退出失败，请检查网络后重试。</p>}
       </motion.div>}
     </AnimatePresence>
   </div>;

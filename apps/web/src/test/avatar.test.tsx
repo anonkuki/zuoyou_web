@@ -230,8 +230,12 @@ describe('Navbar user entry', () => {
   it('shows, hides and restores the homepage guest login and registration prompt', async () => {
     stubSession(null);
     renderAt('/');
-    expect(await screen.findByRole('complementary', { name: '游客账号入口' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '注册' })).toHaveAttribute('href', '/login?mode=register');
+    const prompt = await screen.findByRole('complementary', { name: '游客账号入口' });
+    expect(prompt).toBeInTheDocument();
+    const register = screen.getByRole('link', { name: '注册' });
+    expect(register).toHaveAttribute('href', '/login?mode=register');
+    fireEvent.pointerMove(register, { clientX: window.innerWidth - 80, clientY: 245, pointerType: 'mouse' });
+    expect(screen.getByRole('complementary', { name: '游客账号入口' })).toBeInTheDocument();
     fireEvent.pointerMove(window, { clientX: 120, clientY: 360, pointerType: 'mouse' });
     await waitFor(() => expect(screen.queryByRole('complementary', { name: '游客账号入口' })).toBeNull());
     fireEvent.pointerMove(window, { clientX: window.innerWidth - 20, clientY: 40, pointerType: 'mouse' });
@@ -253,6 +257,22 @@ describe('Navbar user entry', () => {
     expect(within(menu).getByRole('menuitem', { name: '退出登录' })).toBeEnabled();
     await user.keyboard('{Escape}');
     await waitFor(() => expect(within(navbar(container)).queryByRole('menu')).toBeNull());
+  });
+
+  it('returns to guest state immediately after logout', async () => {
+    const fetchMock = stubSession({ ...memberUser, avatarConfig: memberConfig }, (path, init) => {
+      if (path === '/api/auth/logout' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true, data: { loggedOut: true } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return null;
+    });
+    const user = userEvent.setup();
+    const { container } = renderAt('/');
+    await user.click(await within(navbar(container)).findByRole('button', { name: '白羽见习者 的账号菜单' }));
+    await user.click(within(navbar(container)).getByRole('menuitem', { name: '退出登录' }));
+    await waitFor(() => expect(navbar(container).querySelector('.pixel-login-link')).not.toBeNull());
+    expect(within(navbar(container)).queryByRole('button', { name: '白羽见习者 的账号菜单' })).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ method: 'POST' }));
   });
 
   it('lets admins reach the console from the account menu', async () => {

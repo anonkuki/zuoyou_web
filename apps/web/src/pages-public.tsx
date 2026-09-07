@@ -1,13 +1,15 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, BookOpen, CalendarDays, Camera, Castle, ChevronRight, Crown, FileQuestion, Flame, Map, Scroll, Shield, Sparkles, Users } from 'lucide-react';
 import { api, json, type PageData } from './api';
+import { useAuth } from './auth';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero, RuneIcon, StatusBadge } from './components';
 import { DepartmentsHub } from './components/departments/DepartmentsHub';
 import { DeptShowcasePage } from './components/departments/DeptShowcasePage';
 import { BlogPostBoard, ForumDirectory } from './components/blog/BlogPostBoard';
+import { TavernComposer } from './pages-tavern';
 import type { Announcement } from '@guild/contracts';
 
 export interface Department {
@@ -182,7 +184,7 @@ export function WorksPage() {
 }
 
 export function TavernPage() {
-  return <main><PageHero eyebrow="ADVENTURER TAVERN" title="冒险者酒馆" description="从六个部门进入不同主题板块，找到感兴趣的讨论。"/><ForumDirectory/></main>;
+  return <main><PageHero eyebrow="ADVENTURER TAVERN" title="冒险者酒馆" description="从六个部门进入不同主题板块，找到感兴趣的讨论。"/><TavernComposer/><ForumDirectory/></main>;
 }
 
 export function ForumBoardPage() {
@@ -191,6 +193,7 @@ export function ForumBoardPage() {
 }
 
 export function JoinPage() {
+  const {user,loading}=useAuth();
   const navigate=useNavigate();
   const [searchParams]=useSearchParams();
   const preferredDepartment=searchParams.get('department');
@@ -198,9 +201,12 @@ export function JoinPage() {
   const [form,setForm]=useState({displayName:'',email:'',college:'',departmentIds:preferredDepartment?[preferredDepartment]:[] as string[],reason:''});
   const departments=useQuery({queryKey:['departments'],queryFn:()=>api<{items:Department[]}>('/api/public/departments')});
   const mutation=useMutation({mutationFn:()=>api<{id:string;statusToken:string;status:string}>('/api/public/applications',json('POST',form)),onSuccess:data=>{localStorage.setItem('guild_application_token',data.statusToken);navigate(`/application/${data.statusToken}`);}});
+  useEffect(()=>{if(user)setForm(current=>({...current,displayName:current.displayName||user.displayName,email:current.email||user.email}));},[user]);
   const submit=(e:FormEvent)=>{e.preventDefault();if(step===1){setStep(2);return;}mutation.mutate();};
   const toggleDepartment=(id:string)=>setForm((current)=>({...current,departmentIds:current.departmentIds.includes(id)?current.departmentIds.filter(value=>value!==id):[...current.departmentIds,id]}));
-  return <main><PageHero eyebrow="MEMBERSHIP APPLICATION" title="加入佐佑动漫社" description="先填写社员申请，再选择你感兴趣的部门。部门可以多选，加入后也可以根据实际参与情况调整。"/>
+  if(loading)return <main><LoadingPanel label="正在核验账号"/></main>;
+  if(!user)return <main><PageHero eyebrow="MEMBERSHIP APPLICATION" title="加入佐佑动漫社" description="社员申请会直接绑定到你的账号，审核通过后自动加入所选部门。"/><section className="shell narrow"><article className="parchment-panel status-card"><h2>请先登录或注册账号</h2><p>为避免激活码和重复档案，社员申请需要由已登录账号提交。</p><div className="form-actions"><Link className="guild-button primary" to="/login?from=%2Fjoin">前往登录</Link><Link className="guild-button" to="/login?mode=register">注册账号</Link></div></article></section></main>;
+  return <main><PageHero eyebrow="MEMBERSHIP APPLICATION" title="加入佐佑动漫社" description="填写社员申请并选择感兴趣的部门。审核通过后，你的账号会直接加入所选部门。"/>
     <section className="shell join-shell">
       <div className="join-steps"><span className="done">1 社员申请</span><i/><span className={step===2?'done':''}>2 意向部门</span><i/><span>3 审核结果</span></div>
       <form className="parchment-form" onSubmit={submit}>
@@ -227,8 +233,8 @@ export function JoinPage() {
 }
 
 export function ApplicationStatusPage() {
-  const {token=''}=useParams(); const query=useQuery({queryKey:['application',token],queryFn:()=>api<{id:string;status:string;rejectionReason?:string;activationCode?:string}>(`/api/public/applications/status/${token}`),enabled:Boolean(token)});
-  return <main><PageHero eyebrow="APPLICATION STATUS" title="社员申请进度" description="通过提交申请后生成的私密链接查看审核结果。"/><section className="shell narrow">{query.isLoading?<LoadingPanel/>:query.error?<ErrorPanel error={query.error}/>:<article className="parchment-panel status-card"><StatusBadge status={query.data!.status}/><h2>申请编号 {query.data!.id}</h2>{query.data!.status==='PENDING'&&<p>申请已经提交，请等待社团管理员审核。</p>}{query.data!.rejectionReason&&<p>审核意见：{query.data!.rejectionReason}</p>}{query.data!.activationCode&&<><p>申请已通过，请使用一次性激活码创建社员账号。</p><code>{query.data!.activationCode}</code><Link className="guild-button primary" to={`/activate?token=${encodeURIComponent(query.data!.activationCode)}`}>激活社员账号</Link></>}</article>}</section></main>;
+  const {token=''}=useParams(); const query=useQuery({queryKey:['application',token],queryFn:()=>api<{id:string;status:string;rejectionReason?:string}>(`/api/public/applications/status/${token}`),enabled:Boolean(token)});
+  return <main><PageHero eyebrow="APPLICATION STATUS" title="社员申请进度" description="通过提交申请后生成的私密链接查看审核结果。"/><section className="shell narrow">{query.isLoading?<LoadingPanel/>:query.error?<ErrorPanel error={query.error}/>:<article className="parchment-panel status-card"><StatusBadge status={query.data!.status}/><h2>申请编号 {query.data!.id}</h2>{query.data!.status==='PENDING'&&<p>申请已经提交，请等待社团管理员审核。</p>}{query.data!.status==='APPROVED'&&<p>申请已通过，你的账号已经直接加入所选部门，无需再输入激活码。</p>}{query.data!.rejectionReason&&<p>审核意见：{query.data!.rejectionReason}</p>}</article>}</section></main>;
 }
 
 export function NotFoundPage(){return <main><section className="not-found"><FileQuestion/><span className="eyebrow">404 · LOST SCROLL</span><h1>这份卷宗不在公会档案里</h1><p>可能是路径错误，或档案已经被移入其他区域。</p><Link className="guild-button" to="/">返回公会大厅</Link></section></main>}

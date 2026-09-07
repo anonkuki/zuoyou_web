@@ -222,6 +222,8 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
   const [videoError, setVideoError] = useState<Record<string, string>>({});
   const [tutorialFileLoadingId, setTutorialFileLoadingId] = useState<string | null>(null);
   const [tutorialFileError, setTutorialFileError] = useState<Record<string, string>>({});
+  const [imageLoadingId, setImageLoadingId] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<Record<string, string>>({});
 
   useEffect(() => { if (query.data) setDraft({ ...emptyPageContentConfig(), ...query.data.config }); }, [query.data]);
 
@@ -234,8 +236,9 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
       ...(departmentPhotosBySlug[slug] ?? []).map(photo => photo.src),
       ...(slug === 'original' ? originalPortfolioPhotos.map(photo => photo.src) : []),
       ...(show?.films.flatMap(film => [film.cover, film.banner]) ?? []),
-    ].filter(Boolean))];
-  }, [scope, slug]);
+      ...draft.items.map(item => item.imageUrl),
+    ].filter((value): value is string => Boolean(value)))];
+  }, [draft.items, scope, slug]);
 
   const save = useMutation({
     mutationFn: () => api<PageContentResponse>(`/api/admin/page-content/${encodeURIComponent(pageKey)}`, json('PUT', draft)),
@@ -308,6 +311,20 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
       setTutorialFileLoadingId(current => current === itemId ? null : current);
     }
   };
+  const uploadPageImage = async (itemId: string, file: File) => {
+    setImageLoadingId(itemId);
+    setImageError(current => ({ ...current, [itemId]: '' }));
+    const body = new FormData();
+    body.append('file', file);
+    try {
+      const uploaded = await api<{ image: { url: string } }>(`/api/admin/page-images?pageKey=${encodeURIComponent(pageKey)}`, { method: 'POST', body });
+      updateItem(itemId, { imageUrl: uploaded.image.url });
+    } catch (error) {
+      setImageError(current => ({ ...current, [itemId]: error instanceof Error ? error.message : '图片上传失败' }));
+    } finally {
+      setImageLoadingId(current => current === itemId ? null : current);
+    }
+  };
   const addImageLink = () => {
     const imageUrl = newImageUrl.trim();
     const linkUrl = newLinkUrl.trim();
@@ -371,7 +388,7 @@ export function PageEditorPage({ scope }: { scope: 'home' | 'department' }) {
                   {tutorialFileLoadingId === item.id && <p>正在上传文件……</p>}
                   {item.linkUrl?.startsWith('/api/files/') && <p className="form-success">已绑定文件：{item.title}</p>}
                   {tutorialFileError[item.id] && <p className="page-editor-error" role="alert">{tutorialFileError[item.id]}</p>}
-                </div> : <div className="page-editor-item-row"><Field label="图片地址（选填）"><input value={item.imageUrl ?? ''} placeholder="/assets/... 或 https://..." onChange={event => updateItem(item.id, { imageUrl: event.target.value || null })} /></Field><Field label="点击图片跳转（选填）"><input value={item.linkUrl ?? ''} placeholder="https://..." onChange={event => updateItem(item.id, { linkUrl: event.target.value || null })} /></Field></div>}
+                </div> : <div className="page-editor-item-row"><Field label="展示图片（选填）"><span className="page-editor-local-image"><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadPageImage(item.id, file); }} />{imageLoadingId === item.id && <small>正在上传图片……</small>}{item.imageUrl && <span className="page-editor-upload-preview"><img src={item.imageUrl} alt="当前展示图片" /><button type="button" onClick={() => updateItem(item.id, { imageUrl: null })}>移除图片</button></span>}{imageError[item.id] && <small className="page-editor-error" role="alert">{imageError[item.id]}</small>}</span></Field><Field label="点击图片跳转（选填）"><input value={item.linkUrl ?? ''} placeholder="https://..." onChange={event => updateItem(item.id, { linkUrl: event.target.value || null })} /></Field></div>}
                 <button className="page-editor-delete" type="button" onClick={() => isPreset ? togglePreset(item.id) : deleteItem(item.id)}>{presetHidden ? <Eye aria-hidden="true" /> : <Trash2 aria-hidden="true" />} {isPreset ? (presetHidden ? '恢复这个预设元素' : '从页面隐藏这个预设元素') : '删除这条内容'}</button>
               </div>;})}
               <button className="page-editor-add" type="button" onClick={() => addItem(section.id)}><Plus aria-hidden="true" /> 在“{section.name}”中新增内容</button>

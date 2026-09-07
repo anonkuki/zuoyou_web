@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../app';
-import { api } from '../api';
+import { api, AUTH_SESSION_EXPIRED_EVENT } from '../api';
 
 const payloads: Record<string, unknown> = {
   '/api/public/home': {
@@ -56,12 +56,41 @@ describe('Adventurer Guild app', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/applications/example/approve', expect.objectContaining({ headers: undefined }));
   });
 
+  it('announces an expired session when a protected request is unauthorized', async () => {
+    const onExpired = vi.fn();
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, onExpired);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: false, error: { code: 'UNAUTHORIZED', message: '请先登录' } }), { status: 401, headers: { 'Content-Type': 'application/json' } })));
+    await expect(api('/api/member/profile')).rejects.toMatchObject({ status: 401, code: 'UNAUTHORIZED' });
+    expect(onExpired).toHaveBeenCalledOnce();
+    window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, onExpired);
+  });
+
+  it('switches immediately to the authenticated account after login', async () => {
+    const signedInUser = { id: 'user-member', uid: '10005', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: [], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: null } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/auth/login') return new Response(JSON.stringify({ ok: true, data: { user: signedInUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/tasks?page=1&pageSize=20') return new Response(JSON.stringify({ ok: true, data: { items: [], page: 1, pageSize: 20, total: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/contributions') return new Response(JSON.stringify({ ok: true, data: { points: 0, events: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: { items: [], page: 1, pageSize: 3, total: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/login');
+    await user.type(screen.getByLabelText('用户名'), 'cos.member');
+    await user.type(screen.getByLabelText('密码'), 'DemoMember!2026');
+    await user.click(screen.getByRole('button', { name: '登录公会' }));
+    expect(await screen.findByRole('heading', { name: '欢迎回来，白羽见习者' })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({ method: 'POST' }));
+  });
+
   it('submits a guest account registration from the login page', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.mocked(fetch);
     renderAt('/login?mode=register');
     expect(await screen.findByRole('tab', { name: '注册' })).toHaveAttribute('aria-selected', 'true');
-    await user.type(screen.getByLabelText('注册用户名'), 'new.member');
+    await user.type(screen.getByLabelText('注册用户名'), '星砂成员');
     await user.type(screen.getByLabelText('密码'), 'NewMember!2026');
     await user.type(screen.getByLabelText('联系方式'), 'new.member@example.test');
     await user.type(screen.getByLabelText('备注'), '希望加入社团线上社区');
@@ -69,25 +98,16 @@ describe('Adventurer Guild app', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('注册请求已提交');
     expect(fetchMock).toHaveBeenCalledWith('/api/public/registration-requests', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ username: 'new.member', password: 'NewMember!2026', contact: 'new.member@example.test', note: '希望加入社团线上社区' }),
+      body: JSON.stringify({ username: '星砂成员', password: 'NewMember!2026', contact: 'new.member@example.test', note: '希望加入社团线上社区' }),
     }));
   });
 
-  it('offers one-click credentials for all five demo permission levels', async () => {
-    const user = userEvent.setup();
+  it('keeps development credentials off the public login page', async () => {
     renderAt('/login');
-    const expected = [
-      ['社长', 'admin', 'DemoAdmin!2026'],
-      ['副社长', 'vice.president', 'DemoVice!2026'],
-      ['部长', 'cos.lead', 'DemoLead!2026'],
-      ['副部长', 'cos.deputy', 'DemoDeputy!2026'],
-      ['成员', 'cos.member', 'DemoMember!2026'],
-    ] as const;
-    for (const [role, username, password] of expected) {
-      await user.click(screen.getByRole('button', { name: new RegExp(`^${role}$`) }));
-      expect(screen.getByLabelText('用户名')).toHaveValue(username);
-      expect(screen.getByLabelText('密码')).toHaveValue(password);
-    }
+    expect(await screen.findByRole('heading', { name: '成员身份验证' })).toBeInTheDocument();
+    expect(screen.queryByText('开发演示账号')).not.toBeInTheDocument();
+    for (const role of ['社长', '副社长', '部长', '副部长', '成员'])
+      expect(screen.queryByRole('button', { name: new RegExp(`^${role}$`) })).not.toBeInTheDocument();
   });
 
   it('renders the high-fidelity guild hall with live summary', async () => {
@@ -251,16 +271,28 @@ describe('Adventurer Guild app', () => {
     expect(within(screen.getByRole('navigation', { name: '搜索结果' })).getByRole('link', { name: /职业大厅/ })).toHaveAttribute('href', '/departments');
   });
 
-  it('starts with a grounded member application and supports multiple department interests', async () => {
+  it('asks guests to log in before submitting a department application', async () => {
+    renderAt('/join');
+    expect(await screen.findByRole('heading', { name: '请先登录或注册账号' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '前往登录' })).toHaveAttribute('href', '/login?from=%2Fjoin');
+  });
+
+  it('lets a registered member apply to multiple departments without an activation step', async () => {
+    const signedInUser = { id: 'user-member', uid: '10005', username: 'cos.member', displayName: '星砂同学', email: 'starsand@example.test', role: 'MEMBER', departmentId: null, departmentIds: [], bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: [], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: signedInUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: payloads[path] ?? {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
     const user = userEvent.setup();
     renderAt('/join');
-    expect(screen.getByRole('heading', { name: '加入佐佑动漫社' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '加入佐佑动漫社' })).toBeInTheDocument();
     expect(screen.queryByText('选择意向职业')).not.toBeInTheDocument();
     expect(screen.queryByText('冒险者资料')).not.toBeInTheDocument();
     expect(screen.getByLabelText('称呼')).toBeInTheDocument();
-    await user.type(screen.getByLabelText('称呼'), '星砂同学');
+    expect(screen.getByLabelText('称呼')).toHaveValue('星砂同学');
     await user.type(screen.getByLabelText('学院与年级'), '计算机学院 2026级');
-    await user.type(screen.getByLabelText('联系邮箱'), 'starsand@example.test');
+    expect(screen.getByLabelText('联系邮箱')).toHaveValue('starsand@example.test');
     await user.type(screen.getByLabelText('自我介绍与加入理由'), '希望认识同好并参与社团活动');
     await user.click(screen.getByRole('button', { name: '选择意向部门' }));
     expect(screen.getByRole('heading', { name: '选择感兴趣的部门' })).toBeInTheDocument();
@@ -272,6 +304,21 @@ describe('Adventurer Guild app', () => {
     expect(original).toBeChecked();
     expect(screen.getByText('已选择 2 个部门')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '提交社员申请' })).toBeEnabled();
+  });
+
+  it('shows each department deputy in department management', async () => {
+    const admin = { id: 'admin', uid: '10001', username: 'admin', displayName: '管理员', email: 'admin@example.com', role: 'PRESIDENT', departmentId: null, bio: '' };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: admin } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/members?page=1&pageSize=100') return new Response(JSON.stringify({ ok: true, data: { items: [
+        { id: 'leader', uid: '10003', display_name: '绯月部长', email: 'lead@example.com', role: 'DEPARTMENT_HEAD', department_id: 'dept-cos', is_active: 1 },
+        { id: 'deputy', uid: '10004', display_name: '绯羽副部长', email: 'deputy@example.com', role: 'DEPARTMENT_ADMIN', department_id: 'dept-cos', is_active: 1 },
+      ], page: 1, pageSize: 100, total: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: payloads[path] ?? {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+    renderAt('/admin/departments');
+    expect(await screen.findByText('绯羽副部长（UID 10004）')).toBeInTheDocument();
   });
 
   it('frames every secondary public route with the authored guild visual system', async () => {
@@ -369,6 +416,7 @@ describe('Adventurer Guild app', () => {
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/profile' && !init?.method) return new Response(JSON.stringify({ ok: true, data: { profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/profile' && init?.method === 'PATCH') return new Response(JSON.stringify({ ok: true, data: { updated: true, profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profile/avatar' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { avatarUrl: '/api/public/avatars/user-member?v=2' } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -377,13 +425,18 @@ describe('Adventurer Guild app', () => {
     expect(await screen.findByRole('heading', { name: '编辑资料' })).toBeInTheDocument();
     await user.clear(screen.getByLabelText('公会头衔'));
     await user.type(screen.getByLabelText('公会头衔'), '银翼记录官');
+    await user.clear(screen.getByLabelText(/^账号 ID/));
+    await user.type(screen.getByLabelText(/^账号 ID/), '白羽_2026');
     await user.clear(screen.getByLabelText('技能标签'));
     await user.type(screen.getByLabelText('技能标签'), '摄影, 后期, 活动协作');
+    await user.upload(screen.getByLabelText(/上传头像/), new File(['avatar'], 'avatar.png', { type: 'image/png' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/profile/avatar', expect.objectContaining({ method: 'POST', body: expect.any(FormData) })));
+    expect(await screen.findByRole('img', { name: '我的头像' })).toHaveAttribute('src', '/api/public/avatars/user-member?v=2');
     await user.selectOptions(screen.getByLabelText('主页可见范围'), 'PRIVATE');
     await user.click(screen.getByRole('button', { name: '保存个人主页' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/profile', expect.objectContaining({ method: 'PATCH' })));
     const patchCall = fetchMock.mock.calls.find(([path, init]) => path === '/api/member/profile' && init?.method === 'PATCH');
-    expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({ guildTitle: '银翼记录官', skills: ['摄影', '后期', '活动协作'], profileVisibility: 'PRIVATE' });
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({ uid: '白羽_2026', guildTitle: '银翼记录官', skills: ['摄影', '后期', '活动协作'], profileVisibility: 'PRIVATE' });
   });
 
   it('operates an unread-aware chat workspace with reply and send feedback', async () => {
@@ -413,7 +466,7 @@ describe('Adventurer Guild app', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/conversations/conversation-demo-direct/messages', expect.objectContaining({ method: 'POST' })));
   });
 
-  it('lists tavern posts and publishes a new one', async () => {
+  it('publishes a complete post from the public tavern', async () => {
     const authUser = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: ['cosplay'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
     const posts = [
       { id: 'post-welcome', title: '欢迎来到冒险者酒馆', content: '社团公开交流区。', pinned: true, commentCount: 3, author: { id: 'user-admin', displayName: '星门总管', avatarColor: '#b26b3f' }, createdAt: '2026-08-01T08:00:00.000Z', updatedAt: '2026-08-01T08:00:00.000Z' },
@@ -422,20 +475,16 @@ describe('Adventurer Guild app', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === 'string' ? input : input.toString();
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      if (path.startsWith('/api/member/posts?')) return new Response(JSON.stringify({ ok: true, data: { items: posts, page: 1, pageSize: 50, total: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/public/forum/categories') return new Response(JSON.stringify({ ok: true, data: { groups: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/post-attachments' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { attachment: { id: 'attachment-1', name: '道具说明.pdf', mimeType: 'application/pdf', size: 2048 } } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/posts' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { post: { ...posts[1], id: 'post-new' } } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
-      if (path === '/api/member/posts/post-photo' && init?.method === 'DELETE') return new Response(JSON.stringify({ ok: true, data: { deleted: true } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
-    renderAt('/portal/tavern');
+    renderAt('/tavern?compose=1');
     expect(await screen.findByRole('heading', { name: '冒险者酒馆' })).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: '欢迎来到冒险者酒馆' })).toBeInTheDocument();
-    expect(screen.getByText('置顶')).toBeInTheDocument();
-    expect(screen.getByText('3 条评论')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '发布新帖' }));
+    expect(await screen.findByRole('button', { name: '收起发帖表单' })).toBeInTheDocument();
     await user.type(screen.getByLabelText('帖子标题'), '周末道具修补互助');
     await user.type(screen.getByLabelText('帖子内容'), '周六下午在活动室修补巡游道具。 https://www.bilibili.com/video/BV1test');
     expect(screen.getByRole('link', { name: /哔哩哔哩视频/ })).toBeInTheDocument();
@@ -445,11 +494,6 @@ describe('Adventurer Guild app', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/posts', expect.objectContaining({ method: 'POST' })));
     const call = fetchMock.mock.calls.find(([path, init]) => path === '/api/member/posts' && (init as RequestInit)?.method === 'POST');
     expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ title: '周末道具修补互助', body: [{ type: 'PARAGRAPH', text: expect.stringContaining('https://www.bilibili.com/video/BV1test') }], attachmentIds: ['attachment-1'] });
-    await user.click(screen.getByRole('button', { name: '删除 招募摄影搭档拍正片' }));
-    expect(screen.getByRole('alertdialog', { name: '确认删除该帖子吗？' })).toBeInTheDocument();
-    expect(fetchMock.mock.calls.some(([path, init]) => path === '/api/member/posts/post-photo' && init?.method === 'DELETE')).toBe(false);
-    await user.click(screen.getByRole('button', { name: '确认删除帖子' }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/posts/post-photo', expect.objectContaining({ method: 'DELETE' })));
   });
 
   it('rates a post up or down and reveals only supporters', async () => {
@@ -465,7 +509,7 @@ describe('Adventurer Guild app', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
-    renderAt('/portal/tavern/post-rating');
+    renderAt('/posts/post-rating');
     expect(await screen.findByRole('heading', { name: 'SCP式评分测试帖' })).toBeInTheDocument();
     expect(screen.getByLabelText('帖子综合评分 1')).toHaveTextContent('+1');
     const appendix = screen.getByRole('heading', { name: '帖子附录' }).closest('section')!;
@@ -483,6 +527,33 @@ describe('Adventurer Guild app', () => {
     expect(fetchMock.mock.calls.some(([path, init]) => path === '/api/member/comments/comment-mine' && init?.method === 'DELETE')).toBe(false);
     await user.click(screen.getByRole('button', { name: '确认删除评论' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/comments/comment-mine', expect.objectContaining({ method: 'DELETE' })));
+  });
+
+  it('lets a post author edit and restore history without gaining guild moderation', async () => {
+    const authUser = { id: 'author-1', username: 'author', displayName: '帖子作者', email: 'author@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: [], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const post = { id: 'post-owner', title: '全社团话题第二版', subtitle: '修订稿', content: '作者修订后的正文。', body: [{ type: 'PARAGRAPH', text: '作者修订后的正文。' }], attachments: [], departmentId: null, departmentName: null, subboardId: null, subboardName: null, pinned: false, featured: false, visibleOnGuild: true, visibleOnDepartment: false, upvoteCount: 0, downvoteCount: 0, score: 0, myRating: 0, commentCount: 0, author: { id: authUser.id, displayName: authUser.displayName, avatarColor: authUser.avatarColor }, createdAt: '2026-08-20T08:00:00.000Z', updatedAt: '2026-08-21T08:00:00.000Z' };
+    const revisions = [
+      { id: 'revision-2', revisionNo: 2, changeType: 'UPDATE', restoredFromId: null, createdAt: post.updatedAt, snapshot: { title: post.title, subtitle: post.subtitle, content: post.content }, actor: { id: authUser.id, displayName: authUser.displayName, uid: '12345' } },
+      { id: 'revision-1', revisionNo: 1, changeType: 'CREATE', restoredFromId: null, createdAt: post.createdAt, snapshot: { title: '全社团话题第一版', subtitle: '初稿', content: '最初正文。' }, actor: { id: authUser.id, displayName: authUser.displayName, uid: '12345' } },
+    ];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/posts/post-owner') return new Response(JSON.stringify({ ok: true, data: { post, comments: [], supporters: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/posts/post-owner/history') return new Response(JSON.stringify({ ok: true, data: { items: revisions } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/posts/post-owner/history/revision-1/restore' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { post: { ...post, title: '全社团话题第一版' } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/posts/post-owner');
+    expect(await screen.findByRole('button', { name: '编辑帖子' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '置顶帖子' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除帖子' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '历史记录' }));
+    expect(await screen.findByText('全社团话题第一版')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '还原此版本' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/posts/post-owner/history/revision-1/restore', expect.objectContaining({ method: 'POST' })));
   });
 
   it('hides cross-department moderation controls from department managers', async () => {
@@ -510,15 +581,16 @@ describe('Adventurer Guild app', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === 'string' ? input : input.toString();
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: authUser } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      if (path.startsWith('/api/member/posts?')) return new Response(JSON.stringify({ ok: true, data: { items: [post], page: 1, pageSize: 50, total: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/public/forum/categories') return new Response(JSON.stringify({ ok: true, data: { groups: [{ id: 'dept-tech', slug: 'tech', name: '技术部', title: '技术部', description: '技术交流', topicCount: 1, replyCount: 0, latestPost: null, subboards: [] }] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path.startsWith('/api/public/forum/topics?')) return new Response(JSON.stringify({ ok: true, data: { department: { id: 'dept-tech', name: '技术部', slug: 'tech' }, subboard: null, items: [post], page: 1, pageSize: 20, total: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/posts/post-tech/placement' && init?.method === 'PUT') return new Response(JSON.stringify({ ok: false, error: { code: 'PINNED_POST_LIMIT', message: '置顶贴数量已到上限' } }), { status: 409, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: { items: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
-    renderAt('/portal/tavern');
+    renderAt('/tavern/tech');
 
-    expect(await screen.findByRole('heading', { name: '技术部直播日志' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '技术部直播日志' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '置顶' }));
     expect(await screen.findByRole('alertdialog', { name: '展示数量提醒' })).toHaveTextContent('置顶贴数量已到上限');
     await user.click(screen.getByRole('button', { name: '我知道了' }));

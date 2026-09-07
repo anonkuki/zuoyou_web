@@ -12,9 +12,14 @@ export const users = sqliteTable('users', {
   email: text('email').notNull().unique(), role: text('role').notNull(), departmentId: text('department_id').references(() => departments.id),
   bio: text('bio').notNull().default(''), guildTitle: text('guild_title').notNull().default(''), college: text('college').notNull().default(''), grade: text('grade').notNull().default(''),
   skills: text('skills').notNull().default('[]'), interests: text('interests').notNull().default('[]'), attributes: text('attributes').notNull().default('[]'), avatarColor: text('avatar_color').notNull().default('#2f6f64'),
-  profileVisibility: text('profile_visibility').notNull().default('MEMBERS'), lastSeenAt: text('last_seen_at'), avatarConfig: text('avatar_config'),
+  profileVisibility: text('profile_visibility').notNull().default('MEMBERS'), lastSeenAt: text('last_seen_at'), avatarConfig: text('avatar_config'), avatarStorageKey: text('avatar_storage_key'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
+
+export const pageUploads = sqliteTable('page_uploads', {
+  id: text('id').primaryKey(), pageKey: text('page_key').notNull(), ownerId: text('owner_id').notNull().references(() => users.id),
+  storageKey: text('storage_key').notNull().unique(), mimeType: text('mime_type').notNull(), size: integer('size').notNull(), createdAt: utcText('created_at'),
+}, (table) => [index('page_uploads_page_idx').on(table.pageKey, table.createdAt)]);
 
 export const userDepartments = sqliteTable('user_departments', {
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -155,6 +160,12 @@ export const postComments = sqliteTable('post_comments', {
   content: text('content').notNull(), deletedAt: text('deleted_at'), createdAt: utcText('created_at'),
 }, (table) => [index('post_comment_post_idx').on(table.postId, table.createdAt)]);
 
+export const postRevisions = sqliteTable('post_revisions', {
+  id: text('id').primaryKey(), postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }), revisionNo: integer('revision_no').notNull(),
+  snapshotJson: text('snapshot_json').notNull(), changeType: text('change_type').notNull(), restoredFromId: text('restored_from_id'),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }), createdAt: utcText('created_at'),
+}, (table) => [uniqueIndex('post_revision_number_unique').on(table.postId, table.revisionNo), index('post_revisions_post_idx').on(table.postId, table.revisionNo)]);
+
 export const areaMessages = sqliteTable('area_messages', {
   id: text('id').primaryKey(), areaId: text('area_id').notNull(),
   senderId: text('sender_id').notNull().references(() => users.id),
@@ -165,4 +176,4 @@ export const auditLogs = sqliteTable('audit_logs', {
   id: text('id').primaryKey(), actorId: text('actor_id').references(() => users.id), targetUserId: text('target_user_id').references(() => users.id), action: text('action').notNull(), entityType: text('entity_type').notNull(), entityId: text('entity_id').notNull(), details: text('details'), createdAt: utcText('created_at'),
 }, (table) => [uniqueIndex('contribution_event_unique').on(table.action, table.entityType, table.entityId, table.targetUserId)]);
 
-export const schema = { departments, users, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, registrationRequests, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postPlacements, postVotes, postAssets, postComments, areaMessages, auditLogs };
+export const schema = { departments, users, pageUploads, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, registrationRequests, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postPlacements, postVotes, postAssets, postComments, postRevisions, areaMessages, auditLogs };

@@ -121,6 +121,7 @@ export function resolveAvatarConfig(seed: string, raw: string | null | undefined
 
 const profileTagSchema = z.string().trim().min(1).max(20);
 export const memberProfileUpdateSchema = z.object({
+  uid: z.string().trim().min(3).max(24).regex(/^[\p{L}\p{N}_.-]+$/u, 'ID 只能包含中文、字母、数字、下划线、短横线或点').optional(),
   displayName: z.string().trim().min(2).max(60).optional(),
   bio: z.string().trim().max(500).optional(),
   guildTitle: z.string().trim().max(40).optional(),

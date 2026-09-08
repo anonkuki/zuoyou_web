@@ -3,12 +3,11 @@ import { BookOpen, CalendarDays, Check, CircleHelp, ClipboardPen, Copy, MessageC
 import { Link } from 'react-router-dom';
 import { officialSocialLinks } from '../departments/department-media';
 
-const members = [
-  ['绯羽', '#d74b70'], ['银铃', '#7288ad'], ['墨夜', '#8a6048'], ['森语', '#7e9b67'],
-] as const;
+const avatarColors = ['#d74b70', '#7288ad', '#8a6048', '#7e9b67'] as const;
 
-export function PixelFooter() {
+export function PixelFooter({ onlineCount }: { onlineCount?: number }) {
   const [copied, setCopied] = useState(false);
+  const visibleOnlineAvatars = Array.from({ length: Math.min(4, Math.max(0, onlineCount ?? 0)) });
   const copyChannel = async () => {
     await navigator.clipboard?.writeText(officialSocialLinks.qqChannelCode);
     setCopied(true);
@@ -24,8 +23,8 @@ export function PixelFooter() {
         <a aria-label="阅读佐佑动漫社微信公众号" href={officialSocialLinks.wechat} target="_blank" rel="noreferrer" title="微信公众号"><MessageCircle/></a>
         <button aria-label={`复制 QQ 频道号 ${officialSocialLinks.qqChannelCode}`} onClick={copyChannel} title={`QQ频道 ${officialSocialLinks.qqChannelCode}`}>{copied ? <Check/> : <UsersRound/>}<span>{copied ? '已复制' : 'QQ频道'}</span></button>
       </div>{copied && <small className="footer-copy-feedback"><Copy/>频道号已复制</small>}</section>
-      <section className="online-party"><h2>大厅在线成员 <span>● 128人在线</span></h2><div>{members.map(([name,color],index)=><span className={`footer-avatar avatar-${index+1}`} data-facing="visitor" style={{'--avatar-color': color} as React.CSSProperties} title={name} key={name}><i/><b>{name.slice(0,1)}</b><em/></span>)}</div></section>
+      <section className="online-party"><h2>大厅在线成员 <span>● {onlineCount === undefined ? '—' : onlineCount}人在线</span></h2><div>{visibleOnlineAvatars.map((_,index)=><span className={`footer-avatar avatar-${index+1}`} data-facing="visitor" data-online-avatar="true" style={{'--avatar-color': avatarColors[index]} as React.CSSProperties} title="当前在线社员" key={index}><i/><b>佑</b><em/></span>)}</div></section>
     </div>
-    <small>© 2018–2026 佐佑动漫社 | Adventurer Guild. All Rights Reserved.</small>
+    <small>© 1999–2026 佐佑动漫社 | Adventurer Guild. All Rights Reserved.</small>
   </footer>;
 }

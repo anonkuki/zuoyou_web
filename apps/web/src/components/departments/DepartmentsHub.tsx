@@ -29,6 +29,7 @@ function MiniVisual({ slug }: { slug: string }) {
 
 function ChapterCard({ dept, show, flip }: { dept: DepartmentInfo; show: DeptShowcase; flip: boolean }) {
   const reduce = useReducedMotion();
+  const covers = show.hubCovers ?? show.films.slice(0, 4).map(film => ({ src: film.cover, alt: `${film.romaji} 封面` }));
   return (
     <motion.article
       className={`department-card dept-chapter dept-theme-${show.slug}${flip ? ' is-flip' : ''}`}
@@ -49,7 +50,7 @@ function ChapterCard({ dept, show, flip }: { dept: DepartmentInfo; show: DeptSho
       <div className="dept-chapter-visual">
         <MiniVisual slug={show.slug} />
         <div className="dept-chapter-covers">
-          {show.films.slice(0, 4).map(f => <img key={f.cover} src={f.cover} alt={`${f.romaji} 封面`} loading="lazy" decoding="async" />)}
+          {covers.slice(0, 4).map(cover => <img key={cover.src} src={cover.src} alt={cover.alt} loading="lazy" decoding="async" />)}
         </div>
         <PixelSprite slug={show.slug} className="dept-chapter-sprite" />
       </div>

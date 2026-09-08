@@ -22,13 +22,33 @@ describe('GuildScrollStory', () => {
     expect(within(story).getByText('综合性强')).toBeInTheDocument();
 
     const indexedPhotos = Array.from(story.querySelectorAll<HTMLImageElement>('figure img'));
-    expect(indexedPhotos).toHaveLength(8);
+    const expectedSources = [
+      '/assets/photos/homepage/15b8a918bcb5aea7fc45711763e291d0_720.jpg',
+      '/assets/photos/homepage/55d0f7860a6e9866e520fcfa2a1e2543_720.jpg',
+      '/assets/photos/homepage/85BC250F67B0837CD93D88AE8C556410.jpg',
+      '/assets/photos/homepage/9d6156ab37bfa8b54f5097ce7b13b02e_720.jpg',
+      '/assets/photos/homepage/beaa9848eae182ff7dfc56e17a934e45_720.jpg',
+      '/assets/photos/homepage/department-cosplay.jpg',
+      '/assets/photos/homepage/department-dance-stage.jpg',
+      '/assets/photos/homepage/department-music-stage.jpg',
+      '/assets/photos/homepage/e4f65602cf9bfe0131781936ead9c20d_720.jpg',
+      '/assets/photos/homepage/f4e1e9e68a60f59d37b7490893385f2e_720.jpg',
+      '/assets/photos/homepage/friends-night.jpg',
+      '/assets/photos/homepage/history-anniversary.jpg',
+    ];
+    expect(indexedPhotos.map(image => image.getAttribute('src')).sort()).toEqual(expectedSources.sort());
+    expect(new Set(indexedPhotos.map(image => image.getAttribute('src')))).toHaveProperty('size', 12);
     expect(indexedPhotos.every(image => image.getAttribute('src')?.startsWith('/assets/photos/homepage/'))).toBe(true);
+    expect(indexedPhotos.some(image => image.getAttribute('src')?.includes('creative-ensemble.jpg'))).toBe(false);
+    expect(indexedPhotos.some(image => image.getAttribute('src')?.includes('creative-workshop.jpg'))).toBe(false);
+    expect(indexedPhotos.some(image => image.getAttribute('src')?.includes('department-publicity-screening.jpg'))).toBe(false);
 
     const freedomChapter = story.querySelector('[data-scroll-section="freedom"]');
     expect(freedomChapter).not.toBeNull();
     const freedomGallery = within(freedomChapter as HTMLElement).getByLabelText('创作作品拼贴');
-    expect(freedomGallery.querySelectorAll('figure img')).toHaveLength(3);
+    expect(freedomGallery.querySelectorAll('figure img')).toHaveLength(7);
+    expect(within(freedomGallery).getByRole('button', { name: '上一张首页展示图' })).toBeInTheDocument();
+    expect(within(freedomGallery).getByRole('button', { name: '下一张首页展示图' })).toBeInTheDocument();
     expect(within(freedomChapter as HTMLElement).getByLabelText('创作原则')).toHaveTextContent('自由度高');
     expect(within(freedomChapter as HTMLElement).getByLabelText('创作原则')).toHaveTextContent('综合性强');
 

@@ -48,9 +48,12 @@ export function MemberHomepagePage(){
 
 export function ProfileEditorPage() {
   const client = useQueryClient();
+  const { user } = useAuth();
   const [saved, setSaved] = useState(false);
+  const [accountMessage, setAccountMessage] = useState('');
   const query = useQuery({ queryKey: ['social', 'self-profile'], queryFn: () => api<{ profile: SocialProfile }>('/api/member/profile') });
   const [form, setForm] = useState({ uid: '', displayName: '', bio: '', guildTitle: '', college: '', grade: '', skills: '', interests: '', attributes: [] as string[], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' as 'MEMBERS' | 'PRIVATE' });
+  const [account, setAccount] = useState({ username: '', usernamePassword: '', currentPassword: '', newPassword: '', confirmPassword: '' });
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!query.data?.profile) return;
@@ -59,7 +62,28 @@ export function ProfileEditorPage() {
     setForm({ uid: profile.uid ?? legacyUsername ?? '', displayName: profile.displayName ?? '', bio: profile.bio ?? '', guildTitle: profile.guildTitle ?? '', college: profile.college ?? '', grade: profile.grade ?? '', skills: (profile.skills ?? []).join(', '), interests: (profile.interests ?? []).join(', '), attributes: profile.attributes ?? [], avatarColor: profile.avatarColor ?? '#5279a8', profileVisibility: profile.profileVisibility ?? 'MEMBERS' });
     setAvatarUrl(profile.avatarUrl ?? null);
   }, [query.data]);
+  useEffect(() => {
+    if (user?.username) setAccount((current) => ({ ...current, username: user.username ?? '' }));
+  }, [user?.username]);
   const mutation = useMutation({ mutationFn: () => api('/api/member/profile', json('PATCH', { ...form, skills: splitTags(form.skills), interests: splitTags(form.interests), attributes: form.attributes })), onSuccess: async () => { setSaved(true); await Promise.all([client.invalidateQueries({ queryKey: ['auth', 'me'] }), client.invalidateQueries({ queryKey: ['social'] })]); } });
+  const usernameMutation = useMutation({
+    mutationFn: () => api<{ updated: boolean; user: User }>('/api/member/account/username', json('PATCH', { username: account.username, currentPassword: account.usernamePassword })),
+    onSuccess: async (data) => {
+      setAccount((current) => ({ ...current, username: data.user.username ?? current.username, usernamePassword: '' }));
+      setAccountMessage('用户名已更新');
+      await client.invalidateQueries({ queryKey: ['auth', 'me'] });
+    },
+  });
+  const passwordMutation = useMutation({
+    mutationFn: () => {
+      if (account.newPassword !== account.confirmPassword) throw new Error('两次输入的新密码不一致');
+      return api<{ updated: boolean; revokedSessions: number }>('/api/member/account/password', json('PATCH', { currentPassword: account.currentPassword, newPassword: account.newPassword }));
+    },
+    onSuccess: () => {
+      setAccount((current) => ({ ...current, currentPassword: '', newPassword: '', confirmPassword: '' }));
+      setAccountMessage('密码已更新，其他设备已退出登录');
+    },
+  });
   const avatarUpload = useMutation({
     mutationFn: (file: File) => { const body = new FormData(); body.append('file', file); return api<{ avatarUrl: string }>('/api/member/profile/avatar', { method: 'POST', body }); },
     onSuccess: async (data) => { setAvatarUrl(data.avatarUrl); await Promise.all([client.invalidateQueries({ queryKey: ['auth', 'me'] }), client.invalidateQueries({ queryKey: ['social'] })]); },
@@ -93,6 +117,36 @@ export function ProfileEditorPage() {
         </div>
         {mutation.error && <p className="form-error">{mutation.error.message}</p>}{saved && <p className="form-success"><Check />个人主页已保存</p>}<button className="guild-button primary" disabled={mutation.isPending}>保存个人主页</button>
       </form>
+    </section>
+    <section className="shell profile-editor-layout account-security-layout">
+      <article className="parchment-panel">
+        <span className="eyebrow">ACCOUNT IDENTITY</span>
+        <h2>登录用户名</h2>
+        <p>用户名与个人称呼、部门职位相互独立，可使用中文、字母、数字、点、下划线或连字符。</p>
+        <form className="profile-editor" onSubmit={(event) => { event.preventDefault(); setAccountMessage(''); usernameMutation.mutate(); }}>
+          <div className="editor-section">
+            <label>用户名（支持中文）<input required minLength={2} maxLength={40} autoComplete="username" value={account.username} onChange={(event) => setAccount({ ...account, username: event.target.value })} /></label>
+            <label>当前密码（修改用户名）<input required type="password" autoComplete="current-password" value={account.usernamePassword} onChange={(event) => setAccount({ ...account, usernamePassword: event.target.value })} /></label>
+            {usernameMutation.error && <p className="form-error">{usernameMutation.error.message}</p>}
+          </div>
+          <button className="guild-button primary" disabled={usernameMutation.isPending}>修改用户名</button>
+        </form>
+      </article>
+      <article className="parchment-panel">
+        <span className="eyebrow">ACCOUNT SECURITY</span>
+        <h2>修改密码</h2>
+        <p>修改成功后保留当前登录，其他设备上的会话会自动退出。</p>
+        <form className="profile-editor" onSubmit={(event) => { event.preventDefault(); setAccountMessage(''); passwordMutation.mutate(); }}>
+          <div className="editor-section">
+            <label>当前密码（修改密码）<input required type="password" autoComplete="current-password" value={account.currentPassword} onChange={(event) => setAccount({ ...account, currentPassword: event.target.value })} /></label>
+            <label>新密码<input required type="password" minLength={10} autoComplete="new-password" value={account.newPassword} onChange={(event) => setAccount({ ...account, newPassword: event.target.value })} /></label>
+            <label>确认新密码<input required type="password" minLength={10} autoComplete="new-password" value={account.confirmPassword} onChange={(event) => setAccount({ ...account, confirmPassword: event.target.value })} /></label>
+            {passwordMutation.error && <p className="form-error">{passwordMutation.error.message}</p>}
+          </div>
+          <button className="guild-button primary" disabled={passwordMutation.isPending}>修改密码</button>
+        </form>
+      </article>
+      {accountMessage && <p className="form-success account-security-message"><Check />{accountMessage}</p>}
     </section>
   </main>;
 }

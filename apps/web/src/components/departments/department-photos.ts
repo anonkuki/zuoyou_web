@@ -3,6 +3,7 @@ export interface DepartmentPhoto {
   alt: string;
   caption: string;
   source: '本部门投稿' | '社团年度记录';
+  recordedAt?: string;
 }
 
 const department = (folder: string, file: string, alt: string, caption: string): DepartmentPhoto => ({
@@ -37,13 +38,37 @@ export const departmentPhotoLabels: Record<string, { name: string; title: string
   publicity: { name: '外宣&幻想研', title: '放映、记录与社团现场', intro: '幻想研一起看番与交流作品，外宣把活动现场整理成大家日后还能翻看的记录。' },
 };
 
-export const originalPortfolioPhotos = activitySeries(
-  'original',
-  'original-activity',
-  4,
-  '原创部',
-  '原创作品',
-);
+const newOriginalWork = (file: string, caption: string, index: number): DepartmentPhoto => ({
+  src: `/assets/photos/departments/original/${file}`,
+  alt: `原创部新投稿作品 ${index + 1}：${caption}`,
+  caption,
+  source: '本部门投稿',
+  recordedAt: '2026-09-07',
+});
+
+const newOriginalPortfolioPhotos = [
+  ['01c7aa5289bdb12aec3feb81ba1a297d_720.png', '红衣角色立绘'],
+  ['1.jpg', '白发角色表情贴纸（一）'],
+  ['2.jpg', '白发角色表情贴纸（二）'],
+  ['3.jpg', '白发角色表情贴纸（三）'],
+  ['3c562533738d841794b0b005926e143c.png', '星空主题角色海报'],
+  ['4.jpg', '紫发角色表情贴纸'],
+  ['5.jpg', '白发角色表情贴纸（四）'],
+  ['6.jpg', '白发角色表情贴纸（五）'],
+  ['7d359fddd68634f3e6519b3befc410e8.png', '月夜主题角色海报'],
+  ['9fe6e450736938666c2bee07df1fb04b_720.png', '金色主题角色海报'],
+  ['Image_1787843481457_961.png', '时钟主题角色插画'],
+  ['ca37b83f689edf3380d8079d01380434.png', '粉发角色头像'],
+  ['d54dd6577b53b50df1df60e54253dd54_720.png', '火焰主题角色海报'],
+  ['d66e1bb2d4158da2bc4531aae9649a1c.png', '紫色礼服角色海报'],
+  ['pld.jpg', '双人角色主题海报'],
+  ['应援棒.png', '佐佑原创应援棒图案'],
+] as const;
+
+export const originalPortfolioPhotos = [
+  ...activitySeries('original', 'original-activity', 4, '原创部', '原创作品'),
+  ...newOriginalPortfolioPhotos.map(([file, caption], index) => newOriginalWork(file, caption, index)),
+];
 
 export const departmentPhotosBySlug: Record<string, DepartmentPhoto[]> = {
   tech: [

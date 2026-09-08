@@ -109,7 +109,7 @@ export function BlogPostBoard({ departmentSlug, initialSubboardId, compact = fal
   const canManage = (post: BlogPostCard) => Boolean(!compact && user && isManagementRole(user.role) && (isExecutiveRole(user.role) || (departmentSlug !== 'guild' && post.departmentId && post.departmentId === user.departmentId)));
 
   return <section className={`retro-blog-board forum-board${compact ? ' compact' : ''}`} aria-label={departmentSlug ? '部门帖子' : '社团帖子'}>
-    <header><div><small>★ SAYUU FORUM / SINCE 2018 ★</small><h2>{title ?? (departmentSlug ? `${group?.name ?? '部门'}讨论区` : '冒险者酒馆')}</h2><p>{selectedName ? `当前子板块：${selectedName}` : departmentSlug ? '置顶主题与普通主题按最新动态统一排列。' : '置顶公告与最新主题汇集在同一张酒馆主题表。'}</p></div><span className="retro-counter">TOPIC<br/><b>{String(departmentSlug ? topics.data?.total ?? 0 : homepagePosts.length).padStart(6, '0')}</b></span></header>
+    <header><div><small>★ SAYUU FORUM / SINCE 1999 ★</small><h2>{title ?? (departmentSlug ? `${group?.name ?? '部门'}讨论区` : '冒险者酒馆')}</h2><p>{selectedName ? `当前子板块：${selectedName}` : departmentSlug ? '置顶主题与普通主题按最新动态统一排列。' : '置顶公告与最新主题汇集在同一张酒馆主题表。'}</p></div><span className="retro-counter">TOPIC<br/><b>{String(departmentSlug ? topics.data?.total ?? 0 : homepagePosts.length).padStart(6, '0')}</b></span></header>
     {departmentSlug && group && <div className="forum-board-picker">
       <label><Search aria-hidden="true"/><span className="sr-only">检索子板块</span><input value={subboardQuery} onChange={(event) => setSubboardQuery(event.target.value)} placeholder="检索本部门子板块"/></label>
       <button className={!selectedSubboard ? 'active' : ''} onClick={() => setSelectedSubboard(null)}><strong>{group.name}综合讨论</strong><small>全部 {group.topicCount} 个主题</small></button>

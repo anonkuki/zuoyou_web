@@ -65,25 +65,29 @@ describe('shared contracts', () => {
   });
 
   it('bounds database-driven homepage values', () => {
-    expect(homeDataSchema.safeParse({
+    const valid = homeDataSchema.safeParse({
       stats: {
         guildLevel: 12,
         levelProgress: { current: 2390, target: 3000 },
         memberCount: 82,
+        onlineCount: 3,
         completedActivityCount: 328,
         honorCount: 56,
-        foundedYear: 2018,
+        foundedYear: 1999,
       },
       announcements: [],
-    }).success).toBe(true);
+    });
+    expect(valid.success).toBe(true);
+    if (valid.success) expect(valid.data.stats.onlineCount).toBe(3);
     expect(homeDataSchema.safeParse({
       stats: {
         guildLevel: -1,
         levelProgress: { current: 0, target: 0 },
         memberCount: 82,
+        onlineCount: 3,
         completedActivityCount: 328,
         honorCount: 56,
-        foundedYear: 2018,
+        foundedYear: 1999,
       },
       announcements: [],
     }).success).toBe(false);

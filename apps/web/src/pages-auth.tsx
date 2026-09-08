@@ -42,7 +42,7 @@ export function LoginPage() {
       <CheckCircle2 /><h2>注册请求已提交</h2><p>请等待社长层审核。通过后可直接使用刚才填写的用户名和密码登录。</p>
       <button className="guild-button primary" onClick={() => switchMode('login')}>返回登录</button>
     </div> : <form onSubmit={(event: FormEvent) => { event.preventDefault(); registration.mutate(); }}>
-      <label>注册用户名<input autoComplete="username" required minLength={2} maxLength={40} title="2-40 位中文、字母、数字、点、下划线或连字符" value={registrationForm.username} onChange={event => setRegistrationForm({ ...registrationForm, username: event.target.value })} /></label>
+      <label>注册用户名（支持中文）<input autoComplete="username" required minLength={2} maxLength={40} title="2-40 位中文、字母、数字、点、下划线或连字符" value={registrationForm.username} onChange={event => setRegistrationForm({ ...registrationForm, username: event.target.value })} /></label>
       <label>密码<input autoComplete="new-password" type="password" required minLength={10} maxLength={200} value={registrationForm.password} onChange={event => setRegistrationForm({ ...registrationForm, password: event.target.value })} /></label>
       <label>联系方式<input autoComplete="email" required minLength={3} maxLength={160} placeholder="邮箱、手机号或其他可核验方式" value={registrationForm.contact} onChange={event => setRegistrationForm({ ...registrationForm, contact: event.target.value })} /></label>
       <label>备注<textarea rows={4} maxLength={1000} placeholder="可填写身份说明或希望管理员了解的信息" value={registrationForm.note} onChange={event => setRegistrationForm({ ...registrationForm, note: event.target.value })} /></label>

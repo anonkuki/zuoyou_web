@@ -27,6 +27,11 @@ const managedVideo = (item: PageContentItem): OriginalVideo | null => item.image
   publishedAt: 'NEW', duration: 'BILIBILI', description: item.body,
 } : null;
 
+const formatRecordDate = (recordedAt: string) => new Intl.DateTimeFormat('zh-CN', {
+  dateStyle: 'long',
+  timeZone: 'Asia/Shanghai',
+}).format(new Date(`${recordedAt}T00:00:00+08:00`));
+
 function IsoGeometry() {
   const ref = useRef<SVGSVGElement>(null);
   const reduce = useReducedMotion();
@@ -95,7 +100,7 @@ export function OriginalShowcase({ dept, show }: ShowcaseProps) {
   const addedDaily = usePageSectionItems('department-photo-gallery').filter(item => item.imageUrl);
   const addedVideos = usePageSectionItems('department-media-shelf').map(managedVideo).filter((item): item is OriginalVideo => Boolean(item));
   const addedTools = usePageSectionItems('original-toolbox');
-  const works = [...originalPortfolioPhotos, ...addedWorks.map(item => ({ src: item.imageUrl!, alt: item.title || '原创部新增作品', caption: item.title || '新增作品', source: '本部门投稿' as const }))].filter(item => !config.hiddenImageUrls.includes(item.src));
+  const works: DepartmentPhoto[] = [...originalPortfolioPhotos, ...addedWorks.map(item => ({ src: item.imageUrl!, alt: item.title || '原创部新增作品', caption: item.title || '新增作品', source: '本部门投稿' as const }))].filter(item => !config.hiddenImageUrls.includes(item.src));
   const daily = useMemo(() => [...(departmentPhotosBySlug.original ?? []), ...addedDaily.map(item => ({ src: item.imageUrl!, alt: item.title || '原创部新增周常照片', caption: item.title || '新增创作日常', source: '本部门投稿' as const }))].filter(item => !config.hiddenImageUrls.includes(item.src)), [addedDaily, config.hiddenImageUrls]);
   const videos: OriginalVideo[] = [...(departmentMediaBySlug.original.videos ?? []).filter(item => !config.hiddenImageUrls.includes(item.cover)).map(item => ({ ...item, description: item.note })), ...addedVideos];
 
@@ -115,7 +120,7 @@ export function OriginalShowcase({ dept, show }: ShowcaseProps) {
     <PixelDivider />
 
     <section className="original-work-section original-paper-section" id="original-gallery"><OriginalTitle no="01" icon={Palette} title="作品集锦" en="FEATURED WORKS" note="小小的创作，也能照亮某个人的未来。" />
-      <OriginalCarousel label="原创作品" className="original-work-carousel">{works.map((photo, index) => <motion.figure key={`${photo.src}-${index}`} {...(reduce ? {} : entranceProps('original', index))}><img src={photo.src} alt={photo.alt} loading="lazy" decoding="async" /><figcaption><strong>{photo.caption}</strong><small>ORIGINAL CLUB WORKS</small></figcaption></motion.figure>)}</OriginalCarousel>
+      <OriginalCarousel label="原创作品" className="original-work-carousel">{works.map((photo, index) => <motion.figure key={`${photo.src}-${index}`} {...(reduce ? {} : entranceProps('original', index))}><img src={photo.src} alt={photo.alt} loading="lazy" decoding="async" /><figcaption><strong>{photo.caption}</strong><small>{photo.recordedAt ? formatRecordDate(photo.recordedAt) : 'ORIGINAL CLUB WORKS'}</small></figcaption></motion.figure>)}</OriginalCarousel>
     </section>
 
     <section className="original-character-section original-paper-section" id="original-characters"><OriginalTitle no="02" icon={Users} title="OC / 设定集" en="ORIGINAL CHARACTER ARCHIVE" note="每一个角色，都是一个未完的故事。" />

@@ -22,6 +22,8 @@ describe('original department showcase', () => {
     expect(screen.getByRole('heading', { name: '留言板' })).toBeInTheDocument();
     expect(screen.getByText('登录原创部成员账号后即可查看并留言。')).toBeInTheDocument();
     expect(screen.getAllByAltText(/原创部原创作品照片/)).toHaveLength(4);
+    expect(screen.getAllByAltText(/原创部新投稿作品/)).toHaveLength(16);
+    expect(screen.getAllByText('2026年9月7日')).toHaveLength(16);
     expect(screen.getAllByAltText(/原创部周常活动照片/)).toHaveLength(1);
     expect(screen.getByRole('button', { name: '上一张创作日常' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '下一张创作日常' })).toBeInTheDocument();

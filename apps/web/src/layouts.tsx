@@ -1,14 +1,17 @@
 import { useState, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { Activity, BarChart3, BookOpen, BriefcaseBusiness, Castle, ChevronLeft, ClipboardCheck, FileArchive, Gamepad2, History, LayoutDashboard, LogOut, Megaphone, MessageCircle, ScrollText, Settings, Shield, Sparkles, UserRound, Users } from 'lucide-react';
-import { isExecutiveRole, roleLabels } from '@guild/contracts';
+import { isExecutiveRole, roleLabels, type HomeData } from '@guild/contracts';
+import { api } from './api';
 import { useAuth, useLogout } from './auth';
 import { PixelFooter } from './components/home/PixelFooter';
 import { PixelNavbar } from './components/home/PixelNavbar';
 import { PixelAvatar } from './components/avatar/PixelAvatar';
 
 export function PublicLayout(){
-  return <div className="app-shell"><PixelNavbar/><Outlet/><PixelFooter/></div>;
+  const home = useQuery({ queryKey: ['public-home'], queryFn: () => api<HomeData>('/api/public/home'), refetchInterval: 60_000 });
+  return <div className="app-shell"><PixelNavbar/><Outlet/><PixelFooter onlineCount={home.data?.stats?.onlineCount}/></div>;
 }
 
 const portalLinks=[

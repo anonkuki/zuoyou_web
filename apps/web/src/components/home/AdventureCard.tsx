@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 type CardVariant = 'history' | 'departments' | 'activities';
 
 const cardMeta: Record<CardVariant, { title: string; subtitle: string; eyebrow: string; stamp: string; button: string; to: string; storyFormat: string; Icon: LucideIcon }> = {
-  history: { title: '社团往事', subtitle: '从第一张招新海报开始，看看佐佑一路走来的小故事。', eyebrow: 'OUR STORY · 2018—2026', stamp: '旧相册', button: '从头看看', to: '/chronicle', storyFormat: 'chronicle', Icon: BookOpen },
+  history: { title: '社团往事', subtitle: '从第一张招新海报开始，看看佐佑一路走来的小故事。', eyebrow: 'OUR STORY · 1999—2026', stamp: '旧相册', button: '从头看看', to: '/chronicle', storyFormat: 'chronicle', Icon: BookOpen },
   departments: { title: '六个部门', subtitle: '画画、舞台、音乐、技术……总有一处适合你的兴趣。', eyebrow: 'SIX CLUB ROOMS', stamp: '逛部门', button: '认识大家', to: '/departments', storyFormat: 'guild-roster', Icon: Castle },
   activities: { title: '最近在忙', subtitle: '漫展、Live、外拍与创作，每次相聚都有好好记录。', eyebrow: 'RECENT DAYS', stamp: '新记录', button: '看看近况', to: '/activities', storyFormat: 'field-report', Icon: Camera },
 };

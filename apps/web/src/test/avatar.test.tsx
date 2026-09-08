@@ -259,6 +259,34 @@ describe('Navbar user entry', () => {
     await waitFor(() => expect(within(navbar(container)).queryByRole('menu')).toBeNull());
   });
 
+  it('opens unread conversations from the homepage navbar and sends a quick reply', async () => {
+    const conversations = [
+      { id: 'conversation-direct', type: 'DIRECT', title: '绯月幻装师', counterpart: { id: 'user-lead', displayName: '绯月幻装师', avatarColor: '#c75f88', presence: 'ONLINE' }, lastMessage: '道具清单已经更新', lastMessageAt: '2026-09-08T08:00:00.000Z', unreadCount: 2 },
+      { id: 'conversation-department', type: 'DEPARTMENT', title: 'COS部协作频道', counterpart: null, lastMessage: '今晚确认排练时间', lastMessageAt: '2026-09-08T07:00:00.000Z', unreadCount: 1 },
+    ];
+    const messages = [{ id: 'message-1', conversationId: 'conversation-direct', senderId: 'user-lead', sender: { displayName: '绯月幻装师', avatarColor: '#c75f88' }, content: '道具清单已经更新', replyTo: null, editedAt: null, deletedAt: null, createdAt: '2026-09-08T08:00:00.000Z' }];
+    const fetchMock = stubSession(memberUser, (path, init) => {
+      if (path === '/api/member/conversations') return new Response(JSON.stringify({ ok: true, data: { items: conversations } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/conversations/conversation-direct/messages' && init?.method !== 'POST') return new Response(JSON.stringify({ ok: true, data: { items: messages, hasMore: false, nextBefore: null } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/conversations/conversation-direct/messages' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { id: 'message-new' } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/conversations/conversation-direct/read' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { read: true } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return null;
+    });
+    const user = userEvent.setup();
+    const { container } = renderAt('/');
+
+    const trigger = await within(navbar(container)).findByRole('button', { name: '公会通讯，3 条未读' });
+    await user.click(trigger);
+    const drawer = await screen.findByRole('dialog', { name: '公会通讯' });
+    expect(within(drawer).getAllByText('绯月幻装师')).toHaveLength(2);
+    expect(within(drawer).getByText('COS部协作频道')).toBeInTheDocument();
+    expect(within(drawer).getByText('道具清单已经更新')).toBeInTheDocument();
+    expect(within(drawer).getByRole('link', { name: '查看完整通讯' })).toHaveAttribute('href', '/portal/chat?conversation=conversation-direct');
+    await user.type(within(drawer).getByLabelText('快速回复'), '收到，我马上确认。');
+    await user.click(within(drawer).getByRole('button', { name: '快速发送' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/conversations/conversation-direct/messages', expect.objectContaining({ method: 'POST', body: JSON.stringify({ content: '收到，我马上确认。' }) })));
+  });
+
   it('returns to guest state immediately after logout', async () => {
     const fetchMock = stubSession({ ...memberUser, avatarConfig: memberConfig }, (path, init) => {
       if (path === '/api/auth/logout' && init?.method === 'POST') {

@@ -1,19 +1,61 @@
-import { ArrowUpRight } from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
+import { ArrowLeft, ArrowRight, ArrowUpRight } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
 const departmentNames = ['COS', '原创', '舞装', '轻音', '技术', '外宣&幻想研'] as const;
 
-const storyImages = {
-  origin: '/assets/photos/homepage/history-anniversary.jpg',
-  cosplay: '/assets/photos/homepage/department-cosplay.jpg',
-  music: '/assets/photos/homepage/department-music-stage.jpg',
-  dance: '/assets/photos/homepage/department-dance-stage.jpg',
-  publicity: '/assets/photos/homepage/department-publicity-screening.jpg',
-  sketch: '/assets/photos/homepage/creative-workshop.jpg',
-  ensemble: '/assets/photos/homepage/creative-ensemble.jpg',
-  encounter: '/assets/photos/homepage/friends-night.jpg',
+interface StoryPhoto { src: string; alt: string; label: string }
+
+const storyImages: Record<'origin' | 'cosplay' | 'music' | 'dance' | 'publicity', StoryPhoto> = {
+  origin: { src: '/assets/photos/homepage/history-anniversary.jpg', alt: '佐佑动漫社社庆成员合影', label: 'MEET / CREATE / REMEMBER' },
+  cosplay: { src: '/assets/photos/homepage/department-cosplay.jpg', alt: 'COS部角色创作与成员合影', label: 'COSPLAY' },
+  music: { src: '/assets/photos/homepage/department-music-stage.jpg', alt: '轻音部舞台演出', label: 'MUSIC' },
+  dance: { src: '/assets/photos/homepage/department-dance-stage.jpg', alt: '舞装部舞台演出', label: 'STAGE' },
+  publicity: { src: '/assets/photos/homepage/beaa9848eae182ff7dfc56e17a934e45_720.jpg', alt: '社团舞台活动现场', label: 'LIVE' },
 };
+
+const closingPhotos: StoryPhoto[] = [
+  { src: '/assets/photos/homepage/15b8a918bcb5aea7fc45711763e291d0_720.jpg', alt: '社团成员在百团大战现场合影', label: 'CLUB DAY' },
+  { src: '/assets/photos/homepage/55d0f7860a6e9866e520fcfa2a1e2543_720.jpg', alt: '社团舞台活动谢幕合影', label: 'CURTAIN CALL' },
+  { src: '/assets/photos/homepage/85BC250F67B0837CD93D88AE8C556410.jpg', alt: '社团成员在林荫道合影', label: 'TOGETHER' },
+  { src: '/assets/photos/homepage/9d6156ab37bfa8b54f5097ce7b13b02e_720.jpg', alt: '社团成员在校园活动现场合影', label: 'CAMPUS DAY' },
+  { src: '/assets/photos/homepage/e4f65602cf9bfe0131781936ead9c20d_720.jpg', alt: '社团舞台角色活动合影', label: 'ON STAGE' },
+  { src: '/assets/photos/homepage/f4e1e9e68a60f59d37b7490893385f2e_720.jpg', alt: '舞装部成员舞台合影', label: 'DANCE' },
+  { src: '/assets/photos/homepage/friends-night.jpg', alt: '夜间活动结束后的成员合影', label: 'MEET' },
+];
+
+function StackedPhotoCarousel({ photos }: { photos: StoryPhoto[] }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const move = (direction: -1 | 1) => setActiveIndex(index => (index + direction + photos.length) % photos.length);
+  return (
+    <div className="story-photo-carousel" aria-label="首页活动照片轮播">
+      <div className="story-photo-deck" aria-live="polite">
+        {photos.map((photo, index) => {
+          const offset = (index - activeIndex + photos.length) % photos.length;
+          return (
+            <figure
+              className={`story-photo-card${offset === 0 ? ' is-active' : ''}`}
+              style={{ '--photo-offset': Math.min(offset, 4) } as CSSProperties}
+              aria-hidden={offset === 0 ? undefined : 'true'}
+              key={photo.src}
+            >
+              <img src={photo.src} alt={offset === 0 ? photo.alt : ''} loading={index === 0 ? 'eager' : 'lazy'} decoding="async" />
+              <figcaption><small>{String(activeIndex + 1).padStart(2, '0')} / {String(photos.length).padStart(2, '0')}</small><strong>{photo.label}</strong></figcaption>
+            </figure>
+          );
+        })}
+      </div>
+      <div className="story-carousel-controls">
+        <button type="button" onClick={() => move(-1)} aria-label="上一张首页展示图"><ArrowLeft aria-hidden="true" /></button>
+        <div className="story-carousel-dots" aria-label="选择首页展示图">
+          {photos.map((photo, index) => <button type="button" className={index === activeIndex ? 'is-active' : ''} onClick={() => setActiveIndex(index)} aria-label={`查看首页展示图 ${index + 1}：${photo.alt}`} aria-current={index === activeIndex ? 'true' : undefined} key={photo.src} />)}
+        </div>
+        <button type="button" onClick={() => move(1)} aria-label="下一张首页展示图"><ArrowRight aria-hidden="true" /></button>
+      </div>
+    </div>
+  );
+}
 
 export function GuildScrollStory() {
   const reduceMotion = useReducedMotion();
@@ -50,7 +92,7 @@ export function GuildScrollStory() {
           <Link className="story-text-link" to="/history">翻阅社团历史 <ArrowUpRight /></Link>
         </div>
         <motion.div className="story-origin-collage" {...mediaFromRight} aria-label="社团创作素材拼贴">
-          <figure className="story-frame frame-origin"><img src={storyImages.origin} alt="佐佑动漫社社庆成员合影" /><figcaption>MEET / CREATE / REMEMBER</figcaption></figure>
+          <figure className="story-frame frame-origin"><img src={storyImages.origin.src} alt={storyImages.origin.alt} /><figcaption>{storyImages.origin.label}</figcaption></figure>
           <div className="mascot-card"><img className="story-mascot-cutout" src="/assets/brand/youzi-mascot.png" alt="佐佑动漫社柚子吉祥物" /><span>你好，新朋友</span></div>
           <span className="story-stamp">SINCE<br />1999</span>
         </motion.div>
@@ -59,10 +101,10 @@ export function GuildScrollStory() {
       <motion.article className="story-chapter story-create" data-scroll-section="departments" {...sectionReveal}>
         <div className="story-section-index" aria-hidden="true"><span>02</span><i /><small>CREATE</small></div>
         <motion.div className="story-collage-wall" {...mediaFromLeft} aria-label="部门活动素材墙">
-          <figure className="collage-tile tile-cos"><img src={storyImages.cosplay} alt="COS部角色创作" /><span>COSPLAY</span></figure>
-          <figure className="collage-tile tile-music"><img src={storyImages.music} alt="轻音部音乐活动" /><span>MUSIC</span></figure>
-          <figure className="collage-tile tile-dance"><img src={storyImages.dance} alt="舞装部舞台活动" /><span>STAGE</span></figure>
-          <figure className="collage-tile tile-publicity"><img src={storyImages.publicity} alt="外宣与幻想研作品" /><span>MEDIA</span></figure>
+          <figure className="collage-tile tile-cos"><img src={storyImages.cosplay.src} alt={storyImages.cosplay.alt} /><span>{storyImages.cosplay.label}</span></figure>
+          <figure className="collage-tile tile-music"><img src={storyImages.music.src} alt={storyImages.music.alt} /><span>{storyImages.music.label}</span></figure>
+          <figure className="collage-tile tile-dance"><img src={storyImages.dance.src} alt={storyImages.dance.alt} /><span>{storyImages.dance.label}</span></figure>
+          <figure className="collage-tile tile-publicity"><img src={storyImages.publicity.src} alt={storyImages.publicity.alt} /><span>{storyImages.publicity.label}</span></figure>
         </motion.div>
         <div className="story-copy story-copy-right">
           <small>CHAPTER 02 · CREATE TOGETHER</small>
@@ -86,14 +128,7 @@ export function GuildScrollStory() {
             <Link className="story-primary-link" to="/departments">进入六个部门 <ArrowUpRight /></Link>
           </div>
           <motion.div className="freedom-gallery" aria-label="创作作品拼贴" {...mediaFromRight}>
-            <figure className="freedom-main-art">
-              <img src={storyImages.sketch} alt="社团成员围坐讨论创作内容" />
-              <figcaption><small>01 / START WITH A LINE</small><strong>把喜欢的事<br />做成作品</strong></figcaption>
-            </figure>
-            <div className="freedom-art-strip">
-              <figure><img src={storyImages.ensemble} alt="社团伙伴在活动后合影" /><figcaption>TOGETHER</figcaption></figure>
-              <figure><img src={storyImages.encounter} alt="夜间活动结束后的成员合影" /><figcaption>MEET</figcaption></figure>
-            </div>
+            <StackedPhotoCarousel photos={closingPhotos} />
             <div className="freedom-principles" aria-label="创作原则">
               <span><b>自由度高</b><small>FOLLOW YOUR CURIOSITY</small></span>
               <span><b>综合性强</b><small>MAKE IT TOGETHER</small></span>

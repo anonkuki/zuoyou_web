@@ -27,22 +27,22 @@
     "banner": "assets/departments/publicity/03-banner.jpg"
   },
   {
-    "anilistId": 16498,
-    "query": "Attack on Titan",
-    "title": "進撃の巨人",
-    "romaji": "Shingeki no Kyojin",
-    "year": 2013,
-    "cover": "assets/departments/publicity/04-cover.jpg",
-    "banner": "assets/departments/publicity/04-banner.jpg"
+    "source": "user-provided",
+    "query": "Neon Genesis Evangelion",
+    "title": "EVA",
+    "romaji": "NEON GENESIS EVANGELION",
+    "year": 1995,
+    "cover": "assets/departments/publicity/eva-poster.png",
+    "banner": "assets/departments/publicity/eva-poster.png"
   },
   {
-    "anilistId": 101922,
-    "query": "Demon Slayer: Kimetsu no Yaiba",
-    "title": "鬼滅の刃",
-    "romaji": "Kimetsu no Yaiba",
-    "year": 2019,
-    "cover": "assets/departments/publicity/05-cover.jpg",
-    "banner": "assets/departments/publicity/05-banner.jpg"
+    "source": "user-provided",
+    "query": "Ohsama Sentai King-Ohger",
+    "title": "王样战队君王者",
+    "romaji": "Ohsama Sentai King-Ohger",
+    "year": 2023,
+    "cover": "assets/departments/publicity/king-ohger-poster.png",
+    "banner": "assets/departments/publicity/king-ohger-poster.png"
   },
   {
     "anilistId": 113415,

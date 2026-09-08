@@ -1,20 +1,113 @@
-import { ChevronDown, LayoutDashboard, LogIn, LogOut, Menu, Palette, Search, UserPlus, UserRound, Users, X } from 'lucide-react';
+import { ChevronDown, LayoutDashboard, LogIn, LogOut, Menu, MessageCircle, Palette, Search, Send, UserPlus, UserRound, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, useLogout } from '../../auth';
+import { api, json } from '../../api';
 import { PixelAvatar } from '../avatar/PixelAvatar';
 import { roleLabels } from '@guild/contracts';
+import './quick-chat.css';
 
 const navigation = [
   ['/', '首页'],
-  ['/chronicle', '公会历史'],
   ['/departments', '职业大厅'],
   ['/activities', '冒险档案'],
   ['/works', '作品图鉴'],
   ['/tavern', '冒险者酒馆'],
   ['/join', '加入我们'],
 ] as const;
+
+interface QuickConversation {
+  id: string;
+  type: 'DIRECT' | 'DEPARTMENT';
+  title: string;
+  lastMessage: string;
+  lastMessageAt: string | null;
+  unreadCount: number;
+}
+
+interface QuickMessage {
+  id: string;
+  sender: { displayName: string };
+  content: string;
+  deletedAt: string | null;
+}
+
+function QuickChat() {
+  const { user } = useAuth();
+  const client = useQueryClient();
+  const reduce = useReducedMotion();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState('');
+  const [content, setContent] = useState('');
+  const conversations = useQuery({
+    queryKey: ['navbar-conversations'],
+    queryFn: () => api<{ items: QuickConversation[] }>('/api/member/conversations'),
+    enabled: Boolean(user),
+    refetchInterval: 5000,
+  });
+  const recent = (conversations.data?.items ?? []).slice(0, 3);
+  const activeId = selected || recent[0]?.id || '';
+  const active = recent.find((item) => item.id === activeId) ?? recent[0];
+  const unread = (conversations.data?.items ?? []).reduce((total, item) => total + item.unreadCount, 0);
+  const messages = useQuery({
+    queryKey: ['navbar-messages', activeId],
+    queryFn: () => api<{ items: QuickMessage[] }>(`/api/member/conversations/${activeId}/messages`),
+    enabled: Boolean(user && open && activeId),
+    refetchInterval: open ? 5000 : false,
+  });
+  const read = useMutation({
+    mutationFn: (conversationId: string) => api(`/api/member/conversations/${conversationId}/read`, json('POST')),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['navbar-conversations'] }),
+  });
+  const send = useMutation({
+    mutationFn: () => api(`/api/member/conversations/${activeId}/messages`, json('POST', { content })),
+    onSuccess: async () => {
+      setContent('');
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['navbar-messages', activeId] }),
+        client.invalidateQueries({ queryKey: ['navbar-conversations'] }),
+      ]);
+    },
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: KeyboardEvent) => event.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [open]);
+
+  useEffect(() => {
+    if (open && active?.unreadCount) read.mutate(active.id);
+  }, [open, active?.id, active?.unreadCount]);
+
+  if (!user) return null;
+  const label = unread ? `公会通讯，${unread} 条未读` : '公会通讯';
+  const visibleMessages = (messages.data?.items ?? []).filter((message) => !message.deletedAt).slice(-3);
+
+  return <>
+    <button className="quick-chat-toggle" aria-label={label} aria-expanded={open} onClick={() => setOpen(true)}>
+      <MessageCircle />{unread > 0 && <b>{unread > 99 ? '99+' : unread}</b>}
+    </button>
+    <Link className="quick-chat-mobile-link" aria-label={label} to={`/portal/chat${activeId ? `?conversation=${activeId}` : ''}`}><MessageCircle />{unread > 0 && <b>{unread > 99 ? '99+' : unread}</b>}</Link>
+    <AnimatePresence>{open && <div className="quick-chat-layer">
+      <button className="quick-chat-backdrop" aria-label="关闭公会通讯" onClick={() => setOpen(false)} />
+      <motion.aside className="quick-chat-drawer" role="dialog" aria-modal="true" aria-label="公会通讯"
+        initial={reduce ? false : { x: '100%' }} animate={{ x: 0 }} exit={reduce ? undefined : { x: '100%' }} transition={{ duration: .24, ease: [0.22, 1, 0.36, 1] }}>
+        <header><div><small>GUILD MESSENGER</small><h2>公会通讯</h2></div><button aria-label="关闭" onClick={() => setOpen(false)}><X /></button></header>
+        {!recent.length ? <div className="quick-chat-empty"><MessageCircle /><p>还没有会话，从成员名录发起第一次交流吧。</p><Link to="/portal/members" onClick={() => setOpen(false)}>浏览成员名录</Link></div> : <>
+          <nav aria-label="最近会话">{recent.map((item) => <button className={item.id === activeId ? 'active' : ''} key={item.id} onClick={() => setSelected(item.id)}><span><strong>{item.title}</strong><small>{item.type === 'DEPARTMENT' ? '部门频道' : '私聊'}</small></span>{item.unreadCount > 0 && <b>{item.unreadCount}</b>}</button>)}</nav>
+          <section className="quick-chat-messages" aria-label="最近消息">{messages.isLoading ? <p>正在读取消息……</p> : visibleMessages.length ? visibleMessages.map((message) => <article key={message.id}><strong>{message.sender.displayName}</strong><p>{message.content}</p></article>) : <p>这里还没有消息。</p>}</section>
+          <form onSubmit={(event) => { event.preventDefault(); if (content.trim()) send.mutate(); }}><label><span className="sr-only">快速回复</span><textarea aria-label="快速回复" rows={2} maxLength={2000} value={content} onChange={(event) => setContent(event.target.value)} placeholder="快速回复……" /></label><button aria-label="快速发送" disabled={!content.trim() || send.isPending}><Send /></button></form>
+          {send.error && <p className="form-error quick-chat-error">{send.error.message}</p>}
+          <Link className="quick-chat-full" aria-label="查看完整通讯" to={`/portal/chat?conversation=${activeId}`} onClick={() => setOpen(false)}>查看完整通讯 <span aria-hidden="true">→</span></Link>
+        </>}
+      </motion.aside>
+    </div>}</AnimatePresence>
+  </>;
+}
 
 /** 右上角用户芯片：迷你像素小人 + 昵称，展开账号菜单 */
 function UserMenu() {
@@ -127,6 +220,7 @@ export function PixelNavbar() {
       </nav>
       <div className="pixel-nav-tools">
         <button aria-label="搜索" onClick={() => setSearchOpen(true)}><Search/></button>
+        <QuickChat />
         <UserMenu />
         <button className="pixel-menu-button" aria-label={menuOpen ? '关闭菜单' : '打开菜单'} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X/> : <Menu/>}</button>
       </div>

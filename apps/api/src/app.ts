@@ -335,7 +335,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   function canGrantRole(actor: Principal, role: Role, departmentId: string | null): boolean {
     if (role === 'VICE_PRESIDENT') return actor.role === 'PRESIDENT';
     if (role === 'DEPARTMENT_HEAD') return isExecutiveRole(actor.role);
-    if (role === 'DEPARTMENT_ADMIN') return actor.role === 'DEPARTMENT_HEAD' && actor.departmentId === departmentId;
+    if (role === 'DEPARTMENT_ADMIN') return actor.role === 'PRESIDENT' || (actor.role === 'DEPARTMENT_HEAD' && actor.departmentId === departmentId);
     return false;
   }
 
@@ -359,7 +359,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     }
     if (role === 'VICE_PRESIDENT') {
       const count = (sqlite.prepare("SELECT COUNT(*) count FROM users WHERE role='VICE_PRESIDENT' AND is_active=1").get() as { count: number }).count;
-      if (count >= 4) throw new HttpError(409, 'VICE_PRESIDENT_LIMIT', '副社长最多只能有四人');
+      if (count >= 5) throw new HttpError(409, 'VICE_PRESIDENT_LIMIT', '副社长最多只能有五人');
     }
 
     const assignmentId = newId('role');
@@ -410,6 +410,8 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     };
     const levelTarget = Math.max(1, numericSetting('guildLevelTarget', 1));
     const memberCount = (sqlite.prepare('SELECT COUNT(*) count FROM users WHERE is_active=1').get() as { count: number }).count;
+    const onlineThreshold = new Date(Date.parse(now()) - 5 * 60_000).toISOString();
+    const onlineCount = (sqlite.prepare('SELECT COUNT(*) count FROM users WHERE is_active=1 AND last_seen_at IS NOT NULL AND last_seen_at>=?').get(onlineThreshold) as { count: number }).count;
     const completedActivityCount = (sqlite.prepare("SELECT COUNT(*) count FROM activities WHERE status IN ('ENDED','ARCHIVED')").get() as { count: number }).count;
     const rows = sqlite.prepare(`SELECT id,title,summary,content,category,href,pinned,published,published_at
       FROM announcements WHERE published=1 ORDER BY pinned DESC,published_at DESC,id LIMIT 6`).all() as AnnouncementRow[];
@@ -421,6 +423,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
           target: levelTarget,
         },
         memberCount,
+        onlineCount,
         completedActivityCount,
         honorCount: numericSetting('honorCount', 0),
         foundedYear: Math.min(2200, Math.max(1900, numericSetting('foundedYear', new Date().getUTCFullYear()))),
@@ -431,7 +434,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
 
   app.get('/api/public/summary', async () => {
-    const memberCount = (sqlite.prepare('SELECT COUNT(*) count FROM users').get() as { count: number }).count;
+    const memberCount = (sqlite.prepare('SELECT COUNT(*) count FROM users WHERE is_active=1').get() as { count: number }).count;
     const departmentCount = (sqlite.prepare('SELECT COUNT(*) count FROM departments').get() as { count: number }).count;
     const activityCount = (sqlite.prepare("SELECT COUNT(*) count FROM activities WHERE status != 'ARCHIVED'").get() as { count: number }).count;
     const workCount = (sqlite.prepare("SELECT COUNT(*) count FROM works WHERE status='PUBLISHED'").get() as { count: number }).count;
@@ -455,10 +458,23 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ announcement: publicAnnouncement(row) });
   });
 
-  app.get('/api/public/departments', async () => successResponse({ items: sqlite.prepare(`SELECT d.*, COUNT(u.id) memberCount FROM departments d LEFT JOIN users u ON u.department_id=d.id GROUP BY d.id ORDER BY d.rowid`).all() }));
+  const departmentMembershipsSql = `WITH memberships AS (
+    SELECT user_id,department_id FROM user_departments
+    UNION
+    SELECT u.id,u.department_id FROM users u WHERE u.department_id IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM user_departments ud WHERE ud.user_id=u.id AND ud.department_id=u.department_id
+    )
+  )`;
+  app.get('/api/public/departments', async () => successResponse({ items: sqlite.prepare(`${departmentMembershipsSql}
+    SELECT d.*,COUNT(DISTINCT CASE WHEN u.is_active=1 THEN memberships.user_id END) memberCount
+    FROM departments d LEFT JOIN memberships ON memberships.department_id=d.id LEFT JOIN users u ON u.id=memberships.user_id
+    GROUP BY d.id ORDER BY d.rowid`).all() }));
   app.get('/api/public/departments/:slug', async (request) => {
     const { slug } = request.params as { slug: string };
-    const department = sqlite.prepare('SELECT * FROM departments WHERE slug=?').get(slug);
+    const department = sqlite.prepare(`${departmentMembershipsSql}
+      SELECT d.*,COUNT(DISTINCT CASE WHEN u.is_active=1 THEN memberships.user_id END) memberCount
+      FROM departments d LEFT JOIN memberships ON memberships.department_id=d.id LEFT JOIN users u ON u.id=memberships.user_id
+      WHERE d.slug=? GROUP BY d.id`).get(slug);
     if (!department) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
     return successResponse({ department });
   });
@@ -707,8 +723,9 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ id: row.id, status: row.status, rejectionReason: row.rejection_reason, activationCode: row.activation_code_encrypted ? decryptSecret(row.activation_code_encrypted, options.sessionSecret) : undefined });
   });
 
+  const usernameSchema = z.string().trim().regex(/^[\p{L}\p{N}._-]{2,40}$/u, '用户名需为 2-40 位中文、字母、数字、点、下划线或连字符');
   const registrationRequestSchema = z.object({
-    username: z.string().trim().regex(/^[\p{L}\p{N}._-]{2,40}$/u, '用户名需为 2-40 位中文、字母、数字、点、下划线或连字符'),
+    username: usernameSchema,
     password: z.string().min(10).max(200),
     contact: z.string().trim().min(3).max(160),
     note: z.string().trim().max(1000).default(''),
@@ -751,7 +768,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ user: principal });
   });
   app.get('/api/auth/session', async (request) => successResponse({ user: principalFor(request) }));
-  const activateSchema = z.object({ token: z.string().min(20), username: z.string().trim().regex(/^[\p{L}\p{N}._-]{2,40}$/u), password: z.string().min(10).max(200) });
+  const activateSchema = z.object({ token: z.string().min(20), username: usernameSchema, password: z.string().min(10).max(200) });
   app.post('/api/auth/activate', { config: { rateLimit: { max: 8, timeWindow: '1 hour' } } }, async (request) => {
     const body = parse(activateSchema, request.body);
     const tokenHash = sha256(body.token);
@@ -770,6 +787,37 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       audit(sqlite, token.user_id, 'ACCOUNT_ACTIVATED', 'user', token.user_id, token.user_id);
     })();
     return successResponse({ activated: true });
+  });
+
+  const currentPasswordSchema = z.string().min(8).max(200);
+  app.patch('/api/member/account/username', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const body = parse(z.object({ username: usernameSchema, currentPassword: currentPasswordSchema }), request.body);
+    const account = sqlite.prepare('SELECT username,password_hash FROM users WHERE id=?').get(principal.id) as { username: string | null; password_hash: string | null } | undefined;
+    if (!account?.password_hash || !await verifyPassword(body.currentPassword, account.password_hash)) throw new HttpError(401, 'INVALID_CURRENT_PASSWORD', '当前密码错误');
+    if (sqlite.prepare('SELECT 1 FROM users WHERE id!=? AND username=? COLLATE NOCASE').get(principal.id, body.username)) throw new HttpError(409, 'USERNAME_TAKEN', '该用户名已被使用');
+    const timestamp = now();
+    sqlite.prepare('UPDATE users SET username=?,updated_at=? WHERE id=?').run(body.username, timestamp, principal.id);
+    audit(sqlite, principal.id, 'USERNAME_CHANGED', 'user', principal.id, principal.id, { previousUsername: account.username, username: body.username });
+    const updated = sqlite.prepare('SELECT * FROM users WHERE id=?').get(principal.id) as UserRow;
+    return successResponse({ updated: true, user: principalFrom(updated) });
+  });
+
+  app.patch('/api/member/account/password', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const body = parse(z.object({ currentPassword: currentPasswordSchema, newPassword: z.string().min(10).max(200) }), request.body);
+    const account = sqlite.prepare('SELECT password_hash FROM users WHERE id=?').get(principal.id) as { password_hash: string | null } | undefined;
+    if (!account?.password_hash || !await verifyPassword(body.currentPassword, account.password_hash)) throw new HttpError(401, 'INVALID_CURRENT_PASSWORD', '当前密码错误');
+    const passwordHash = await hashPassword(body.newPassword);
+    const currentSessionId = sha256(request.cookies.guild_session ?? '');
+    let revokedSessions = 0;
+    sqlite.transaction(() => {
+      const timestamp = now();
+      sqlite.prepare('UPDATE users SET password_hash=?,updated_at=? WHERE id=?').run(passwordHash, timestamp, principal.id);
+      revokedSessions = sqlite.prepare('DELETE FROM sessions WHERE user_id=? AND id!=?').run(principal.id, currentSessionId).changes;
+      audit(sqlite, principal.id, 'PASSWORD_CHANGED', 'user', principal.id, principal.id, { revokedSessions });
+    })();
+    return successResponse({ updated: true, revokedSessions });
   });
 
   app.get('/api/member/profile', async (request, reply) => {
@@ -1319,7 +1367,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       ${scope}
       ORDER BY CASE ra.role WHEN 'PRESIDENT' THEN 1 WHEN 'VICE_PRESIDENT' THEN 2 WHEN 'DEPARTMENT_HEAD' THEN 3 ELSE 4 END,
       d.rowid,u.display_name`).all(...parameters);
-    return successResponse({ items, limits: { vicePresidents: 4, departmentHeads: 6, departmentAdminsPerDepartment: null } });
+    return successResponse({ items, limits: { vicePresidents: 5, departmentHeads: 6, departmentAdminsPerDepartment: null } });
   });
   app.put('/api/member/posts/:id/rating', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;

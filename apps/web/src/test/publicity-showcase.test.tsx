@@ -17,9 +17,16 @@ describe('publicity department showcase', () => {
     expect(screen.getByRole('heading', { name: '正在上映' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '年度片单' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '放映、记录与社团现场' })).toBeInTheDocument();
+    expect(screen.getByText('幻想研牵头协办组建了北京高校观影团，与各高校动漫爱好者一同走进院线观影。')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '推文／海报墙' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '幻想研影评专栏' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '番看会放映记录' })).toBeInTheDocument();
+    expect(screen.queryAllByText('進撃の巨人')).toHaveLength(0);
+    expect(screen.queryAllByText('鬼滅の刃')).toHaveLength(0);
+    expect(screen.getAllByRole('img', { name: 'EVA 海报' })).toHaveLength(2);
+    expect(screen.getAllByRole('img', { name: '王样战队君王者 海报' })).toHaveLength(2);
+    expect(screen.getAllByRole('img', { name: 'EVA 海报' })[0]).toHaveAttribute('src', '/assets/departments/publicity/eva-poster.png');
+    expect(screen.getAllByRole('img', { name: '王样战队君王者 海报' })[0]).toHaveAttribute('src', '/assets/departments/publicity/king-ohger-poster.png');
     expect(screen.queryByRole('heading', { name: '读一读我们留下的记录' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '场刊' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /查看第 .* 张社团现场照片/ })).toHaveLength(14);

@@ -42,13 +42,32 @@ describe('department social media shelf', () => {
     expect(departmentPhotosBySlug.original).toHaveLength(7);
     expect(departmentPhotosBySlug.original.every(photo => photo.src.startsWith('/assets/photos/departments/original/'))).toBe(true);
     expect(departmentPhotosBySlug.original.every(photo => photo.src.includes('/original/original-weekly-'))).toBe(true);
-    expect(originalPortfolioPhotos).toHaveLength(4);
-    expect(originalPortfolioPhotos.every(photo => photo.src.includes('/original/original-activity-'))).toBe(true);
+    expect(originalPortfolioPhotos).toHaveLength(20);
+    expect(originalPortfolioPhotos.slice(0, 4).every(photo => photo.src.includes('/original/original-activity-'))).toBe(true);
+    const newOriginalWorks = originalPortfolioPhotos.slice(4);
+    expect(newOriginalWorks).toHaveLength(16);
+    expect(newOriginalWorks.every(photo => photo.recordedAt === '2026-09-07')).toBe(true);
     expect(departmentPhotosBySlug.publicity.length).toBeGreaterThan(6);
     expect(departmentPhotosBySlug.publicity.every(photo => photo.src.startsWith('/assets/photos/departments/publicity-fantasy/'))).toBe(true);
     expect(showcaseBySlug.tech.intro).toMatch(/视频制作.*摄影.*道具制作/);
     expect(showcaseBySlug.tech.intro).toMatch(/Premiere Pro.*After Effects/);
     expect(showcaseBySlug.publicity.intro).toContain('动漫鉴赏');
+  });
+
+  it('uses real department media instead of anime covers on the department index', () => {
+    const expectedFolders = {
+      original: '/assets/photos/departments/original/',
+      cos: '/assets/photos/departments/cos/',
+      music: '/assets/photos/departments/music/',
+      dance: '/assets/photos/departments/dance/',
+    } as const;
+
+    for (const [slug, folder] of Object.entries(expectedFolders)) {
+      const covers = showcaseBySlug[slug].hubCovers;
+      expect(covers).toHaveLength(4);
+      expect(covers?.every(cover => cover.src.startsWith(folder))).toBe(true);
+      expect(covers?.every(cover => !cover.src.startsWith(`/assets/departments/${slug}/`))).toBe(true);
+    }
   });
 
   it('turns a large technical photo set into an operable carousel', async () => {
@@ -158,11 +177,13 @@ describe('department social media shelf', () => {
   });
 
   it('turns footer social actions into real external destinations', () => {
-    render(<MemoryRouter><PixelFooter /></MemoryRouter>);
+    render(<MemoryRouter><PixelFooter onlineCount={3} /></MemoryRouter>);
     const follow = screen.getByRole('heading', { name: '关注我们' }).closest('section');
     expect(follow).not.toBeNull();
     expect(within(follow!).getByRole('link', { name: '访问佐佑动漫社哔哩哔哩主页' })).toHaveAttribute('href', officialSocialLinks.bilibili);
     expect(within(follow!).getByRole('link', { name: '阅读佐佑动漫社微信公众号' })).toHaveAttribute('href', officialSocialLinks.wechat);
     expect(within(follow!).queryByRole('button', { name: '小红书' })).not.toBeInTheDocument();
+    expect(screen.getByText('● 3人在线')).toBeInTheDocument();
+    expect(document.querySelectorAll('[data-online-avatar="true"]')).toHaveLength(3);
   });
 });

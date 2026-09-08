@@ -16,7 +16,7 @@ export function PageHero({ eyebrow, title, description, children }: { eyebrow: s
         <p>{description}</p>
         <div className="page-hero-actions">{children}</div>
       </motion.div>
-      <div className="page-hero-chapter" data-ornament="chapter-mark" aria-hidden="true"><span>ADVENTURER GUILD</span><strong>佐佑</strong><small>EST. 2018</small></div>
+      <div className="page-hero-chapter" data-ornament="chapter-mark" aria-hidden="true"><span>ADVENTURER GUILD</span><strong>佐佑</strong><small>EST. 1999</small></div>
       <span className="page-hero-edge edge-left" aria-hidden="true" /><span className="page-hero-edge edge-right" aria-hidden="true" />
     </header>
   );

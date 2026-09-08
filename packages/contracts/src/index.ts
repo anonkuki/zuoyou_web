@@ -254,6 +254,7 @@ export const guildHomeStatsSchema = z.object({
     target: z.number().int().positive(),
   }).refine((value) => value.current <= value.target, '等级进度不可超过目标'),
   memberCount: z.number().int().nonnegative(),
+  onlineCount: z.number().int().nonnegative(),
   completedActivityCount: z.number().int().nonnegative(),
   honorCount: z.number().int().nonnegative(),
   foundedYear: z.number().int().min(1900).max(2200),

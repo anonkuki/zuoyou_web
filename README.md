@@ -33,8 +33,25 @@ corepack pnpm dev
 | --- | --- | --- |
 | 社长 | `admin` | `DemoAdmin!2026` |
 | 副社长 | `vice.president` | `DemoVice!2026` |
-| 部长 | `cos.lead` | `DemoLead!2026` |
-| 副部长 | `cos.deputy` | `DemoDeputy!2026` |
+| 副社长 2-5 | `vice.president2` ～ `vice.president5` | `DemoVice2!2026` ～ `DemoVice5!2026` |
+| COS部部长 | `cos.lead` | `DemoLead!2026` |
+| COS部副部长 | `cos.deputy` | `DemoDeputy!2026` |
+| COS部副部长 2-5 | `cos.deputy2` ～ `cos.deputy5` | `DemoDeputy2!2026` ～ `DemoDeputy5!2026` |
+| 技术部部长 | `tech.lead` | `DemoLead!2026` |
+| 技术部副部长 | `tech.deputy` | `DemoDeputy!2026` |
+| 技术部副部长 2-5 | `tech.deputy2` ～ `tech.deputy5` | `DemoDeputy2!2026` ～ `DemoDeputy5!2026` |
+| 轻音部部长 | `music.lead` | `DemoLead!2026` |
+| 轻音部副部长 | `music.deputy` | `DemoDeputy!2026` |
+| 轻音部副部长 2-5 | `music.deputy2` ～ `music.deputy5` | `DemoDeputy2!2026` ～ `DemoDeputy5!2026` |
+| 原创部部长 | `original.lead` | `DemoLead!2026` |
+| 原创部副部长 | `original.deputy` | `DemoDeputy!2026` |
+| 原创部副部长 2-5 | `original.deputy2` ～ `original.deputy5` | `DemoDeputy2!2026` ～ `DemoDeputy5!2026` |
+| 舞装部部长 | `dance.lead` | `DemoLead!2026` |
+| 舞装部副部长 | `dance.deputy` | `DemoDeputy!2026` |
+| 舞装部副部长 2-5 | `dance.deputy2` ～ `dance.deputy5` | `DemoDeputy2!2026` ～ `DemoDeputy5!2026` |
+| 外宣&幻想研部长 | `publicity.lead` | `DemoLead!2026` |
+| 外宣&幻想研副部长 | `publicity.deputy` | `DemoDeputy!2026` |
+| 外宣&幻想研副部长 2-5 | `publicity.deputy2` ～ `publicity.deputy5` | `DemoDeputy2!2026` ～ `DemoDeputy5!2026` |
 | 普通成员 | `cos.member` | `DemoMember!2026` |
 
 演示凭据只在开发种子中存在。生产模式要求至少 24 字符的 `SESSION_SECRET` 和非占位、至少 12 字符的 `ADMIN_PASSWORD`，并拒绝复用开发种子数据库。

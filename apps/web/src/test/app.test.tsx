@@ -8,7 +8,7 @@ import { api, AUTH_SESSION_EXPIRED_EVENT } from '../api';
 
 const payloads: Record<string, unknown> = {
   '/api/public/home': {
-    stats: { guildLevel: 12, levelProgress: { current: 2390, target: 3000 }, memberCount: 82, completedActivityCount: 328, honorCount: 56, foundedYear: 2018 },
+    stats: { guildLevel: 12, levelProgress: { current: 2390, target: 3000 }, memberCount: 82, onlineCount: 3, completedActivityCount: 328, honorCount: 56, foundedYear: 1999 },
     announcements: [
       { id: 'notice-1', title: '2026 秋季招新现已开启', summary: '六部门联合招募', category: 'RECRUITMENT', href: '/join', pinned: true, published: true, publishedAt: '2026-08-08T00:00:00.000Z' },
       { id: 'notice-2', title: '月下轻音会活动报名', summary: '轻音部专场', category: 'ACTIVITY', href: '/activities', pinned: false, published: true, publishedAt: '2026-08-06T00:00:00.000Z' },
@@ -90,7 +90,7 @@ describe('Adventurer Guild app', () => {
     const fetchMock = vi.mocked(fetch);
     renderAt('/login?mode=register');
     expect(await screen.findByRole('tab', { name: '注册' })).toHaveAttribute('aria-selected', 'true');
-    await user.type(screen.getByLabelText('注册用户名'), '星砂成员');
+    await user.type(screen.getByLabelText('注册用户名（支持中文）'), '星砂成员');
     await user.type(screen.getByLabelText('密码'), 'NewMember!2026');
     await user.type(screen.getByLabelText('联系方式'), 'new.member@example.test');
     await user.type(screen.getByLabelText('备注'), '希望加入社团线上社区');
@@ -118,6 +118,7 @@ describe('Adventurer Guild app', () => {
     expect(screen.getByText('画面、舞台、声音、技术与记录在这里交织，')).toBeInTheDocument();
     expect(screen.getByText('2026 秋季招新现已开启')).toBeInTheDocument();
     expect(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('link', { name: '首页' })).toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: '主导航' })).queryByRole('link', { name: '公会历史' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '搜索' })).toBeInTheDocument();
   });
 
@@ -229,8 +230,7 @@ describe('Adventurer Guild app', () => {
       'field-report',
     ]);
     expect(document.querySelector('.notice-board')).toHaveAttribute('data-surface', 'wooden-quest-board');
-    const avatars = document.querySelectorAll('.footer-avatar[data-facing="visitor"]');
-    expect(avatars).toHaveLength(4);
+    await waitFor(() => expect(document.querySelectorAll('.footer-avatar[data-facing="visitor"]')).toHaveLength(3));
   });
 
   it('opens every homepage story card through a full-card link', async () => {
@@ -254,12 +254,17 @@ describe('Adventurer Guild app', () => {
     expect(screen.getByRole('link', { name: '查看相关页面' })).toHaveAttribute('href', '/join');
   });
 
-  it('navigates to every public module with real links', async () => {
+  it('keeps the chronicle route available without advertising it in navigation or search', async () => {
     const user = userEvent.setup();
     renderAt('/');
-    await user.click(within(screen.getByRole('navigation', { name: '主导航' })).getByRole('link', { name: '公会历史' }));
+    const mainNavigation = within(screen.getByRole('navigation', { name: '主导航' }));
+    expect(mainNavigation.queryByRole('link', { name: '公会历史' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '搜索' }));
+    await user.type(screen.getByLabelText('搜索关键词'), '公会历史');
+    expect(within(screen.getByRole('navigation', { name: '搜索结果' })).queryByRole('link', { name: '公会历史' })).not.toBeInTheDocument();
+    cleanup();
+    renderAt('/chronicle');
     expect(await screen.findByRole('heading', { name: '公会编年史' })).toBeInTheDocument();
-    expect(screen.getByText('公会启程')).toBeInTheDocument();
   });
 
   it('opens the pixel search and returns real route links', async () => {
@@ -308,17 +313,23 @@ describe('Adventurer Guild app', () => {
 
   it('shows each department deputy in department management', async () => {
     const admin = { id: 'admin', uid: '10001', username: 'admin', displayName: '管理员', email: 'admin@example.com', role: 'PRESIDENT', departmentId: null, bio: '' };
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === 'string' ? input : input.toString();
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: admin } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/admin/members?page=1&pageSize=100') return new Response(JSON.stringify({ ok: true, data: { items: [
         { id: 'leader', uid: '10003', display_name: '绯月部长', email: 'lead@example.com', role: 'DEPARTMENT_HEAD', department_id: 'dept-cos', is_active: 1 },
         { id: 'deputy', uid: '10004', display_name: '绯羽副部长', email: 'deputy@example.com', role: 'DEPARTMENT_ADMIN', department_id: 'dept-cos', is_active: 1 },
-      ], page: 1, pageSize: 100, total: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        { id: 'member', uid: '10005', display_name: '白羽成员', email: 'member@example.com', role: 'MEMBER', department_id: 'dept-cos', is_active: 1 },
+      ], page: 1, pageSize: 100, total: 3 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/roles/member/assign' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { assignmentId: 'role-new' } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: payloads[path] ?? {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
     renderAt('/admin/departments');
     expect(await screen.findByText('绯羽副部长（UID 10004）')).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole('combobox', { name: 'COS部新增副部长' }), 'member');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/roles/member/assign', expect.objectContaining({ method: 'POST', body: JSON.stringify({ role: 'DEPARTMENT_ADMIN', departmentId: 'dept-cos' }) })));
   });
 
   it('frames every secondary public route with the authored guild visual system', async () => {
@@ -437,6 +448,36 @@ describe('Adventurer Guild app', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/profile', expect.objectContaining({ method: 'PATCH' })));
     const patchCall = fetchMock.mock.calls.find(([path, init]) => path === '/api/member/profile' && init?.method === 'PATCH');
     expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({ uid: '白羽_2026', guildTitle: '银翼记录官', skills: ['摄影', '后期', '活动协作'], profileVisibility: 'PRIVATE' });
+  });
+
+  it('changes a Chinese login username and password from the profile editor', async () => {
+    const profile = { id: 'user-member', uid: '10005', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'DEPARTMENT_ADMIN', departmentId: 'dept-cos', departmentName: 'COS部', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: [], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profile') return new Response(JSON.stringify({ ok: true, data: { profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/account/username' && init?.method === 'PATCH') return new Response(JSON.stringify({ ok: true, data: { updated: true, user: { ...profile, username: '星砂成员' } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/account/password' && init?.method === 'PATCH') return new Response(JSON.stringify({ ok: true, data: { updated: true, revokedSessions: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/portal/profile');
+
+    const username = await screen.findByLabelText('用户名（支持中文）');
+    await user.clear(username);
+    await user.type(username, '星砂成员');
+    await user.type(screen.getByLabelText('当前密码（修改用户名）'), 'DemoMember!2026');
+    await user.click(screen.getByRole('button', { name: '修改用户名' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/account/username', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ username: '星砂成员', currentPassword: 'DemoMember!2026' }) })));
+    expect(await screen.findByText('用户名已更新')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('当前密码（修改密码）'), 'DemoMember!2026');
+    await user.type(screen.getByLabelText('新密码'), 'NewDemoMember!2026');
+    await user.type(screen.getByLabelText('确认新密码'), 'NewDemoMember!2026');
+    await user.click(screen.getByRole('button', { name: '修改密码' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/account/password', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ currentPassword: 'DemoMember!2026', newPassword: 'NewDemoMember!2026' }) })));
+    expect(await screen.findByText('密码已更新，其他设备已退出登录')).toBeInTheDocument();
   });
 
   it('operates an unread-aware chat workspace with reply and send feedback', async () => {

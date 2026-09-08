@@ -86,7 +86,7 @@ describe('production seed safety', () => {
       await seedDatabase(sqlite);
       expect((sqlite.prepare('SELECT COUNT(*) count FROM announcements').get() as { count: number }).count).toBe(4);
       expect((sqlite.prepare("SELECT COUNT(*) count FROM activities WHERE status IN ('ENDED','ARCHIVED')").get() as { count: number }).count).toBe(328);
-      expect((sqlite.prepare("SELECT value FROM site_settings WHERE key='foundedYear'").get() as { value: string }).value).toBe('2018');
+      expect((sqlite.prepare("SELECT value FROM site_settings WHERE key='foundedYear'").get() as { value: string }).value).toBe('1999');
     });
   });
 
@@ -112,7 +112,7 @@ describe('production seed safety', () => {
   it('assigns every seed account a unique five-digit UID and permits later custom IDs', async () => {
     await withDevelopmentSeed(async (sqlite) => {
       const counts = sqlite.prepare("SELECT COUNT(*) total,COUNT(DISTINCT uid) unique_uids,SUM(CASE WHEN length(uid)=5 AND uid NOT GLOB '*[^0-9]*' THEN 1 ELSE 0 END) valid_uids FROM users").get() as { total: number; unique_uids: number; valid_uids: number };
-      expect(counts).toEqual({ total: 84, unique_uids: 84, valid_uids: 84 });
+      expect(counts).toEqual({ total: 112, unique_uids: 112, valid_uids: 112 });
       const adminUid = (sqlite.prepare("SELECT uid FROM users WHERE id='user-admin'").get() as { uid: string }).uid;
       expect(() => sqlite.prepare("UPDATE users SET uid=? WHERE id='user-member'").run(adminUid)).toThrow();
       expect(() => sqlite.prepare("UPDATE users SET uid='ABC12' WHERE id='user-member'").run()).not.toThrow();
@@ -175,7 +175,7 @@ describe.sequential('Adventurer Guild API', () => {
     expect(health.json()).toMatchObject({ ok: true, data: { status: 'ok' } });
 
     const summary = await app.inject({ method: 'GET', url: '/api/public/summary' });
-    expect(summary.json().data).toMatchObject({ memberCount: 84, departmentCount: 6 });
+    expect(summary.json().data).toMatchObject({ memberCount: 112, departmentCount: 6 });
     const departments = await app.inject({ method: 'GET', url: '/api/public/departments' });
     expect(departments.json().data.items).toHaveLength(6);
     expect(departments.json().data.items.map((item: { name: string; title: string }) => [item.name, item.title])).toEqual([
@@ -196,15 +196,52 @@ describe.sequential('Adventurer Guild API', () => {
     expect(home.json().data.stats).toEqual({
       guildLevel: 12,
       levelProgress: { current: 2390, target: 3000 },
-      memberCount: 84,
+      memberCount: 112,
+      onlineCount: 3,
       completedActivityCount: 328,
       honorCount: 56,
-      foundedYear: 2018,
+      foundedYear: 1999,
     });
     expect(home.json().data.announcements).toEqual(expect.arrayContaining([
       expect.objectContaining({ title: '2026 秋季招新现已开启', category: 'RECRUITMENT', href: '/join' }),
     ]));
     expect(home.json().data.announcements.every((item: { published: boolean }) => item.published)).toBe(true);
+  });
+
+  it('migrates an existing founded year setting to the verified 1999 value', async () => {
+    const migrationRoot = await mkdtemp('D:/Temp/guild-founded-year-');
+    const databasePath = `${migrationRoot}/guild.sqlite`;
+    const first = await openDatabase(databasePath);
+    try {
+      await seedDatabase(first.sqlite);
+      first.sqlite.prepare("UPDATE site_settings SET value='2018' WHERE key='foundedYear'").run();
+      first.sqlite.prepare("DELETE FROM __migrations WHERE name='0023_foundation_year_1999'").run();
+    } finally {
+      first.sqlite.close();
+    }
+    const reopened = await openDatabase(databasePath);
+    try {
+      expect((reopened.sqlite.prepare("SELECT value FROM site_settings WHERE key='foundedYear'").get() as { value: string }).value).toBe('1999');
+    } finally {
+      reopened.sqlite.close();
+      await rm(migrationRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('counts active multi-department memberships in both department endpoints', async () => {
+    const database = await openDatabase(`${root}/guild.sqlite`);
+    try {
+      database.sqlite.prepare("INSERT OR IGNORE INTO user_departments(user_id,department_id,is_primary,joined_at) VALUES ('user-member','dept-tech',0,?)").run(new Date().toISOString());
+      const expected = (database.sqlite.prepare(`SELECT COUNT(DISTINCT ud.user_id) count FROM user_departments ud
+        JOIN users u ON u.id=ud.user_id WHERE ud.department_id='dept-tech' AND u.is_active=1`).get() as { count: number }).count;
+      const departments = await app.inject({ method: 'GET', url: '/api/public/departments' });
+      const detail = await app.inject({ method: 'GET', url: '/api/public/departments/tech' });
+      expect(departments.json().data.items.find((item: { id: string }) => item.id === 'dept-tech').memberCount).toBe(expected);
+      expect(detail.json().data.department.memberCount).toBe(expected);
+    } finally {
+      database.sqlite.prepare("DELETE FROM user_departments WHERE user_id='user-member' AND department_id='dept-tech'").run();
+      database.sqlite.close();
+    }
   });
 
   it('serves a public announcement archive and individual published details', async () => {
@@ -269,7 +306,7 @@ describe.sequential('Adventurer Guild API', () => {
   it('returns database-derived dashboard and chart series', async () => {
     const dashboard = await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: adminCookie } });
     expect(dashboard.json().data).toMatchObject({
-      members: 84,
+      members: 112,
       pendingApplications: expect.any(Number),
       activeActivities: expect.any(Number),
       publishedWorks: expect.any(Number),
@@ -289,6 +326,10 @@ describe.sequential('Adventurer Guild API', () => {
     const expectedRoles = [
       ['admin', 'DemoAdmin!2026', 'PRESIDENT'],
       ['vice.president', 'DemoVice!2026', 'VICE_PRESIDENT'],
+      ['vice.president2', 'DemoVice2!2026', 'VICE_PRESIDENT'],
+      ['vice.president3', 'DemoVice3!2026', 'VICE_PRESIDENT'],
+      ['vice.president4', 'DemoVice4!2026', 'VICE_PRESIDENT'],
+      ['vice.president5', 'DemoVice5!2026', 'VICE_PRESIDENT'],
       ['cos.lead', 'DemoLead!2026', 'DEPARTMENT_HEAD'],
       ['cos.deputy', 'DemoDeputy!2026', 'DEPARTMENT_ADMIN'],
       ['cos.member', 'DemoMember!2026', 'MEMBER'],
@@ -305,6 +346,108 @@ describe.sequential('Adventurer Guild API', () => {
     expect(logout.statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } })).statusCode).toBe(401);
     memberCookie = await login(app, 'cos.member', 'DemoMember!2026');
+  });
+
+  it('lets members change to a unique Chinese username with their current password', async () => {
+    const changed = await app.inject({ method: 'PATCH', url: '/api/member/account/username', headers: { cookie: memberCookie }, payload: { username: '星砂成员', currentPassword: 'DemoMember!2026' } });
+    expect(changed.statusCode).toBe(200);
+    expect(changed.json().data.user).toMatchObject({ username: '星砂成员', uid: expect.stringMatching(/^\d{5}$/) });
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } })).json().data.user.username).toBe('星砂成员');
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/account/username', headers: { cookie: memberCookie }, payload: { username: 'admin', currentPassword: 'DemoMember!2026' } })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/account/username', headers: { cookie: memberCookie }, payload: { username: 'cos.member', currentPassword: 'wrong-password' } })).statusCode).toBe(401);
+
+    const database = await openDatabase(`${root}/guild.sqlite`);
+    expect((database.sqlite.prepare("SELECT COUNT(*) count FROM audit_logs WHERE actor_id='user-member' AND action='USERNAME_CHANGED'").get() as { count: number }).count).toBe(1);
+    database.sqlite.close();
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/account/username', headers: { cookie: memberCookie }, payload: { username: 'cos.member', currentPassword: 'DemoMember!2026' } })).statusCode).toBe(200);
+  });
+
+  it('changes passwords and revokes other sessions while retaining the current session', async () => {
+    const otherCookie = await login(app, 'cos.member', 'DemoMember!2026');
+    const changed = await app.inject({ method: 'PATCH', url: '/api/member/account/password', headers: { cookie: memberCookie }, payload: { currentPassword: 'DemoMember!2026', newPassword: 'NewDemoMember!2026' } });
+    expect(changed.statusCode).toBe(200);
+    expect(changed.json().data.revokedSessions).toBeGreaterThanOrEqual(1);
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: otherCookie } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { username: 'cos.member', password: 'DemoMember!2026' } })).statusCode).toBe(401);
+    expect(await login(app, 'cos.member', 'NewDemoMember!2026')).toContain('guild_session=');
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/account/password', headers: { cookie: memberCookie }, payload: { currentPassword: 'wrong-password', newPassword: 'AnotherPass!2026' } })).statusCode).toBe(401);
+
+    const database = await openDatabase(`${root}/guild.sqlite`);
+    expect((database.sqlite.prepare("SELECT COUNT(*) count FROM audit_logs WHERE actor_id='user-member' AND action='PASSWORD_CHANGED'").get() as { count: number }).count).toBe(1);
+    database.sqlite.close();
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/account/password', headers: { cookie: memberCookie }, payload: { currentPassword: 'NewDemoMember!2026', newPassword: 'DemoMember!2026' } })).statusCode).toBe(200);
+  });
+
+  it('keeps a deputy account and its management role after changing username and password', async () => {
+    const deputyCookie = await login(app, 'cos.deputy', 'DemoDeputy!2026');
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/account/username', headers: { cookie: deputyCookie }, payload: { username: 'COS副部长测试账号', currentPassword: 'DemoDeputy!2026' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/account/password', headers: { cookie: deputyCookie }, payload: { currentPassword: 'DemoDeputy!2026', newPassword: 'ChangedDeputy!2026' } })).statusCode).toBe(200);
+
+    const reseeded = await openDatabase(`${root}/guild.sqlite`);
+    await seedDatabase(reseeded.sqlite);
+    reseeded.sqlite.close();
+
+    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { username: 'cos.deputy', password: 'DemoDeputy!2026' } })).statusCode).toBe(401);
+    const changedCookie = await login(app, 'COS副部长测试账号', 'ChangedDeputy!2026');
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: changedCookie } })).json().data.user).toMatchObject({ id: 'user-deputy', role: 'DEPARTMENT_ADMIN', departmentId: 'dept-cos' });
+
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/account/username', headers: { cookie: deputyCookie }, payload: { username: 'cos.deputy', currentPassword: 'ChangedDeputy!2026' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/account/password', headers: { cookie: deputyCookie }, payload: { currentPassword: 'ChangedDeputy!2026', newPassword: 'DemoDeputy!2026' } })).statusCode).toBe(200);
+  });
+
+  it('provisions login accounts for every department head and deputy in development', async () => {
+    const expectedDepartmentAccounts = [
+      ['cos.lead', 'DemoLead!2026', 'DEPARTMENT_HEAD', 'dept-cos'],
+      ['cos.deputy', 'DemoDeputy!2026', 'DEPARTMENT_ADMIN', 'dept-cos'],
+      ['cos.deputy2', 'DemoDeputy2!2026', 'DEPARTMENT_ADMIN', 'dept-cos'],
+      ['cos.deputy3', 'DemoDeputy3!2026', 'DEPARTMENT_ADMIN', 'dept-cos'],
+      ['cos.deputy4', 'DemoDeputy4!2026', 'DEPARTMENT_ADMIN', 'dept-cos'],
+      ['cos.deputy5', 'DemoDeputy5!2026', 'DEPARTMENT_ADMIN', 'dept-cos'],
+      ['tech.lead', 'DemoLead!2026', 'DEPARTMENT_HEAD', 'dept-tech'],
+      ['tech.deputy', 'DemoDeputy!2026', 'DEPARTMENT_ADMIN', 'dept-tech'],
+      ['tech.deputy2', 'DemoDeputy2!2026', 'DEPARTMENT_ADMIN', 'dept-tech'],
+      ['tech.deputy3', 'DemoDeputy3!2026', 'DEPARTMENT_ADMIN', 'dept-tech'],
+      ['tech.deputy4', 'DemoDeputy4!2026', 'DEPARTMENT_ADMIN', 'dept-tech'],
+      ['tech.deputy5', 'DemoDeputy5!2026', 'DEPARTMENT_ADMIN', 'dept-tech'],
+      ['music.lead', 'DemoLead!2026', 'DEPARTMENT_HEAD', 'dept-music'],
+      ['music.deputy', 'DemoDeputy!2026', 'DEPARTMENT_ADMIN', 'dept-music'],
+      ['music.deputy2', 'DemoDeputy2!2026', 'DEPARTMENT_ADMIN', 'dept-music'],
+      ['music.deputy3', 'DemoDeputy3!2026', 'DEPARTMENT_ADMIN', 'dept-music'],
+      ['music.deputy4', 'DemoDeputy4!2026', 'DEPARTMENT_ADMIN', 'dept-music'],
+      ['music.deputy5', 'DemoDeputy5!2026', 'DEPARTMENT_ADMIN', 'dept-music'],
+      ['original.lead', 'DemoLead!2026', 'DEPARTMENT_HEAD', 'dept-original'],
+      ['original.deputy', 'DemoDeputy!2026', 'DEPARTMENT_ADMIN', 'dept-original'],
+      ['original.deputy2', 'DemoDeputy2!2026', 'DEPARTMENT_ADMIN', 'dept-original'],
+      ['original.deputy3', 'DemoDeputy3!2026', 'DEPARTMENT_ADMIN', 'dept-original'],
+      ['original.deputy4', 'DemoDeputy4!2026', 'DEPARTMENT_ADMIN', 'dept-original'],
+      ['original.deputy5', 'DemoDeputy5!2026', 'DEPARTMENT_ADMIN', 'dept-original'],
+      ['dance.lead', 'DemoLead!2026', 'DEPARTMENT_HEAD', 'dept-dance'],
+      ['dance.deputy', 'DemoDeputy!2026', 'DEPARTMENT_ADMIN', 'dept-dance'],
+      ['dance.deputy2', 'DemoDeputy2!2026', 'DEPARTMENT_ADMIN', 'dept-dance'],
+      ['dance.deputy3', 'DemoDeputy3!2026', 'DEPARTMENT_ADMIN', 'dept-dance'],
+      ['dance.deputy4', 'DemoDeputy4!2026', 'DEPARTMENT_ADMIN', 'dept-dance'],
+      ['dance.deputy5', 'DemoDeputy5!2026', 'DEPARTMENT_ADMIN', 'dept-dance'],
+      ['publicity.lead', 'DemoLead!2026', 'DEPARTMENT_HEAD', 'dept-publicity'],
+      ['publicity.deputy', 'DemoDeputy!2026', 'DEPARTMENT_ADMIN', 'dept-publicity'],
+      ['publicity.deputy2', 'DemoDeputy2!2026', 'DEPARTMENT_ADMIN', 'dept-publicity'],
+      ['publicity.deputy3', 'DemoDeputy3!2026', 'DEPARTMENT_ADMIN', 'dept-publicity'],
+      ['publicity.deputy4', 'DemoDeputy4!2026', 'DEPARTMENT_ADMIN', 'dept-publicity'],
+      ['publicity.deputy5', 'DemoDeputy5!2026', 'DEPARTMENT_ADMIN', 'dept-publicity'],
+    ] as const;
+
+    const database = await openDatabase(`${root}/guild.sqlite`);
+    const accounts = database.sqlite.prepare(`SELECT username,role,department_id FROM users
+      WHERE username IN (${expectedDepartmentAccounts.map(() => '?').join(',')}) ORDER BY username`)
+      .all(...expectedDepartmentAccounts.map(([username]) => username));
+    database.sqlite.close();
+    expect(accounts).toHaveLength(36);
+
+    for (const [username, password, role, departmentId] of expectedDepartmentAccounts) {
+      const cookie = await login(app, username, password);
+      const session = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
+      expect(session.json().data.user).toMatchObject({ username, role, departmentId });
+    }
   });
 
   it('returns a standard 400 response for malformed JSON', async () => {
@@ -408,17 +551,16 @@ describe.sequential('Adventurer Guild API', () => {
     expect(visible).not.toHaveProperty('password_hash');
     expect(visible).not.toHaveProperty('passwordHash');
 
-    expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-member/assign', headers: { cookie: adminCookie }, payload: { role: 'VICE_PRESIDENT' } })).statusCode).toBe(201);
-    expect((await app.inject({ method: 'GET', url: '/api/admin/registration-requests', headers: { cookie: memberCookie } })).statusCode).toBe(200);
-    expect((await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${requestId}/approve`, headers: { cookie: memberCookie } })).statusCode).toBe(200);
+    const registrationViceCookie = await login(app, 'vice.president2', 'DemoVice2!2026');
+    expect((await app.inject({ method: 'GET', url: '/api/admin/registration-requests', headers: { cookie: registrationViceCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${requestId}/approve`, headers: { cookie: registrationViceCookie } })).statusCode).toBe(200);
     expect(await login(app, '星砂访客', password)).toContain('guild_session=');
 
     const rejected = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
       username: 'guest.beta', password: 'OtherStrong!2026', contact: '13800000002', note: '',
     } });
     expect(rejected.statusCode).toBe(201);
-    expect((await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${rejected.json().data.id}/reject`, headers: { cookie: memberCookie } })).statusCode).toBe(200);
-    expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-member/revoke', headers: { cookie: adminCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${rejected.json().data.id}/reject`, headers: { cookie: registrationViceCookie } })).statusCode).toBe(200);
   });
 
   it('makes registration capacity-safe and non-duplicate', async () => {
@@ -469,6 +611,14 @@ describe.sequential('Adventurer Guild API', () => {
     expect((await app.inject({ method: 'PATCH', url: '/api/admin/members/user-lead', headers: { cookie: adminCookie }, payload: { departmentId: 'dept-tech' } })).statusCode).toBe(403);
   });
 
+  it('lets the president appoint and revoke a department deputy', async () => {
+    const appointed = await app.inject({ method: 'POST', url: '/api/admin/roles/user-member/assign', headers: { cookie: adminCookie }, payload: { role: 'DEPARTMENT_ADMIN', departmentId: 'dept-cos' } });
+    expect(appointed.statusCode).toBe(201);
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } })).json().data.user).toMatchObject({ role: 'DEPARTMENT_ADMIN', departmentId: 'dept-cos' });
+    expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-member/revoke', headers: { cookie: adminCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } })).json().data.user.role).toBe('MEMBER');
+  });
+
   it('enforces the four-level delegation tree and allows multiple department admins', async () => {
     for (const id of ['user-fiction-007', 'user-fiction-013']) {
       const granted = await app.inject({ method: 'POST', url: `/api/admin/roles/${id}/assign`, headers: { cookie: leadCookie }, payload: { role: 'DEPARTMENT_ADMIN', departmentId: 'dept-cos' } });
@@ -476,27 +626,24 @@ describe.sequential('Adventurer Guild API', () => {
     }
     const hierarchy = await app.inject({ method: 'GET', url: '/api/admin/role-hierarchy', headers: { cookie: leadCookie } });
     expect(hierarchy.statusCode).toBe(200);
-    expect(hierarchy.json().data.items.filter((item: { role: string }) => item.role === 'DEPARTMENT_ADMIN')).toHaveLength(3);
+    expect(hierarchy.json().data.items.filter((item: { role: string }) => item.role === 'DEPARTMENT_ADMIN')).toHaveLength(7);
     expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-008/assign', headers: { cookie: leadCookie }, payload: { role: 'DEPARTMENT_ADMIN', departmentId: 'dept-tech' } })).statusCode).toBe(403);
     for (const id of ['user-fiction-007', 'user-fiction-013']) {
       expect((await app.inject({ method: 'POST', url: `/api/admin/roles/${id}/revoke`, headers: { cookie: leadCookie } })).statusCode).toBe(200);
     }
 
-    const vicePresidents = ['user-member', 'user-fiction-007', 'user-fiction-013'];
-    for (const id of vicePresidents) {
-      expect((await app.inject({ method: 'POST', url: `/api/admin/roles/${id}/assign`, headers: { cookie: adminCookie }, payload: { role: 'VICE_PRESIDENT' } })).statusCode).toBe(201);
-    }
+    const executiveHierarchy = await app.inject({ method: 'GET', url: '/api/admin/role-hierarchy', headers: { cookie: adminCookie } });
+    expect(executiveHierarchy.json().data.limits.vicePresidents).toBe(5);
+    expect(executiveHierarchy.json().data.items.filter((item: { role: string }) => item.role === 'VICE_PRESIDENT')).toHaveLength(5);
     expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-014/assign', headers: { cookie: adminCookie }, payload: { role: 'VICE_PRESIDENT' } })).json().error.code).toBe('VICE_PRESIDENT_LIMIT');
 
-    const appointed = await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-019/assign', headers: { cookie: memberCookie }, payload: { role: 'DEPARTMENT_HEAD', departmentId: 'dept-cos' } });
+    const secondViceCookie = await login(app, 'vice.president2', 'DemoVice2!2026');
+    const appointed = await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-019/assign', headers: { cookie: secondViceCookie }, payload: { role: 'DEPARTMENT_HEAD', departmentId: 'dept-cos' } });
     expect(appointed.statusCode).toBe(201);
-    expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-014/assign', headers: { cookie: memberCookie }, payload: { role: 'VICE_PRESIDENT' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-014/assign', headers: { cookie: secondViceCookie }, payload: { role: 'VICE_PRESIDENT' } })).statusCode).toBe(403);
 
     expect((await app.inject({ method: 'POST', url: '/api/admin/roles/user-fiction-019/revoke', headers: { cookie: adminCookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: '/api/admin/departments/dept-cos/leader', headers: { cookie: adminCookie }, payload: { userId: 'user-lead' } })).statusCode).toBe(200);
-    for (const id of vicePresidents) {
-      expect((await app.inject({ method: 'POST', url: `/api/admin/roles/${id}/revoke`, headers: { cookie: adminCookie } })).statusCode).toBe(200);
-    }
   });
 
   it('provides a paged and department-scoped work review queue', async () => {
@@ -1485,7 +1632,7 @@ describe.sequential('Pixel avatar builder', () => {
 
   it('derives stable defaults for members without a saved config', async () => {
     const { deriveAvatarConfig } = await import('@guild/contracts');
-    const directory = await app.inject({ method: 'GET', url: '/api/member/directory?q=星序旅人001&page=1&pageSize=10', headers: { cookie: memberCookie } });
+    const directory = await app.inject({ method: 'GET', url: '/api/member/directory?q=星序旅人013&page=1&pageSize=10', headers: { cookie: memberCookie } });
     const fiction = directory.json().data.items[0];
     expect(fiction.avatarConfig).toEqual(deriveAvatarConfig(fiction.id));
   });

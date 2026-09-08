@@ -9,6 +9,7 @@ export interface DepartmentInfo {
 
 export interface FilmEntry { title: string; romaji: string; year: number; cover: string; banner: string }
 export interface ShowcaseSection { zh: string; en: string }
+export interface DepartmentHubCover { src: string; alt: string }
 
 export interface DeptShowcase {
   slug: string;
@@ -22,6 +23,7 @@ export interface DeptShowcase {
   vertical: string;
   sections: [ShowcaseSection, ShowcaseSection, ShowcaseSection];
   films: FilmEntry[];
+  hubCovers?: DepartmentHubCover[];
 }
 
 /** 每部门独立运动语法：easing / 时长 / 错峰 */
@@ -69,8 +71,8 @@ export const deptShowcases: DeptShowcase[] = [
       film('publicity', 1, 'チェンソーマン', 'Chainsaw Man', 2022),
       film('publicity', 2, 'ルックバック', 'Look Back', 2024),
       film('publicity', 3, 'すずめの戸締まり', 'Suzume no Tojimari', 2022),
-      film('publicity', 4, '進撃の巨人', 'Shingeki no Kyojin', 2013),
-      film('publicity', 5, '鬼滅の刃', 'Kimetsu no Yaiba', 2019),
+      { title: 'EVA', romaji: 'NEON GENESIS EVANGELION', year: 1995, cover: '/assets/departments/publicity/eva-poster.png', banner: '/assets/departments/publicity/eva-poster.png' },
+      { title: '王样战队君王者', romaji: 'Ohsama Sentai King-Ohger', year: 2023, cover: '/assets/departments/publicity/king-ohger-poster.png', banner: '/assets/departments/publicity/king-ohger-poster.png' },
       film('publicity', 6, '呪術廻戦', 'Jujutsu Kaisen', 2020),
       film('publicity', 7, 'SPY×FAMILY', 'SPY×FAMILY', 2022),
       film('publicity', 8, '葬送のフリーレン', 'Sousou no Frieren', 2023),
@@ -105,6 +107,12 @@ export const deptShowcases: DeptShowcase[] = [
     intro: '插画、漫画、设定、手书——原创部的人相信，每一笔线条都是在给世界增加新的可能性。在这里，脑洞是硬通货。',
     duties: ['绘画创作', '漫画与手书', '世界观设定', '合志企划'],
     sections: [{ zh: '画室里', en: 'IN THE ATELIER' }, { zh: '作品集锦', en: 'GALLERY' }, { zh: '画具箱', en: 'TOOLBOX' }],
+    hubCovers: [
+      { src: '/assets/photos/departments/original/01c7aa5289bdb12aec3feb81ba1a297d_720.png', alt: '原创部红衣角色海报' },
+      { src: '/assets/photos/departments/original/3c562533738d841794b0b005926e143c.png', alt: '原创部星空主题角色海报' },
+      { src: '/assets/photos/departments/original/7d359fddd68634f3e6519b3befc410e8.png', alt: '原创部月夜主题角色海报' },
+      { src: '/assets/photos/departments/original/9fe6e450736938666c2bee07df1fb04b_720.png', alt: '原创部金色主题角色海报' },
+    ],
     films: [
       film('original', 1, 'ブルーピリオド', 'Blue Period', 2021),
       film('original', 2, '月刊少女野崎くん', 'Gekkan Shoujo Nozaki-kun', 2014),
@@ -121,6 +129,12 @@ export const deptShowcases: DeptShowcase[] = [
     intro: '宅舞、WOTA 艺、舞台编排——舞装部是公会的引擎室。音乐一响，所有人都会跟着我们动起来。',
     duties: ['宅舞编排', 'WOTA 艺', '舞台演出', '快闪企划'],
     sections: [{ zh: '成员介绍', en: 'MEMBERS' }, { zh: '节目单', en: 'SETLIST' }, { zh: '演出曲目库', en: 'PERFORMANCE LIBRARY' }],
+    hubCovers: [
+      { src: '/assets/photos/departments/dance/dance-activity-03.webp', alt: '舞装部舞台演出合影' },
+      { src: '/assets/photos/departments/dance/dance-activity-08.webp', alt: '舞装部放映厅舞台演出' },
+      { src: '/assets/photos/departments/dance/dance-activity-01.webp', alt: '舞装部角色活动现场' },
+      { src: '/assets/photos/departments/dance/dance-activity-07.webp', alt: '舞装部应援棒舞台表演' },
+    ],
     films: [
       film('dance', 1, 'ボールルームへようこそ', 'Ballroom e Youkoso', 2017),
       film('dance', 2, 'ラブライブ! School idol project', 'Love Live! School idol project', 2013),
@@ -137,6 +151,12 @@ export const deptShowcases: DeptShowcase[] = [
     intro: '服装、妆造、道具、演绎——COS 部相信角色不止存在于屏幕里。量体、裁剪、上妆、定妆，我们在镜子前完成一次次小小的蜕变。',
     duties: ['服装制作', '妆造设计', '角色演绎', '漫展协作'],
     sections: [{ zh: '镜前', en: 'BEFORE THE MIRROR' }, { zh: '变身记录', en: 'TRANSFORMATIONS' }, { zh: '衣装间', en: 'WARDROBE' }],
+    hubCovers: [
+      { src: '/assets/photos/departments/cos/cos-activity-01.webp', alt: 'COS部角色作品合影' },
+      { src: '/assets/photos/departments/cos/cos-activity-03.webp', alt: 'COS部棚拍创作现场' },
+      { src: '/assets/photos/departments/cos/cos-activity-07.webp', alt: 'COS部漫展角色合影' },
+      { src: '/assets/photos/departments/cos/cos-activity-05.webp', alt: 'COS部夜间活动合影' },
+    ],
     films: [
       film('cos', 1, 'その着せ替え人形は恋をする', 'Sono Bisque Doll wa Koi wo Suru', 2022),
       film('cos', 2, '2.5次元の誘惑', '2.5 Jigen no Ririsa', 2024),
@@ -153,6 +173,12 @@ export const deptShowcases: DeptShowcase[] = [
     intro: '乐队排练 / 舞台演出 / 声乐交流 / 原创编曲',
     duties: ['乐队排练', '舞台演出', '声乐交流', '原创编曲'],
     sections: [{ zh: '轻音部', en: 'LIGHT MUSIC DEPARTMENT' }, { zh: '原创曲目', en: 'ORIGINAL TRACKS' }, { zh: '排练视频', en: 'REHEARSAL ARCHIVE' }],
+    hubCovers: [
+      { src: '/assets/photos/departments/music/music-activity-03.webp', alt: '轻音部舞台演出现场' },
+      { src: '/assets/photos/departments/music/music-activity-09.webp', alt: '轻音部乐队舞台演出' },
+      { src: '/assets/photos/departments/music/music-activity-10.webp', alt: '轻音部排练室合奏' },
+      { src: '/assets/photos/departments/music/music-activity-01.webp', alt: '轻音部成员活动合影' },
+    ],
     films: [
       film('music', 1, 'けいおん!', 'K-ON!', 2009),
       film('music', 2, 'ぼっち・ざ・ろっく！', 'Bocchi the Rock!', 2022),

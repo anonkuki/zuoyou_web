@@ -27,6 +27,50 @@ const departments = [
   ['dept-publicity', 'publicity', '外宣&幻想研', '传令官', '宣传运营、影像记录与动漫文化研究'],
 ] as const;
 
+const developmentManagementAccounts = [
+  ['user-vice', 'vice.president', 'DemoVice!2026', '星轨副社长', 'vice.president@guild.example', 'VICE_PRESIDENT', null, '协助社长统筹跨部门事务'],
+  ['user-vice-02', 'vice.president2', 'DemoVice2!2026', '副社长 2', 'vice.president2@guild.example', 'VICE_PRESIDENT', null, '协助社长统筹跨部门事务'],
+  ['user-vice-03', 'vice.president3', 'DemoVice3!2026', '副社长 3', 'vice.president3@guild.example', 'VICE_PRESIDENT', null, '协助社长统筹跨部门事务'],
+  ['user-vice-04', 'vice.president4', 'DemoVice4!2026', '副社长 4', 'vice.president4@guild.example', 'VICE_PRESIDENT', null, '协助社长统筹跨部门事务'],
+  ['user-vice-05', 'vice.president5', 'DemoVice5!2026', '副社长 5', 'vice.president5@guild.example', 'VICE_PRESIDENT', null, '协助社长统筹跨部门事务'],
+  ['user-lead', 'cos.lead', 'DemoLead!2026', 'COS部部长', 'cos.lead@guild.example', 'DEPARTMENT_HEAD', 'dept-cos', '负责 COS 部日常管理'],
+  ['user-deputy', 'cos.deputy', 'DemoDeputy!2026', 'COS部副部长', 'cos.deputy@guild.example', 'DEPARTMENT_ADMIN', 'dept-cos', '协助管理 COS 部'],
+  ['user-cos-deputy-02', 'cos.deputy2', 'DemoDeputy2!2026', 'COS部副部长 2', 'cos.deputy2@guild.example', 'DEPARTMENT_ADMIN', 'dept-cos', '协助管理 COS 部'],
+  ['user-cos-deputy-03', 'cos.deputy3', 'DemoDeputy3!2026', 'COS部副部长 3', 'cos.deputy3@guild.example', 'DEPARTMENT_ADMIN', 'dept-cos', '协助管理 COS 部'],
+  ['user-cos-deputy-04', 'cos.deputy4', 'DemoDeputy4!2026', 'COS部副部长 4', 'cos.deputy4@guild.example', 'DEPARTMENT_ADMIN', 'dept-cos', '协助管理 COS 部'],
+  ['user-cos-deputy-05', 'cos.deputy5', 'DemoDeputy5!2026', 'COS部副部长 5', 'cos.deputy5@guild.example', 'DEPARTMENT_ADMIN', 'dept-cos', '协助管理 COS 部'],
+  ['user-tech-01', 'tech.lead', 'DemoLead!2026', '技术部部长', 'tech.lead@guild.example', 'DEPARTMENT_HEAD', 'dept-tech', '负责技术部日常管理'],
+  ['user-fiction-002', 'tech.deputy', 'DemoDeputy!2026', '技术部副部长', 'tech.deputy@guild.example', 'DEPARTMENT_ADMIN', 'dept-tech', '协助管理技术部'],
+  ['user-tech-deputy-02', 'tech.deputy2', 'DemoDeputy2!2026', '技术部副部长 2', 'tech.deputy2@guild.example', 'DEPARTMENT_ADMIN', 'dept-tech', '协助管理技术部'],
+  ['user-tech-deputy-03', 'tech.deputy3', 'DemoDeputy3!2026', '技术部副部长 3', 'tech.deputy3@guild.example', 'DEPARTMENT_ADMIN', 'dept-tech', '协助管理技术部'],
+  ['user-tech-deputy-04', 'tech.deputy4', 'DemoDeputy4!2026', '技术部副部长 4', 'tech.deputy4@guild.example', 'DEPARTMENT_ADMIN', 'dept-tech', '协助管理技术部'],
+  ['user-tech-deputy-05', 'tech.deputy5', 'DemoDeputy5!2026', '技术部副部长 5', 'tech.deputy5@guild.example', 'DEPARTMENT_ADMIN', 'dept-tech', '协助管理技术部'],
+  ['user-fiction-003', 'music.lead', 'DemoLead!2026', '轻音部部长', 'music.lead@guild.example', 'DEPARTMENT_HEAD', 'dept-music', '负责轻音部日常管理'],
+  ['user-fiction-009', 'music.deputy', 'DemoDeputy!2026', '轻音部副部长', 'music.deputy@guild.example', 'DEPARTMENT_ADMIN', 'dept-music', '协助管理轻音部'],
+  ['user-music-deputy-02', 'music.deputy2', 'DemoDeputy2!2026', '轻音部副部长 2', 'music.deputy2@guild.example', 'DEPARTMENT_ADMIN', 'dept-music', '协助管理轻音部'],
+  ['user-music-deputy-03', 'music.deputy3', 'DemoDeputy3!2026', '轻音部副部长 3', 'music.deputy3@guild.example', 'DEPARTMENT_ADMIN', 'dept-music', '协助管理轻音部'],
+  ['user-music-deputy-04', 'music.deputy4', 'DemoDeputy4!2026', '轻音部副部长 4', 'music.deputy4@guild.example', 'DEPARTMENT_ADMIN', 'dept-music', '协助管理轻音部'],
+  ['user-music-deputy-05', 'music.deputy5', 'DemoDeputy5!2026', '轻音部副部长 5', 'music.deputy5@guild.example', 'DEPARTMENT_ADMIN', 'dept-music', '协助管理轻音部'],
+  ['user-fiction-004', 'original.lead', 'DemoLead!2026', '原创部部长', 'original.lead@guild.example', 'DEPARTMENT_HEAD', 'dept-original', '负责原创部日常管理'],
+  ['user-fiction-010', 'original.deputy', 'DemoDeputy!2026', '原创部副部长', 'original.deputy@guild.example', 'DEPARTMENT_ADMIN', 'dept-original', '协助管理原创部'],
+  ['user-original-deputy-02', 'original.deputy2', 'DemoDeputy2!2026', '原创部副部长 2', 'original.deputy2@guild.example', 'DEPARTMENT_ADMIN', 'dept-original', '协助管理原创部'],
+  ['user-original-deputy-03', 'original.deputy3', 'DemoDeputy3!2026', '原创部副部长 3', 'original.deputy3@guild.example', 'DEPARTMENT_ADMIN', 'dept-original', '协助管理原创部'],
+  ['user-original-deputy-04', 'original.deputy4', 'DemoDeputy4!2026', '原创部副部长 4', 'original.deputy4@guild.example', 'DEPARTMENT_ADMIN', 'dept-original', '协助管理原创部'],
+  ['user-original-deputy-05', 'original.deputy5', 'DemoDeputy5!2026', '原创部副部长 5', 'original.deputy5@guild.example', 'DEPARTMENT_ADMIN', 'dept-original', '协助管理原创部'],
+  ['user-fiction-005', 'dance.lead', 'DemoLead!2026', '舞装部部长', 'dance.lead@guild.example', 'DEPARTMENT_HEAD', 'dept-dance', '负责舞装部日常管理'],
+  ['user-fiction-011', 'dance.deputy', 'DemoDeputy!2026', '舞装部副部长', 'dance.deputy@guild.example', 'DEPARTMENT_ADMIN', 'dept-dance', '协助管理舞装部'],
+  ['user-dance-deputy-02', 'dance.deputy2', 'DemoDeputy2!2026', '舞装部副部长 2', 'dance.deputy2@guild.example', 'DEPARTMENT_ADMIN', 'dept-dance', '协助管理舞装部'],
+  ['user-dance-deputy-03', 'dance.deputy3', 'DemoDeputy3!2026', '舞装部副部长 3', 'dance.deputy3@guild.example', 'DEPARTMENT_ADMIN', 'dept-dance', '协助管理舞装部'],
+  ['user-dance-deputy-04', 'dance.deputy4', 'DemoDeputy4!2026', '舞装部副部长 4', 'dance.deputy4@guild.example', 'DEPARTMENT_ADMIN', 'dept-dance', '协助管理舞装部'],
+  ['user-dance-deputy-05', 'dance.deputy5', 'DemoDeputy5!2026', '舞装部副部长 5', 'dance.deputy5@guild.example', 'DEPARTMENT_ADMIN', 'dept-dance', '协助管理舞装部'],
+  ['user-fiction-006', 'publicity.lead', 'DemoLead!2026', '外宣&幻想研部长', 'publicity.lead@guild.example', 'DEPARTMENT_HEAD', 'dept-publicity', '负责外宣&幻想研日常管理'],
+  ['user-fiction-012', 'publicity.deputy', 'DemoDeputy!2026', '外宣&幻想研副部长', 'publicity.deputy@guild.example', 'DEPARTMENT_ADMIN', 'dept-publicity', '协助管理外宣&幻想研'],
+  ['user-publicity-deputy-02', 'publicity.deputy2', 'DemoDeputy2!2026', '外宣&幻想研副部长 2', 'publicity.deputy2@guild.example', 'DEPARTMENT_ADMIN', 'dept-publicity', '协助管理外宣&幻想研'],
+  ['user-publicity-deputy-03', 'publicity.deputy3', 'DemoDeputy3!2026', '外宣&幻想研副部长 3', 'publicity.deputy3@guild.example', 'DEPARTMENT_ADMIN', 'dept-publicity', '协助管理外宣&幻想研'],
+  ['user-publicity-deputy-04', 'publicity.deputy4', 'DemoDeputy4!2026', '外宣&幻想研副部长 4', 'publicity.deputy4@guild.example', 'DEPARTMENT_ADMIN', 'dept-publicity', '协助管理外宣&幻想研'],
+  ['user-publicity-deputy-05', 'publicity.deputy5', 'DemoDeputy5!2026', '外宣&幻想研副部长 5', 'publicity.deputy5@guild.example', 'DEPARTMENT_ADMIN', 'dept-publicity', '协助管理外宣&幻想研'],
+] as const;
+
 const archiveThemes = [
   ['dept-cos', '幻装工坊回顾'], ['dept-tech', '魔导影像技术交流'], ['dept-music', '月下轻音排练'],
   ['dept-original', '原创绘卷共创'], ['dept-dance', '宅舞舞台排演'], ['dept-publicity', '番剧鉴赏与外宣周常'],
@@ -44,7 +88,7 @@ function ensureHomeShowcaseData(sqlite: Database.Database, timestamp: string): v
     }
 
     const insertSetting = sqlite.prepare('INSERT OR IGNORE INTO site_settings(key,value,updated_at) VALUES (?,?,?)');
-    for (const [key, value] of [['guildLevel', '12'], ['guildLevelCurrent', '2390'], ['guildLevelTarget', '3000'], ['honorCount', '56'], ['foundedYear', '2018']] as const) {
+    for (const [key, value] of [['guildLevel', '12'], ['guildLevelCurrent', '2390'], ['guildLevelTarget', '3000'], ['honorCount', '56'], ['foundedYear', '1999']] as const) {
       insertSetting.run(key, value, timestamp);
     }
 
@@ -184,20 +228,23 @@ function ensureSocialShowcaseData(sqlite: Database.Database, timestamp: string):
 }
 
 async function ensureDevelopmentTestAccounts(sqlite: Database.Database, timestamp: string): Promise<void> {
-  const accounts = [
-    ['user-vice', 'vice.president', 'DemoVice!2026', '星轨副社长', 'vice.president@guild.example', 'VICE_PRESIDENT', null, '协助社长统筹跨部门事务'],
-    ['user-deputy', 'cos.deputy', 'DemoDeputy!2026', '绯羽副部长', 'cos.deputy@guild.example', 'DEPARTMENT_ADMIN', 'dept-cos', '协助部长管理 COS 部日常事务'],
-  ] as const;
   const president = sqlite.prepare("SELECT id FROM users WHERE role='PRESIDENT' AND is_active=1 ORDER BY created_at LIMIT 1").get() as { id: string } | undefined;
-  for (const [id, username, password, displayName, email, role, departmentId, bio] of accounts) {
-    if (!sqlite.prepare('SELECT 1 FROM users WHERE username=?').get(username)) {
+  for (const [id, username, password, displayName, email, role, departmentId, bio] of developmentManagementAccounts) {
+    const existing = sqlite.prepare('SELECT username,password_hash,role,department_id FROM users WHERE id=?').get(id) as { username: string | null; password_hash: string | null; role: string; department_id: string | null } | undefined;
+    if (!existing) {
       sqlite.prepare(`INSERT INTO users(id,uid,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
         .run(id, allocateUserUid(sqlite), username, await hashPassword(password), displayName, email, role, departmentId, bio, 1, timestamp, timestamp);
+    } else if (!existing.username || !existing.password_hash || existing.role !== role || existing.department_id !== departmentId) {
+      const accountUsername = existing.username ?? username;
+      const passwordHash = existing.password_hash ?? await hashPassword(password);
+      sqlite.prepare(`UPDATE users SET username=?,password_hash=?,display_name=?,email=?,role=?,department_id=?,bio=?,is_active=1,updated_at=? WHERE id=?`)
+        .run(accountUsername, passwordHash, displayName, email, role, departmentId, bio, timestamp, id);
     }
     if (departmentId) sqlite.prepare('INSERT OR IGNORE INTO user_departments(user_id,department_id,is_primary,joined_at) VALUES (?,?,1,?)').run(id, departmentId, timestamp);
     sqlite.prepare('INSERT OR IGNORE INTO role_assignments(id,user_id,role,department_id,granted_by,granted_at) VALUES (?,?,?,?,?,?)')
       .run(`role-seed-${id}`, id, role, departmentId, president?.id ?? null, timestamp);
+    if (role === 'DEPARTMENT_HEAD' && departmentId) sqlite.prepare('UPDATE departments SET leader_id=?,updated_at=? WHERE id=?').run(id, timestamp, departmentId);
   }
 }
 
@@ -207,7 +254,7 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('journal_mode = WAL');
   sqlite.exec('CREATE TABLE IF NOT EXISTS __migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config', '0011_publicity_fantasy_lab', '0012_four_level_admin_hierarchy', '0013_blog_post_publishing', '0014_post_ratings', '0015_user_uid', '0016_guest_registration_requests', '0017_post_attachments', '0018_post_subboards', '0019_page_content_editor', '0020_page_content_history', '0021_post_history', '0022_profile_and_page_images']) {
+  for (const name of ['0000_initial', '0001_work_files', '0002_activity_location_file_category', '0003_recruitment_and_activity_results', '0004_announcements', '0005_member_profiles_chat', '0006_multi_department_membership', '0007_department_conversations', '0008_guild_posts_attributes', '0009_area_messages', '0010_avatar_config', '0011_publicity_fantasy_lab', '0012_four_level_admin_hierarchy', '0013_blog_post_publishing', '0014_post_ratings', '0015_user_uid', '0016_guest_registration_requests', '0017_post_attachments', '0018_post_subboards', '0019_page_content_editor', '0020_page_content_history', '0021_post_history', '0022_profile_and_page_images', '0023_foundation_year_1999']) {
     const applied = sqlite.prepare('SELECT 1 FROM __migrations WHERE name = ?').get(name);
     if (applied) continue;
     const migration = readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), 'utf8');
@@ -300,6 +347,7 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
     insertRoleAssignment.run(`role-seed-${departmentId}`, userId, 'DEPARTMENT_HEAD', departmentId, 'user-admin', now);
   }
   if (!options.production) insertRoleAssignment.run('role-seed-deputy', 'user-deputy', 'DEPARTMENT_ADMIN', 'dept-cos', 'user-lead', now);
+  if (!options.production) await ensureDevelopmentTestAccounts(sqlite, now);
 
   const insertActivity = sqlite.prepare('INSERT INTO activities(id,department_id,title,description,status,capacity,check_in_code,result_summary,starts_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
   insertActivity.run('activity-open', 'dept-cos', '夏日幻装工坊', '小型角色造型交流', 'REGISTRATION', 1, null, null, '2026-08-10T10:00:00.000Z', now, now);

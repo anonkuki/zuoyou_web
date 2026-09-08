@@ -149,7 +149,7 @@ describe('Adventurer Guild app', () => {
       const path = typeof input === 'string' ? input : input.toString();
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: manager } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/admin/raffle' && !init?.method) return new Response(JSON.stringify({ ok: true, data: { prizes, totalInitial: 300, totalRemaining: 300, recentDraws: [], canReset: false } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      if (path === '/api/admin/raffle/draw' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { prizes: prizes.map((prize) => prize.id === 'raffle-first' ? { ...prize, remainingStock: 9 } : prize), totalInitial: 300, totalRemaining: 299, canReset: false, recentDraws: [], draw: { id: 'draw-1', prizeId: 'raffle-first', prizeName: '一等奖', prizeContents: '挂件 + 透卡 + 卡套', operatorId: 'user-lead', operatorDisplayName: '绯月幻装师', drawnAt: '2026-09-08T15:00:00.000Z' } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/raffle/draw' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { prizes, totalInitial: 300, totalRemaining: 300, canReset: false, recentDraws: [], draw: { id: 'draw-test-1', prizeId: 'raffle-first', prizeName: '一等奖', prizeContents: '挂件 + 透卡 + 卡套', operatorId: 'user-lead', operatorDisplayName: '绯月幻装师', drawnAt: '2026-09-08T15:00:00.000Z', testMode: true } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: payloads[path] ?? {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -160,12 +160,14 @@ describe('Adventurer Guild app', () => {
     await user.click(launcher);
     expect(await screen.findByRole('dialog', { name: '福引抽奖所' })).toBeInTheDocument();
     expect(screen.getByText('剩余 300 / 300 抽')).toBeInTheDocument();
+    await user.click(screen.getByRole('switch', { name: '测试模式' }));
     await user.click(screen.getByRole('button', { name: '摇动手柄' }));
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/raffle/draw', expect.objectContaining({ method: 'POST' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('一等奖');
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/raffle/draw', expect.objectContaining({ method: 'POST', body: JSON.stringify({ testMode: true }) }));
+    expect(await screen.findByRole('status', undefined, { timeout: 3_000 })).toHaveTextContent('一等奖');
+    expect(screen.getByRole('status')).toHaveTextContent('测试抽奖');
     expect(screen.getByRole('status')).toHaveTextContent('挂件 + 透卡 + 卡套');
-    expect(screen.getByText('剩余 299 / 300 抽')).toBeInTheDocument();
-  });
+    expect(screen.getByText('剩余 300 / 300 抽')).toBeInTheDocument();
+  }, 10_000);
 
   it('composes the hero from independently licensed parallax and architecture layers', async () => {
     renderAt('/');

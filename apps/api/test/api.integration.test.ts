@@ -371,6 +371,21 @@ describe.sequential('Adventurer Guild API', () => {
       expect(state.json().data).toMatchObject({ totalInitial: 300, totalRemaining: 300 });
     }
 
+    const tested = await app.inject({ method: 'POST', url: '/api/admin/raffle/draw', headers: { cookie: leadCookie }, payload: { testMode: true } });
+    expect(tested.statusCode).toBe(200);
+    expect(tested.json().data).toMatchObject({
+      totalRemaining: 300,
+      recentDraws: [],
+      draw: { id: expect.any(String), prizeId: expect.stringMatching(/^raffle-/), testMode: true },
+    });
+    const testDatabase = await openDatabase(`${root}/guild.sqlite`);
+    try {
+      expect((testDatabase.sqlite.prepare('SELECT SUM(remaining_stock) total FROM raffle_prizes').get() as { total: number }).total).toBe(300);
+      expect((testDatabase.sqlite.prepare('SELECT COUNT(*) count FROM raffle_draws').get() as { count: number }).count).toBe(0);
+    } finally {
+      testDatabase.sqlite.close();
+    }
+
     const drawn = await app.inject({ method: 'POST', url: '/api/admin/raffle/draw', headers: { cookie: leadCookie } });
     expect(drawn.statusCode).toBe(200);
     expect(drawn.json().data).toMatchObject({

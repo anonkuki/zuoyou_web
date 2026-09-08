@@ -26,6 +26,7 @@ interface RaffleDraw {
   operatorId: string;
   operatorDisplayName: string;
   drawnAt: string;
+  testMode?: boolean;
 }
 
 interface RaffleState {
@@ -59,13 +60,14 @@ export function ManagerRaffle() {
   const reduceMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<RaffleDraw | null>(null);
+  const [testMode, setTestMode] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const manager = Boolean(user && isManagementRole(user.role));
   const state = useQuery({ queryKey: raffleKey, queryFn: () => api<RaffleState>('/api/admin/raffle'), enabled: manager && open, staleTime: 5_000 });
   const draw = useMutation({
     mutationFn: async () => {
-      const request = api<RaffleState>('/api/admin/raffle/draw', json('POST'));
-      const [next] = await Promise.all([request, wait(reduceMotion ? 0 : 620)]);
+      const request = api<RaffleState>('/api/admin/raffle/draw', json('POST', { testMode }));
+      const [next] = await Promise.all([request, wait(reduceMotion ? 0 : 2_000)]);
       return next;
     },
     onMutate: () => { setResult(null); setConfirmReset(false); },
@@ -114,12 +116,16 @@ export function ManagerRaffle() {
             </header>
 
             {state.isLoading ? <div className="raffle-loading">正在清点彩球…</div> : state.error ? <div className="raffle-error">{state.error.message}<button onClick={() => state.refetch()}>重新读取</button></div> : raffle && <div className="raffle-stage">
-              <div className="raffle-machine-bay">
+              <div className={`raffle-machine-bay ${testMode ? 'is-test-mode' : ''}`}>
                 <div className="raffle-lanterns" aria-hidden="true"><i/><i/><i/><i/><i/></div>
                 <PixelGarapon rolling={draw.isPending} />
                 <div className="raffle-stock-meter"><span>今日奖池</span><strong>剩余 {raffle.totalRemaining} / {raffle.totalInitial} 抽</strong><i><b style={{ width: `${raffle.totalInitial ? raffle.totalRemaining / raffle.totalInitial * 100 : 0}%` }}/></i></div>
+                <button type="button" role="switch" aria-label="测试模式" aria-checked={testMode} className="raffle-test-switch"
+                  onClick={() => { setTestMode((value) => !value); setResult(null); }} disabled={draw.isPending}>
+                  <i aria-hidden="true"><b /></i><span><strong>测试模式</strong><small>{testMode ? '已开启 · 不扣真实库存' : '关闭 · 正式抽奖会扣库存'}</small></span>
+                </button>
                 <button type="button" className="raffle-draw-button" aria-label="摇动手柄" onClick={() => draw.mutate()} disabled={draw.isPending || empty}>
-                  <span>{draw.isPending ? '咔啦咔啦…' : empty ? '奖池已抽完' : '摇动手柄'}</span><small>{empty ? '感谢参与' : '每次抽取 1 份'}</small>
+                  <span>{draw.isPending ? '咔啦咔啦…' : empty ? '奖池已抽完' : '摇动手柄'}</span><small>{draw.isPending ? '转筒 → 滚珠 → 落球 → 揭晓' : empty ? '感谢参与' : testMode ? '试抽一次 · 库存不变' : '正式抽取 1 份'}</small>
                 </button>
                 {draw.error && <p className="raffle-action-error">{draw.error.message}</p>}
               </div>
@@ -128,7 +134,7 @@ export function ManagerRaffle() {
                 <AnimatePresence mode="wait">
                   {result ? <motion.div key={result.id} className={`raffle-result tier-${result.prizeId}`} role="status"
                     initial={reduceMotion ? { opacity: 0 } : { opacity: 0, scale: .72, rotate: -4 }} animate={{ opacity: 1, scale: 1, rotate: 0 }}>
-                    <Sparkles/><small>彩球落下来了！</small><strong>{result.prizeName}</strong><p>{result.prizeContents}</p><span>请工作人员现场核销奖品</span>
+                    <Sparkles/><small>{result.testMode ? '测试抽奖 · 库存没有变动' : '彩球落下来了！'}</small><strong>{result.prizeName}</strong><p>{result.prizeContents}</p><span>{result.testMode ? '试抽结果仅供演示' : '请工作人员现场核销奖品'}</span>
                   </motion.div> : <motion.div key="guide" className="raffle-guide" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                     <span className="raffle-ball-preview"><i/><i/><i/></span><strong>准备好了吗？</strong><p>库存会在抽中后自动扣减，多位工作人员同时操作也不会重复发奖。</p>
                   </motion.div>}
@@ -140,7 +146,7 @@ export function ManagerRaffle() {
                 </div>
                 {raffle.recentDraws.length > 0 && <div className="raffle-history"><h3>最近开出</h3>{raffle.recentDraws.slice(0, 4).map((item) => <p key={item.id}><span>{item.prizeName}</span>{item.prizeContents}<small>{item.operatorDisplayName}</small></p>)}</div>}
                 {raffle.canReset && <div className="raffle-reset-zone">
-                  {confirmReset ? <><span>将清空本轮记录并恢复 300 份库存</span><button className="danger" onClick={() => reset.mutate()} disabled={reset.isPending}>{reset.isPending ? '正在复原…' : '确认重置'}</button><button onClick={() => setConfirmReset(false)}>取消</button></> : <button onClick={() => setConfirmReset(true)}><RotateCcw/>重置本轮奖池</button>}
+                  {confirmReset ? <><span>将清空正式中奖记录，并把三档奖品数量恢复为 250 / 40 / 10</span><button className="danger" onClick={() => reset.mutate()} disabled={reset.isPending}>{reset.isPending ? '正在复原…' : '确认重置数量'}</button><button onClick={() => setConfirmReset(false)}>取消</button></> : <button onClick={() => setConfirmReset(true)}><RotateCcw/>重置奖品数量</button>}
                   {reset.error && <p>{reset.error.message}</p>}
                 </div>}
               </div>

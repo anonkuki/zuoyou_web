@@ -869,6 +869,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
   app.post('/api/admin/raffle/draw', { config: { rateLimit: { max: 600, timeWindow: '1 hour' } } }, async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
+    const body = parse(z.object({ testMode: z.boolean().default(false) }), request.body ?? {});
     const draw = sqlite.transaction(() => {
       const prizes = sqlite.prepare('SELECT id,tier,name,contents,initial_stock,remaining_stock,accent FROM raffle_prizes WHERE remaining_stock>0 ORDER BY sort_order').all() as RafflePrizeRow[];
       const totalRemaining = prizes.reduce((total, prize) => total + prize.remaining_stock, 0);
@@ -881,13 +882,18 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       });
       if (!selected) throw new HttpError(409, 'RAFFLE_RETRY', '本次摇奖未完成，请再试一次');
       const timestamp = now();
+      if (body.testMode) {
+        const id = newId('raffle-test');
+        audit(sqlite, principal.id, 'RAFFLE_TEST_DRAWN', 'raffle_test', id, null, { prizeId: selected.id, prizeName: selected.name });
+        return { id, prizeId: selected.id, prizeName: selected.name, prizeContents: selected.contents, operatorId: principal.id, operatorDisplayName: principal.displayName, drawnAt: timestamp, testMode: true };
+      }
       const updated = sqlite.prepare('UPDATE raffle_prizes SET remaining_stock=remaining_stock-1,updated_at=? WHERE id=? AND remaining_stock>0').run(timestamp, selected.id);
       if (updated.changes !== 1) throw new HttpError(409, 'RAFFLE_RETRY', '奖池刚刚发生变化，请再试一次');
       const id = newId('raffle-draw');
       sqlite.prepare('INSERT INTO raffle_draws(id,prize_id,operator_id,prize_name,prize_contents,drawn_at) VALUES (?,?,?,?,?,?)')
         .run(id, selected.id, principal.id, selected.name, selected.contents, timestamp);
       audit(sqlite, principal.id, 'RAFFLE_DRAWN', 'raffle_draw', id, null, { prizeId: selected.id, prizeName: selected.name });
-      return { id, prizeId: selected.id, prizeName: selected.name, prizeContents: selected.contents, operatorId: principal.id, operatorDisplayName: principal.displayName, drawnAt: timestamp };
+      return { id, prizeId: selected.id, prizeName: selected.name, prizeContents: selected.contents, operatorId: principal.id, operatorDisplayName: principal.displayName, drawnAt: timestamp, testMode: false };
     })();
     return successResponse({ ...raffleState(principal), draw });
   });

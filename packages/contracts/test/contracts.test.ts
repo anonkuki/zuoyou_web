@@ -97,9 +97,10 @@ describe('shared contracts', () => {
     expect(ProfileVisibilitySchema.options).toEqual(['MEMBERS', 'PRIVATE']);
     expect(ConversationTypeSchema.options).toEqual(['DIRECT', 'DEPARTMENT']);
     expect(memberProfileUpdateSchema.parse({
-      guildTitle: '幻装见习生', college: '艺术设计学院', grade: '2025级',
+      guildTitle: '幻装见习生', college: '艺术设计学院', grade: '2025级', signature: '今天也在认真准备下一次活动。',
       skills: ['角色塑造', '活动协作'], interests: ['动画'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS',
-    })).toMatchObject({ guildTitle: '幻装见习生', skills: ['角色塑造', '活动协作'] });
+    })).toMatchObject({ guildTitle: '幻装见习生', signature: '今天也在认真准备下一次活动。', skills: ['角色塑造', '活动协作'] });
+    expect(memberProfileUpdateSchema.safeParse({ signature: '签'.repeat(121) }).success).toBe(false);
     expect(memberProfileUpdateSchema.safeParse({ skills: Array.from({ length: 9 }, (_, index) => `技能${index}`) }).success).toBe(false);
     expect(memberProfileUpdateSchema.safeParse({ avatarColor: 'red' }).success).toBe(false);
     expect(directConversationInputSchema.safeParse({ userId: '' }).success).toBe(false);

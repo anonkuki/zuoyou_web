@@ -30,11 +30,11 @@ const presence = (lastSeenAt: string | null, timestamp: string) => {
 
 interface ProfileRow {
   id: string; uid: string; display_name: string; role: Role; department_id: string | null; department_name: string | null; department_title: string | null;
-  bio: string; guild_title: string; college: string; grade: string; skills: string; interests: string; attributes: string; avatar_color: string; avatar_config: string | null; avatar_storage_key: string | null; profile_visibility: 'MEMBERS' | 'PRIVATE';
+  bio: string; signature: string; guild_title: string; college: string; grade: string; skills: string; interests: string; attributes: string; avatar_color: string; avatar_config: string | null; avatar_storage_key: string | null; profile_cover_storage_key: string | null; profile_visibility: 'MEMBERS' | 'PRIVATE';
   last_seen_at: string | null; created_at: string; updated_at: string;
 }
 
-const PROFILE_COLUMNS = 'u.id,u.uid,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.guild_title,u.college,u.grade,u.skills,u.interests,u.attributes,u.avatar_color,u.avatar_config,u.avatar_storage_key,u.profile_visibility,u.last_seen_at,u.created_at,u.updated_at';
+const PROFILE_COLUMNS = 'u.id,u.uid,u.display_name,u.role,u.department_id,d.name department_name,d.title department_title,u.bio,u.signature,u.guild_title,u.college,u.grade,u.skills,u.interests,u.attributes,u.avatar_color,u.avatar_config,u.avatar_storage_key,u.profile_cover_storage_key,u.profile_visibility,u.last_seen_at,u.created_at,u.updated_at';
 const POST_BOARD_SECTION_LIMIT = 5;
 
 export class GuildSocialRepository {
@@ -43,8 +43,8 @@ export class GuildSocialRepository {
   private serializeProfile(row: ProfileRow) {
     return {
       id: row.id, uid: row.uid, displayName: row.display_name, role: row.role, departmentId: row.department_id, departmentName: row.department_name,
-      departmentTitle: row.department_title, bio: row.bio, guildTitle: row.guild_title, college: row.college, grade: row.grade,
-      skills: safeTags(row.skills), interests: safeTags(row.interests), attributes: safeTags(row.attributes), avatarColor: row.avatar_color, avatarConfig: resolveAvatarConfig(row.id, row.avatar_config), avatarUrl: row.avatar_storage_key ? `/api/public/avatars/${row.id}?v=${encodeURIComponent(row.updated_at)}` : null, profileVisibility: row.profile_visibility,
+      departmentTitle: row.department_title, bio: row.bio, signature: row.signature, guildTitle: row.guild_title, college: row.college, grade: row.grade,
+      skills: safeTags(row.skills), interests: safeTags(row.interests), attributes: safeTags(row.attributes), avatarColor: row.avatar_color, avatarConfig: resolveAvatarConfig(row.id, row.avatar_config), avatarUrl: row.avatar_storage_key ? `/api/public/avatars/${row.id}?v=${encodeURIComponent(row.updated_at)}` : null, coverUrl: row.profile_cover_storage_key ? `/api/member/profile-covers/${row.id}?v=${encodeURIComponent(row.updated_at)}` : null, profileVisibility: row.profile_visibility,
       presence: presence(row.last_seen_at, this.timestamp()), lastSeenAt: row.last_seen_at, joinedAt: row.created_at,
     };
   }
@@ -66,6 +66,7 @@ export class GuildSocialRepository {
       uid: input.uid ?? row.uid,
       displayName: input.displayName ?? row.display_name,
       bio: input.bio ?? row.bio,
+      signature: input.signature ?? row.signature,
       guildTitle: input.guildTitle ?? row.guild_title,
       college: input.college ?? row.college,
       grade: input.grade ?? row.grade,
@@ -76,8 +77,8 @@ export class GuildSocialRepository {
       avatarColor: input.avatarColor ?? row.avatar_color,
       visibility: input.profileVisibility ?? row.profile_visibility,
     };
-    this.sqlite.prepare(`UPDATE users SET uid=?,display_name=?,bio=?,guild_title=?,college=?,grade=?,skills=?,interests=?,attributes=?,avatar_config=?,avatar_color=?,profile_visibility=?,last_seen_at=?,updated_at=? WHERE id=?`)
-      .run(next.uid, next.displayName, next.bio, next.guildTitle, next.college, next.grade, next.skills, next.interests, next.attributes, next.avatarConfig, next.avatarColor, next.visibility, this.timestamp(), this.timestamp(), userId);
+    this.sqlite.prepare(`UPDATE users SET uid=?,display_name=?,bio=?,signature=?,guild_title=?,college=?,grade=?,skills=?,interests=?,attributes=?,avatar_config=?,avatar_color=?,profile_visibility=?,last_seen_at=?,updated_at=? WHERE id=?`)
+      .run(next.uid, next.displayName, next.bio, next.signature, next.guildTitle, next.college, next.grade, next.skills, next.interests, next.attributes, next.avatarConfig, next.avatarColor, next.visibility, this.timestamp(), this.timestamp(), userId);
     return this.serializeProfile(this.getProfileRow(userId));
   }
 
@@ -112,7 +113,8 @@ export class GuildSocialRepository {
     const works = this.sqlite.prepare("SELECT id,title,description,created_at createdAt FROM works WHERE user_id=? AND status='PUBLISHED' ORDER BY created_at DESC LIMIT 6").all(userId);
     const activities = this.sqlite.prepare(`SELECT a.id,a.title,a.starts_at startsAt,ar.checked_in_at checkedInAt FROM activity_registrations ar JOIN activities a ON a.id=ar.activity_id
       WHERE ar.user_id=? ORDER BY a.starts_at DESC LIMIT 6`).all(userId);
-    return { profile: this.serializeProfile(row), stats: { publishedWorks, attendedActivities, contributionPoints }, works, activities };
+    const photoWall = this.sqlite.prepare(`SELECT id,'/api/member/profile-photos/' || id || '/content' url,created_at createdAt FROM profile_photos WHERE owner_id=? ORDER BY sort_order,created_at DESC LIMIT 12`).all(userId);
+    return { profile: this.serializeProfile(row), stats: { publishedWorks, attendedActivities, contributionPoints }, works, activities, photoWall };
   }
 
   private ensureDepartmentParticipation(principal: SocialPrincipal): void {

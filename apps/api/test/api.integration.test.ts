@@ -846,6 +846,40 @@ describe.sequential('Adventurer Guild API', () => {
     expect(avatar.headers['content-type']).toContain('image/png');
   });
 
+  it('stores a signature, cover image, and protected profile photo wall', async () => {
+    const updated = await app.inject({ method: 'PATCH', url: '/api/member/profile', headers: { cookie: memberCookie }, payload: { signature: '今天也在认真准备下一次活动。' } });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().data.profile.signature).toBe('今天也在认真准备下一次活动。');
+
+    const imageBody = (boundary: string, filename: string) => Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: image/png\r\n\r\n`),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const coverBoundary = '----guild-cover-boundary';
+    const cover = await app.inject({ method: 'POST', url: '/api/member/profile/cover', headers: { cookie: memberCookie, 'content-type': `multipart/form-data; boundary=${coverBoundary}` }, payload: imageBody(coverBoundary, 'cover.png') });
+    expect(cover.statusCode).toBe(201);
+    expect(cover.json().data.coverUrl).toContain('/api/member/profile-covers/user-member');
+    expect((await app.inject({ method: 'GET', url: cover.json().data.coverUrl })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: cover.json().data.coverUrl, headers: { cookie: leadCookie } })).headers['content-type']).toContain('image/png');
+
+    const photoBoundary = '----guild-photo-boundary';
+    const photo = await app.inject({ method: 'POST', url: '/api/member/profile/photos', headers: { cookie: memberCookie, 'content-type': `multipart/form-data; boundary=${photoBoundary}` }, payload: imageBody(photoBoundary, 'memory.png') });
+    expect(photo.statusCode).toBe(201);
+    expect(photo.json().data.photo).toMatchObject({ id: expect.any(String), url: expect.stringContaining('/api/member/profile-photos/') });
+    const photoId = photo.json().data.photo.id as string;
+    const homepage = await app.inject({ method: 'GET', url: '/api/member/profiles/user-member', headers: { cookie: leadCookie } });
+    expect(homepage.json().data).toMatchObject({
+      profile: { signature: '今天也在认真准备下一次活动。', coverUrl: expect.stringContaining('/api/member/profile-covers/user-member') },
+      photoWall: [expect.objectContaining({ id: photoId, url: expect.stringContaining(`/api/member/profile-photos/${photoId}/content`) })],
+    });
+    expect((await app.inject({ method: 'GET', url: photo.json().data.photo.url })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: photo.json().data.photo.url, headers: { cookie: leadCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'DELETE', url: `/api/member/profile/photos/${photoId}`, headers: { cookie: leadCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'DELETE', url: `/api/member/profile/photos/${photoId}`, headers: { cookie: memberCookie } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: photo.json().data.photo.url, headers: { cookie: memberCookie } })).statusCode).toBe(404);
+  });
+
   it('closes direct and department chat with unread, reply, edit, delete, and ownership rules', async () => {
     const list = await app.inject({ method: 'GET', url: '/api/member/conversations', headers: { cookie: memberCookie } });
     expect(list.statusCode).toBe(200);

@@ -404,7 +404,7 @@ describe('Adventurer Guild app', () => {
       const user = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '活动协作', guildTitle: '幻装见习生', college: '艺术设计学院', grade: '2025级', skills: ['角色塑造'], interests: ['动画'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path.startsWith('/api/member/directory')) return new Response(JSON.stringify({ ok: true, data: { items: [user, { ...user, id: 'user-lead', displayName: '绯月幻装师', guildTitle: '首席幻装师', role: 'DEPARTMENT_HEAD', avatarColor: '#c75f88' }], page: 1, pageSize: 24, total: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      if (path === '/api/member/profiles/user-lead') return new Response(JSON.stringify({ ok: true, data: { profile: { ...user, id: 'user-lead', displayName: '绯月幻装师', guildTitle: '首席幻装师', role: 'DEPARTMENT_HEAD', departmentName: 'COS部', departmentTitle: '幻术师', avatarColor: '#c75f88', joinedAt: '2023-05-01T00:00:00.000Z', presence: 'ONLINE' }, stats: { publishedWorks: 4, attendedActivities: 12, contributionPoints: 86 }, works: [{ id: 'work-1', title: '星辉幻装录', description: '舞台作品', createdAt: '2026-08-01T00:00:00.000Z' }], activities: [{ id: 'activity-1', title: '夏日幻装工坊', startsAt: '2026-08-10T00:00:00.000Z' }] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profiles/user-lead') return new Response(JSON.stringify({ ok: true, data: { profile: { ...user, id: 'user-lead', displayName: '绯月幻装师', guildTitle: '首席幻装师', signature: '把喜欢的角色认真带到舞台上。', coverUrl: '/api/member/profile-covers/user-lead?v=1', role: 'DEPARTMENT_HEAD', departmentName: 'COS部', departmentTitle: '幻术师', avatarColor: '#c75f88', joinedAt: '2023-05-01T00:00:00.000Z', presence: 'ONLINE' }, stats: { publishedWorks: 4, attendedActivities: 12, contributionPoints: 86 }, works: [{ id: 'work-1', title: '星辉幻装录', description: '舞台作品', createdAt: '2026-08-01T00:00:00.000Z' }], activities: [{ id: 'activity-1', title: '夏日幻装工坊', startsAt: '2026-08-10T00:00:00.000Z' }], photoWall: [{ id: 'photo-1', url: '/api/member/profile-photos/photo-1/content', createdAt: '2026-08-08T00:00:00.000Z' }] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/conversations/direct' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { conversation: { id: 'direct-new' } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
@@ -416,18 +416,25 @@ describe('Adventurer Guild app', () => {
     await user.click(screen.getByRole('link', { name: '查看 绯月幻装师 的主页' }));
     expect(await screen.findByRole('heading', { name: '绯月幻装师' })).toBeInTheDocument();
     expect(screen.getByText('86')).toBeInTheDocument();
+    expect(screen.getByText('把喜欢的角色认真带到舞台上。')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '绯月幻装师 的主页封面' })).toHaveAttribute('src', '/api/member/profile-covers/user-lead?v=1');
+    expect(screen.getByRole('img', { name: '绯月幻装师 的照片 1' })).toHaveAttribute('src', '/api/member/profile-photos/photo-1/content');
     expect(screen.getByRole('heading', { name: '星辉幻装录' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '发起私聊' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: '给 绯月幻装师 发消息' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/conversations/direct', expect.objectContaining({ method: 'POST' })));
   });
 
   it('edits a rich personal homepage and persists structured fields', async () => {
-    const profile = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', departmentName: 'COS部', bio: '活动协作', guildTitle: '幻装见习生', college: '艺术设计学院', grade: '2025级', skills: ['角色塑造'], interests: ['动画'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const profile = { id: 'user-member', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', departmentName: 'COS部', bio: '活动协作', signature: '在准备新的正片。', guildTitle: '幻装见习生', college: '艺术设计学院', grade: '2025级', skills: ['角色塑造'], interests: ['动画'], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === 'string' ? input : input.toString();
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      if (path === '/api/member/profile' && !init?.method) return new Response(JSON.stringify({ ok: true, data: { profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profile' && !init?.method) return new Response(JSON.stringify({ ok: true, data: { profile, photoWall: [{ id: 'photo-old', url: '/api/member/profile-photos/photo-old/content', createdAt: '2026-08-01T00:00:00.000Z' }] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/profile' && init?.method === 'PATCH') return new Response(JSON.stringify({ ok: true, data: { updated: true, profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       if (path === '/api/member/profile/avatar' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { avatarUrl: '/api/public/avatars/user-member?v=2' } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profile/cover' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { coverUrl: '/api/member/profile-covers/user-member?v=2' } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profile/photos' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { photo: { id: 'photo-new', url: '/api/member/profile-photos/photo-new/content', createdAt: '2026-08-09T00:00:00.000Z' } } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profile/photos/photo-old' && init?.method === 'DELETE') return new Response(JSON.stringify({ ok: true, data: { deleted: true } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -440,14 +447,22 @@ describe('Adventurer Guild app', () => {
     await user.type(screen.getByLabelText(/^账号 ID/), '白羽_2026');
     await user.clear(screen.getByLabelText('技能标签'));
     await user.type(screen.getByLabelText('技能标签'), '摄影, 后期, 活动协作');
+    await user.clear(screen.getByLabelText('个性签名'));
+    await user.type(screen.getByLabelText('个性签名'), '周末一起去拍正片吧。');
     await user.upload(screen.getByLabelText(/上传头像/), new File(['avatar'], 'avatar.png', { type: 'image/png' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/profile/avatar', expect.objectContaining({ method: 'POST', body: expect.any(FormData) })));
     expect(await screen.findByRole('img', { name: '我的头像' })).toHaveAttribute('src', '/api/public/avatars/user-member?v=2');
+    await user.upload(screen.getByLabelText(/上传主页封面/), new File(['cover'], 'cover.png', { type: 'image/png' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/profile/cover', expect.objectContaining({ method: 'POST', body: expect.any(FormData) })));
+    await user.upload(screen.getByLabelText(/添加照片墙照片/), new File(['memory'], 'memory.png', { type: 'image/png' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/profile/photos', expect.objectContaining({ method: 'POST', body: expect.any(FormData) })));
+    await user.click(screen.getByRole('button', { name: '删除照片 1' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/profile/photos/photo-old', expect.objectContaining({ method: 'DELETE' })));
     await user.selectOptions(screen.getByLabelText('主页可见范围'), 'PRIVATE');
     await user.click(screen.getByRole('button', { name: '保存个人主页' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/profile', expect.objectContaining({ method: 'PATCH' })));
     const patchCall = fetchMock.mock.calls.find(([path, init]) => path === '/api/member/profile' && init?.method === 'PATCH');
-    expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({ uid: '白羽_2026', guildTitle: '银翼记录官', skills: ['摄影', '后期', '活动协作'], profileVisibility: 'PRIVATE' });
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({ uid: '白羽_2026', guildTitle: '银翼记录官', signature: '周末一起去拍正片吧。', skills: ['摄影', '后期', '活动协作'], profileVisibility: 'PRIVATE' });
   });
 
   it('changes a Chinese login username and password from the profile editor', async () => {

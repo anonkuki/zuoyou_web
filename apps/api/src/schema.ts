@@ -10,11 +10,17 @@ export const departments = sqliteTable('departments', {
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(), uid: text('uid').notNull().unique(), username: text('username').unique(), passwordHash: text('password_hash'), displayName: text('display_name').notNull(),
   email: text('email').notNull().unique(), role: text('role').notNull(), departmentId: text('department_id').references(() => departments.id),
-  bio: text('bio').notNull().default(''), guildTitle: text('guild_title').notNull().default(''), college: text('college').notNull().default(''), grade: text('grade').notNull().default(''),
+  bio: text('bio').notNull().default(''), signature: text('signature').notNull().default(''), guildTitle: text('guild_title').notNull().default(''), college: text('college').notNull().default(''), grade: text('grade').notNull().default(''),
   skills: text('skills').notNull().default('[]'), interests: text('interests').notNull().default('[]'), attributes: text('attributes').notNull().default('[]'), avatarColor: text('avatar_color').notNull().default('#2f6f64'),
-  profileVisibility: text('profile_visibility').notNull().default('MEMBERS'), lastSeenAt: text('last_seen_at'), avatarConfig: text('avatar_config'), avatarStorageKey: text('avatar_storage_key'),
+  profileVisibility: text('profile_visibility').notNull().default('MEMBERS'), lastSeenAt: text('last_seen_at'), avatarConfig: text('avatar_config'), avatarStorageKey: text('avatar_storage_key'), profileCoverStorageKey: text('profile_cover_storage_key'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
+
+export const profilePhotos = sqliteTable('profile_photos', {
+  id: text('id').primaryKey(), ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  storageKey: text('storage_key').notNull().unique(), mimeType: text('mime_type').notNull(), size: integer('size').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0), createdAt: utcText('created_at'),
+}, (table) => [index('profile_photos_owner_order_idx').on(table.ownerId, table.sortOrder, table.createdAt)]);
 
 export const pageUploads = sqliteTable('page_uploads', {
   id: text('id').primaryKey(), pageKey: text('page_key').notNull(), ownerId: text('owner_id').notNull().references(() => users.id),
@@ -176,4 +182,4 @@ export const auditLogs = sqliteTable('audit_logs', {
   id: text('id').primaryKey(), actorId: text('actor_id').references(() => users.id), targetUserId: text('target_user_id').references(() => users.id), action: text('action').notNull(), entityType: text('entity_type').notNull(), entityId: text('entity_id').notNull(), details: text('details'), createdAt: utcText('created_at'),
 }, (table) => [uniqueIndex('contribution_event_unique').on(table.action, table.entityType, table.entityId, table.targetUserId)]);
 
-export const schema = { departments, users, pageUploads, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, registrationRequests, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postPlacements, postVotes, postAssets, postComments, postRevisions, areaMessages, auditLogs };
+export const schema = { departments, users, profilePhotos, pageUploads, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, registrationRequests, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postPlacements, postVotes, postAssets, postComments, postRevisions, areaMessages, auditLogs };

@@ -4,7 +4,8 @@ const qaRoot = 'artifacts/qa';
 
 async function loginDemo(page: Page, role: '负责人' | '成员') {
   await page.goto('/login');
-  await page.getByRole('button', { name: role === '负责人' ? '部长' : '成员', exact: true }).click();
+  await page.getByLabel('用户名').fill(role === '负责人' ? 'cos.lead' : 'cos.member');
+  await page.getByLabel('密码').fill(role === '负责人' ? 'DemoLead!2026' : 'DemoMember!2026');
   await page.getByRole('button', { name: '登录公会' }).click();
   await expect(page).toHaveURL(role === '成员' ? /\/portal$/ : /\/admin\/activities$/);
 }
@@ -37,6 +38,7 @@ test('成员捏脸配置可保存并在刷新后回读', async ({ page }) => {
 });
 
 test('成员主页、成员发现与双账号聊天形成真实闭环', async ({ page }) => {
+  test.setTimeout(90_000);
   const consoleErrors: string[] = [];
   page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -47,6 +49,7 @@ test('成员主页、成员发现与双账号聊天形成真实闭环', async ({
   await page.getByLabel('公会头衔').fill('星灯记录员');
   await page.getByLabel('学院').fill('艺术设计学院');
   await page.getByLabel('年级').fill('2025级');
+  await page.getByLabel('个性签名').fill('今天也在认真准备下一次活动。');
   await page.getByLabel('技能标签').fill('角色塑造, 道具整理, 活动协作');
   await page.getByLabel('兴趣标签').fill('动画, 摄影, 舞台演出');
   await page.getByRole('button', { name: '保存个人主页' }).click();
@@ -62,7 +65,11 @@ test('成员主页、成员发现与双账号聊天形成真实闭环', async ({
   await expect(page.getByRole('heading', { name: '绯月幻装师' })).toBeVisible();
   await expect(page.getByText('数字媒体学院')).toBeVisible();
   await page.screenshot({ path: `${qaRoot}/member-homepage-1440x900.png`, fullPage: true });
-  await page.getByRole('button', { name: '发起私聊' }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.screenshot({ path: `${qaRoot}/member-homepage-mobile-390x844.png`, fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole('button', { name: '给 绯月幻装师 发消息' }).click();
   await expect(page).toHaveURL(/\/portal\/chat\?conversation=/);
 
   await expect(page.getByRole('heading', { name: '公会通讯', exact: true })).toBeVisible();

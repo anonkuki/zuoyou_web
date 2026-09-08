@@ -822,7 +822,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
   app.get('/api/member/profile', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
-    return successResponse({ profile: social.getMemberHomepage(principal, principal.id).profile });
+    return successResponse(social.getMemberHomepage(principal, principal.id));
   });
   app.patch('/api/member/profile', async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
@@ -864,6 +864,97 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const mimeType = ({ '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' } as Record<string, string>)[extname(filePath).toLowerCase()] ?? 'application/octet-stream';
     reply.type(mimeType).header('Cache-Control', 'public, max-age=3600').header('X-Content-Type-Options', 'nosniff');
     return reply.send(createReadStream(filePath));
+  });
+
+  const imageExtensions: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+  const assertProfileVisible = (principal: Principal, ownerId: string): void => {
+    const owner = sqlite.prepare('SELECT profile_visibility FROM users WHERE id=? AND is_active=1').get(ownerId) as { profile_visibility: 'MEMBERS' | 'PRIVATE' } | undefined;
+    if (!owner || (owner.profile_visibility === 'PRIVATE' && ownerId !== principal.id && !isExecutiveRole(principal.role))) throw new HttpError(404, 'NOT_FOUND', '成员主页不可见');
+  };
+  const protectedImage = async (reply: FastifyReply, storageKey: string, mimeType: string) => {
+    const uploadRoot = resolve(options.uploadRoot);
+    const filePath = resolve(uploadRoot, storageKey);
+    if (!filePath.startsWith(`${uploadRoot}${sep}`)) throw new HttpError(400, 'INVALID_STORAGE_KEY', '图片路径无效');
+    await stat(filePath).catch(() => { throw new HttpError(404, 'NOT_FOUND', '图片不存在'); });
+    reply.type(mimeType).header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff');
+    return reply.send(createReadStream(filePath));
+  };
+
+  app.post('/api/member/profile/cover', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const part = await request.file();
+    if (!part) throw new HttpError(400, 'FILE_REQUIRED', '请选择主页封面');
+    const extension = imageExtensions[part.mimetype];
+    if (!extension) throw new HttpError(415, 'INVALID_IMAGE_TYPE', '封面仅支持 JPG、PNG、WebP 或 GIF 图片');
+    const storageKey = `profile-covers/${principal.id}-${randomUUID()}${extension}`;
+    const filePath = resolve(options.uploadRoot, storageKey);
+    await mkdir(resolve(options.uploadRoot, 'profile-covers'), { recursive: true });
+    await pipeline(part.file, createWriteStream(filePath, { flags: 'wx' }));
+    const info = await stat(filePath);
+    if (part.file.truncated || info.size > 10 * 1024 * 1024) { await unlink(filePath); throw new HttpError(413, 'IMAGE_TOO_LARGE', '主页封面不能超过 10MB'); }
+    const previous = sqlite.prepare('SELECT profile_cover_storage_key FROM users WHERE id=?').get(principal.id) as { profile_cover_storage_key: string | null };
+    const timestamp = now();
+    sqlite.prepare('UPDATE users SET profile_cover_storage_key=?,updated_at=? WHERE id=?').run(storageKey, timestamp, principal.id);
+    if (previous.profile_cover_storage_key) {
+      const previousPath = resolve(options.uploadRoot, previous.profile_cover_storage_key);
+      if (previousPath.startsWith(`${resolve(options.uploadRoot)}${sep}`)) await unlink(previousPath).catch(() => undefined);
+    }
+    audit(sqlite, principal.id, 'PROFILE_COVER_UPDATED', 'user', principal.id, principal.id, { size: info.size });
+    return reply.status(201).send(successResponse({ coverUrl: `/api/member/profile-covers/${principal.id}?v=${encodeURIComponent(timestamp)}` }));
+  });
+
+  app.get('/api/member/profile-covers/:userId', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const ownerId = (request.params as { userId: string }).userId;
+    assertProfileVisible(principal, ownerId);
+    const cover = sqlite.prepare('SELECT profile_cover_storage_key FROM users WHERE id=?').get(ownerId) as { profile_cover_storage_key: string | null } | undefined;
+    if (!cover?.profile_cover_storage_key) throw new HttpError(404, 'NOT_FOUND', '该成员尚未上传主页封面');
+    const storageKey = cover.profile_cover_storage_key;
+    const mimeType = Object.entries(imageExtensions).find(([, extension]) => extension === extname(storageKey).toLowerCase())?.[0] ?? 'application/octet-stream';
+    return protectedImage(reply, storageKey, mimeType);
+  });
+
+  app.post('/api/member/profile/photos', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const count = (sqlite.prepare('SELECT COUNT(*) count FROM profile_photos WHERE owner_id=?').get(principal.id) as { count: number }).count;
+    if (count >= 12) throw new HttpError(409, 'PHOTO_WALL_FULL', '照片墙最多保存 12 张照片');
+    const part = await request.file();
+    if (!part) throw new HttpError(400, 'FILE_REQUIRED', '请选择照片');
+    const extension = imageExtensions[part.mimetype];
+    if (!extension) throw new HttpError(415, 'INVALID_IMAGE_TYPE', '照片仅支持 JPG、PNG、WebP 或 GIF 图片');
+    const id = newId('photo');
+    const storageKey = `profile-photos/${principal.id}/${id}${extension}`;
+    const filePath = resolve(options.uploadRoot, storageKey);
+    await mkdir(resolve(options.uploadRoot, `profile-photos/${principal.id}`), { recursive: true });
+    await pipeline(part.file, createWriteStream(filePath, { flags: 'wx' }));
+    const info = await stat(filePath);
+    if (part.file.truncated || info.size > 10 * 1024 * 1024) { await unlink(filePath); throw new HttpError(413, 'IMAGE_TOO_LARGE', '单张照片不能超过 10MB'); }
+    const createdAt = now();
+    sqlite.prepare('INSERT INTO profile_photos(id,owner_id,storage_key,mime_type,size,sort_order,created_at) VALUES (?,?,?,?,?,?,?)').run(id, principal.id, storageKey, part.mimetype, info.size, count, createdAt);
+    audit(sqlite, principal.id, 'PROFILE_PHOTO_ADDED', 'profile_photo', id, principal.id, { size: info.size });
+    return reply.status(201).send(successResponse({ photo: { id, url: `/api/member/profile-photos/${id}/content`, createdAt } }));
+  });
+
+  app.get('/api/member/profile-photos/:id/content', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const photo = sqlite.prepare('SELECT owner_id,storage_key,mime_type FROM profile_photos WHERE id=?').get(id) as { owner_id: string; storage_key: string; mime_type: string } | undefined;
+    if (!photo) throw new HttpError(404, 'NOT_FOUND', '照片不存在');
+    assertProfileVisible(principal, photo.owner_id);
+    return protectedImage(reply, photo.storage_key, photo.mime_type);
+  });
+
+  app.delete('/api/member/profile/photos/:id', async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const photo = sqlite.prepare('SELECT owner_id,storage_key FROM profile_photos WHERE id=?').get(id) as { owner_id: string; storage_key: string } | undefined;
+    if (!photo) throw new HttpError(404, 'NOT_FOUND', '照片不存在');
+    if (photo.owner_id !== principal.id) throw new HttpError(403, 'FORBIDDEN', '只能删除自己照片墙中的照片');
+    sqlite.prepare('DELETE FROM profile_photos WHERE id=?').run(id);
+    const filePath = resolve(options.uploadRoot, photo.storage_key);
+    if (filePath.startsWith(`${resolve(options.uploadRoot)}${sep}`)) await unlink(filePath).catch(() => undefined);
+    audit(sqlite, principal.id, 'PROFILE_PHOTO_DELETED', 'profile_photo', id, principal.id);
+    return successResponse({ deleted: true });
   });
 
   app.get('/api/member/directory', async (request, reply) => {

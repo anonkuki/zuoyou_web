@@ -182,4 +182,14 @@ export const auditLogs = sqliteTable('audit_logs', {
   id: text('id').primaryKey(), actorId: text('actor_id').references(() => users.id), targetUserId: text('target_user_id').references(() => users.id), action: text('action').notNull(), entityType: text('entity_type').notNull(), entityId: text('entity_id').notNull(), details: text('details'), createdAt: utcText('created_at'),
 }, (table) => [uniqueIndex('contribution_event_unique').on(table.action, table.entityType, table.entityId, table.targetUserId)]);
 
-export const schema = { departments, users, profilePhotos, pageUploads, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, registrationRequests, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postPlacements, postVotes, postAssets, postComments, postRevisions, areaMessages, auditLogs };
+export const rafflePrizes = sqliteTable('raffle_prizes', {
+  id: text('id').primaryKey(), tier: integer('tier').notNull().unique(), name: text('name').notNull(), contents: text('contents').notNull(),
+  initialStock: integer('initial_stock').notNull(), remainingStock: integer('remaining_stock').notNull(), accent: text('accent').notNull(), sortOrder: integer('sort_order').notNull().default(0), updatedAt: utcText('updated_at'),
+});
+
+export const raffleDraws = sqliteTable('raffle_draws', {
+  id: text('id').primaryKey(), prizeId: text('prize_id').notNull().references(() => rafflePrizes.id), operatorId: text('operator_id').notNull().references(() => users.id),
+  prizeName: text('prize_name').notNull(), prizeContents: text('prize_contents').notNull(), drawnAt: utcText('drawn_at'),
+}, (table) => [index('raffle_draws_time_idx').on(table.drawnAt, table.id), index('raffle_draws_operator_idx').on(table.operatorId, table.drawnAt)]);
+
+export const schema = { departments, users, profilePhotos, pageUploads, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, registrationRequests, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postPlacements, postVotes, postAssets, postComments, postRevisions, areaMessages, auditLogs, rafflePrizes, raffleDraws };

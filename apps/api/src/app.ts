@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { copyFile, mkdir, stat, unlink } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
@@ -313,6 +313,47 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       return null;
     }
     return principal;
+  }
+
+  interface RafflePrizeRow {
+    id: string;
+    tier: number;
+    name: string;
+    contents: string;
+    initial_stock: number;
+    remaining_stock: number;
+    accent: string;
+  }
+
+  const rafflePrize = (row: RafflePrizeRow) => ({
+    id: row.id,
+    tier: row.tier,
+    name: row.name,
+    contents: row.contents,
+    initialStock: row.initial_stock,
+    remainingStock: row.remaining_stock,
+    accent: row.accent,
+  });
+
+  function raffleState(principal: Principal) {
+    const prizes = (sqlite.prepare('SELECT id,tier,name,contents,initial_stock,remaining_stock,accent FROM raffle_prizes ORDER BY sort_order').all() as RafflePrizeRow[]).map(rafflePrize);
+    const recentDraws = (sqlite.prepare(`SELECT rd.id,rd.prize_id,rd.prize_name,rd.prize_contents,rd.operator_id,rd.drawn_at,u.display_name operator_display_name
+      FROM raffle_draws rd JOIN users u ON u.id=rd.operator_id ORDER BY rd.drawn_at DESC,rd.id DESC LIMIT 8`).all() as Array<Record<string, string>>).map((row) => ({
+      id: row.id,
+      prizeId: row.prize_id,
+      prizeName: row.prize_name,
+      prizeContents: row.prize_contents,
+      operatorId: row.operator_id,
+      operatorDisplayName: row.operator_display_name,
+      drawnAt: row.drawn_at,
+    }));
+    return {
+      prizes,
+      totalInitial: prizes.reduce((total, prize) => total + prize.initialStock, 0),
+      totalRemaining: prizes.reduce((total, prize) => total + prize.remainingStock, 0),
+      recentDraws,
+      canReset: isExecutiveRole(principal.role),
+    };
   }
 
   function scopeDepartment(principal: Principal, departmentId: string): void {
@@ -819,6 +860,47 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       audit(sqlite, principal.id, 'PASSWORD_CHANGED', 'user', principal.id, principal.id, { revokedSessions });
     })();
     return successResponse({ updated: true, revokedSessions });
+  });
+
+  app.get('/api/admin/raffle', async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    return successResponse(raffleState(principal));
+  });
+
+  app.post('/api/admin/raffle/draw', { config: { rateLimit: { max: 600, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const principal = requireManager(request, reply); if (!principal) return;
+    const draw = sqlite.transaction(() => {
+      const prizes = sqlite.prepare('SELECT id,tier,name,contents,initial_stock,remaining_stock,accent FROM raffle_prizes WHERE remaining_stock>0 ORDER BY sort_order').all() as RafflePrizeRow[];
+      const totalRemaining = prizes.reduce((total, prize) => total + prize.remaining_stock, 0);
+      if (totalRemaining === 0) throw new HttpError(409, 'RAFFLE_EMPTY', '奖池已经抽完了');
+      const ticket = randomInt(totalRemaining);
+      let cursor = 0;
+      const selected = prizes.find((prize) => {
+        cursor += prize.remaining_stock;
+        return ticket < cursor;
+      });
+      if (!selected) throw new HttpError(409, 'RAFFLE_RETRY', '本次摇奖未完成，请再试一次');
+      const timestamp = now();
+      const updated = sqlite.prepare('UPDATE raffle_prizes SET remaining_stock=remaining_stock-1,updated_at=? WHERE id=? AND remaining_stock>0').run(timestamp, selected.id);
+      if (updated.changes !== 1) throw new HttpError(409, 'RAFFLE_RETRY', '奖池刚刚发生变化，请再试一次');
+      const id = newId('raffle-draw');
+      sqlite.prepare('INSERT INTO raffle_draws(id,prize_id,operator_id,prize_name,prize_contents,drawn_at) VALUES (?,?,?,?,?,?)')
+        .run(id, selected.id, principal.id, selected.name, selected.contents, timestamp);
+      audit(sqlite, principal.id, 'RAFFLE_DRAWN', 'raffle_draw', id, null, { prizeId: selected.id, prizeName: selected.name });
+      return { id, prizeId: selected.id, prizeName: selected.name, prizeContents: selected.contents, operatorId: principal.id, operatorDisplayName: principal.displayName, drawnAt: timestamp };
+    })();
+    return successResponse({ ...raffleState(principal), draw });
+  });
+
+  app.post('/api/admin/raffle/reset', async (request, reply) => {
+    const principal = requireAdmin(request, reply); if (!principal) return;
+    const body = parse(z.object({ confirm: z.literal('RESET_RAFFLE') }), request.body);
+    sqlite.transaction(() => {
+      sqlite.prepare('DELETE FROM raffle_draws').run();
+      sqlite.prepare('UPDATE raffle_prizes SET remaining_stock=initial_stock,updated_at=?').run(now());
+      audit(sqlite, principal.id, 'RAFFLE_RESET', 'raffle', 'manager-raffle', null, body);
+    })();
+    return successResponse(raffleState(principal));
   });
 
   app.get('/api/member/profile', async (request, reply) => {

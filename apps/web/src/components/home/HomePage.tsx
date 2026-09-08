@@ -13,6 +13,7 @@ import { isExecutiveRole } from '@guild/contracts';
 import { useAuth } from '../../auth';
 import { PageContentSurface } from '../page-content/PageContentSurface';
 import { homePageSections } from '../../pages-page-editor';
+import { ManagerRaffle } from './ManagerRaffle';
 
 export function HomePage() {
   const [speaker, setSpeaker] = useState<SceneSpeaker | null>(null);
@@ -24,6 +25,7 @@ export function HomePage() {
     <div className="page-section-boundary" id="home-story"><GuildScrollStory /></div>
     <div className="page-section-boundary" id="home-social"><HomeSocialOutposts /></div>
     <div className="page-section-boundary" id="home-tavern"><BlogPostBoard compact sections={['pinned', 'latest']} title="冒险者酒馆" /></div>
+    <ManagerRaffle />
     <section className="home-entry-zone" id="home-entry">
       <header className="entry-zone-heading">
         <small>WELCOME TO SAYUU</small>

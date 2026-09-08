@@ -137,6 +137,17 @@ describe('production seed safety', () => {
       expect(conversation.title).toBe('外宣&幻想研协作频道');
     });
   });
+
+  it('migrates the manager raffle with the exact event prize inventory', async () => {
+    await withDevelopmentSeed(async (sqlite) => {
+      const prizes = sqlite.prepare('SELECT id,tier,name,contents,initial_stock,remaining_stock FROM raffle_prizes ORDER BY tier DESC').all();
+      expect(prizes).toEqual([
+        { id: 'raffle-third', tier: 3, name: '三等奖', contents: '挂件', initial_stock: 250, remaining_stock: 250 },
+        { id: 'raffle-second', tier: 2, name: '二等奖', contents: '透卡', initial_stock: 40, remaining_stock: 40 },
+        { id: 'raffle-first', tier: 1, name: '一等奖', contents: '挂件 + 透卡 + 卡套', initial_stock: 10, remaining_stock: 10 },
+      ]);
+    });
+  });
 });
 
 describe.sequential('Adventurer Guild API', () => {
@@ -346,6 +357,42 @@ describe.sequential('Adventurer Guild API', () => {
     expect(logout.statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } })).statusCode).toBe(401);
     memberCookie = await login(app, 'cos.member', 'DemoMember!2026');
+  });
+
+  it('runs a manager-only atomic raffle and protects the reset control', async () => {
+    const viceCookie = await login(app, 'vice.president', 'DemoVice!2026');
+    const deputyCookie = await login(app, 'cos.deputy', 'DemoDeputy!2026');
+    expect((await app.inject({ method: 'GET', url: '/api/admin/raffle' })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/api/admin/raffle', headers: { cookie: memberCookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/raffle/draw', headers: { cookie: memberCookie } })).statusCode).toBe(403);
+    for (const cookie of [adminCookie, viceCookie, leadCookie, deputyCookie]) {
+      const state = await app.inject({ method: 'GET', url: '/api/admin/raffle', headers: { cookie } });
+      expect(state.statusCode).toBe(200);
+      expect(state.json().data).toMatchObject({ totalInitial: 300, totalRemaining: 300 });
+    }
+
+    const drawn = await app.inject({ method: 'POST', url: '/api/admin/raffle/draw', headers: { cookie: leadCookie } });
+    expect(drawn.statusCode).toBe(200);
+    expect(drawn.json().data).toMatchObject({
+      totalRemaining: 299,
+      draw: { id: expect.any(String), prizeId: expect.stringMatching(/^raffle-/), prizeName: expect.stringMatching(/等奖$/), operatorId: 'user-lead' },
+    });
+    const database = await openDatabase(`${root}/guild.sqlite`);
+    try {
+      expect((database.sqlite.prepare('SELECT SUM(remaining_stock) total FROM raffle_prizes').get() as { total: number }).total).toBe(299);
+      expect(database.sqlite.prepare('SELECT operator_id FROM raffle_draws WHERE id=?').get(drawn.json().data.draw.id)).toEqual({ operator_id: 'user-lead' });
+      database.sqlite.prepare('UPDATE raffle_prizes SET remaining_stock=0').run();
+    } finally {
+      database.sqlite.close();
+    }
+    const empty = await app.inject({ method: 'POST', url: '/api/admin/raffle/draw', headers: { cookie: leadCookie } });
+    expect(empty.statusCode).toBe(409);
+    expect(empty.json().error.code).toBe('RAFFLE_EMPTY');
+    expect((await app.inject({ method: 'POST', url: '/api/admin/raffle/reset', headers: { cookie: leadCookie }, payload: { confirm: 'RESET_RAFFLE' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/api/admin/raffle/reset', headers: { cookie: adminCookie }, payload: { confirm: 'wrong' } })).statusCode).toBe(400);
+    const reset = await app.inject({ method: 'POST', url: '/api/admin/raffle/reset', headers: { cookie: adminCookie }, payload: { confirm: 'RESET_RAFFLE' } });
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json().data).toMatchObject({ totalInitial: 300, totalRemaining: 300, recentDraws: [] });
   });
 
   it('lets members change to a unique Chinese username with their current password', async () => {

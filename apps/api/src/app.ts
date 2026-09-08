@@ -724,9 +724,10 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   });
 
   const usernameSchema = z.string().trim().regex(/^[\p{L}\p{N}._-]{2,40}$/u, '用户名需为 2-40 位中文、字母、数字、点、下划线或连字符');
+  const passwordSchema = z.string().min(6).max(200);
   const registrationRequestSchema = z.object({
     username: usernameSchema,
-    password: z.string().min(10).max(200),
+    password: passwordSchema,
     contact: z.string().trim().min(3).max(160),
     note: z.string().trim().max(1000).default(''),
   });
@@ -744,7 +745,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return reply.status(201).send(successResponse({ id, status: 'PENDING' }));
   });
 
-  const loginSchema = z.object({ username: z.string().trim().min(1), password: z.string().min(8).max(200) });
+  const loginSchema = z.object({ username: z.string().trim().min(1), password: passwordSchema });
   app.post('/api/auth/login', { config: { rateLimit: { max: options.production ? 10 : 100, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const body = parse(loginSchema, request.body);
     const user = sqlite.prepare('SELECT * FROM users WHERE username=?').get(body.username) as UserRow | undefined;
@@ -768,7 +769,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ user: principal });
   });
   app.get('/api/auth/session', async (request) => successResponse({ user: principalFor(request) }));
-  const activateSchema = z.object({ token: z.string().min(20), username: usernameSchema, password: z.string().min(10).max(200) });
+  const activateSchema = z.object({ token: z.string().min(20), username: usernameSchema, password: passwordSchema });
   app.post('/api/auth/activate', { config: { rateLimit: { max: 8, timeWindow: '1 hour' } } }, async (request) => {
     const body = parse(activateSchema, request.body);
     const tokenHash = sha256(body.token);
@@ -789,7 +790,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ activated: true });
   });
 
-  const currentPasswordSchema = z.string().min(8).max(200);
+  const currentPasswordSchema = passwordSchema;
   app.patch('/api/member/account/username', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
     const body = parse(z.object({ username: usernameSchema, currentPassword: currentPasswordSchema }), request.body);
@@ -805,7 +806,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
   app.patch('/api/member/account/password', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (request, reply) => {
     const principal = requireMember(request, reply); if (!principal) return;
-    const body = parse(z.object({ currentPassword: currentPasswordSchema, newPassword: z.string().min(10).max(200) }), request.body);
+    const body = parse(z.object({ currentPassword: currentPasswordSchema, newPassword: passwordSchema }), request.body);
     const account = sqlite.prepare('SELECT password_hash FROM users WHERE id=?').get(principal.id) as { password_hash: string | null } | undefined;
     if (!account?.password_hash || !await verifyPassword(body.currentPassword, account.password_hash)) throw new HttpError(401, 'INVALID_CURRENT_PASSWORD', '当前密码错误');
     const passwordHash = await hashPassword(body.newPassword);

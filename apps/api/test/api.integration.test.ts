@@ -364,19 +364,19 @@ describe.sequential('Adventurer Guild API', () => {
 
   it('changes passwords and revokes other sessions while retaining the current session', async () => {
     const otherCookie = await login(app, 'cos.member', 'DemoMember!2026');
-    const changed = await app.inject({ method: 'PATCH', url: '/api/member/account/password', headers: { cookie: memberCookie }, payload: { currentPassword: 'DemoMember!2026', newPassword: 'NewDemoMember!2026' } });
+    const changed = await app.inject({ method: 'PATCH', url: '/api/member/account/password', headers: { cookie: memberCookie }, payload: { currentPassword: 'DemoMember!2026', newPassword: 'Ab12!x' } });
     expect(changed.statusCode).toBe(200);
     expect(changed.json().data.revokedSessions).toBeGreaterThanOrEqual(1);
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: otherCookie } })).statusCode).toBe(401);
     expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { username: 'cos.member', password: 'DemoMember!2026' } })).statusCode).toBe(401);
-    expect(await login(app, 'cos.member', 'NewDemoMember!2026')).toContain('guild_session=');
+    expect(await login(app, 'cos.member', 'Ab12!x')).toContain('guild_session=');
     expect((await app.inject({ method: 'PATCH', url: '/api/member/account/password', headers: { cookie: memberCookie }, payload: { currentPassword: 'wrong-password', newPassword: 'AnotherPass!2026' } })).statusCode).toBe(401);
 
     const database = await openDatabase(`${root}/guild.sqlite`);
     expect((database.sqlite.prepare("SELECT COUNT(*) count FROM audit_logs WHERE actor_id='user-member' AND action='PASSWORD_CHANGED'").get() as { count: number }).count).toBe(1);
     database.sqlite.close();
-    expect((await app.inject({ method: 'PATCH', url: '/api/member/account/password', headers: { cookie: memberCookie }, payload: { currentPassword: 'NewDemoMember!2026', newPassword: 'DemoMember!2026' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'PATCH', url: '/api/member/account/password', headers: { cookie: memberCookie }, payload: { currentPassword: 'Ab12!x', newPassword: 'DemoMember!2026' } })).statusCode).toBe(200);
   });
 
   it('keeps a deputy account and its management role after changing username and password', async () => {
@@ -530,7 +530,11 @@ describe.sequential('Adventurer Guild API', () => {
   });
 
   it('lets guests request accounts and limits approval data and actions to the president layer', async () => {
-    const password = 'GuestStrong!2026';
+    const password = 'Ab12!x';
+    const tooShort = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
+      username: '短密码访客', password: 'Ab1!x', contact: '13800000000', note: '',
+    } });
+    expect(tooShort.statusCode).toBe(400);
     const submitted = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
       username: '星砂访客', password, contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。',
     } });

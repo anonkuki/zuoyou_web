@@ -173,8 +173,8 @@ export function ProfileEditorPage() {
         <form className="profile-editor" onSubmit={(event) => { event.preventDefault(); setAccountMessage(''); passwordMutation.mutate(); }}>
           <div className="editor-section">
             <label>当前密码（修改密码）<input required type="password" autoComplete="current-password" value={account.currentPassword} onChange={(event) => setAccount({ ...account, currentPassword: event.target.value })} /></label>
-            <label>新密码<input required type="password" minLength={10} autoComplete="new-password" value={account.newPassword} onChange={(event) => setAccount({ ...account, newPassword: event.target.value })} /></label>
-            <label>确认新密码<input required type="password" minLength={10} autoComplete="new-password" value={account.confirmPassword} onChange={(event) => setAccount({ ...account, confirmPassword: event.target.value })} /></label>
+            <label>新密码<input required type="password" minLength={6} autoComplete="new-password" value={account.newPassword} onChange={(event) => setAccount({ ...account, newPassword: event.target.value })} /></label>
+            <label>确认新密码<input required type="password" minLength={6} autoComplete="new-password" value={account.confirmPassword} onChange={(event) => setAccount({ ...account, confirmPassword: event.target.value })} /></label>
             {passwordMutation.error && <p className="form-error">{passwordMutation.error.message}</p>}
           </div>
           <button className="guild-button primary" disabled={passwordMutation.isPending}>修改密码</button>

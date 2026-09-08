@@ -90,6 +90,7 @@ describe('Adventurer Guild app', () => {
     const fetchMock = vi.mocked(fetch);
     renderAt('/login?mode=register');
     expect(await screen.findByRole('tab', { name: '注册' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByLabelText('密码')).toHaveAttribute('minlength', '6');
     await user.type(screen.getByLabelText('注册用户名（支持中文）'), '星砂成员');
     await user.type(screen.getByLabelText('密码'), 'NewMember!2026');
     await user.type(screen.getByLabelText('联系方式'), 'new.member@example.test');
@@ -488,6 +489,8 @@ describe('Adventurer Guild app', () => {
     expect(await screen.findByText('用户名已更新')).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('当前密码（修改密码）'), 'DemoMember!2026');
+    expect(screen.getByLabelText('新密码')).toHaveAttribute('minlength', '6');
+    expect(screen.getByLabelText('确认新密码')).toHaveAttribute('minlength', '6');
     await user.type(screen.getByLabelText('新密码'), 'NewDemoMember!2026');
     await user.type(screen.getByLabelText('确认新密码'), 'NewDemoMember!2026');
     await user.click(screen.getByRole('button', { name: '修改密码' }));

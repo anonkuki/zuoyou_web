@@ -294,9 +294,9 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
   const existing = sqlite.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number };
   if (existing.count > 0) {
     if (options.production) {
-      const demoAccount = sqlite.prepare("SELECT 1 FROM users WHERE username IN ('admin','cos.lead','cos.member') AND (username!='admin' OR email='admin@guild.example') LIMIT 1").get();
+      const developmentAdmin = sqlite.prepare("SELECT 1 FROM users WHERE username='admin' AND email='admin@guild.example' LIMIT 1").get();
       const seedProfile = sqlite.prepare("SELECT value FROM site_settings WHERE key='seedProfile'").get() as { value: string } | undefined;
-      if (demoAccount || seedProfile?.value === 'development') throw new Error('Refusing production startup: development demo credentials detected in existing database');
+      if (developmentAdmin || seedProfile?.value === 'development') throw new Error('Refusing production startup: development demo credentials detected in existing database');
     }
     if (!options.production) {
       const timestamp = new Date().toISOString();

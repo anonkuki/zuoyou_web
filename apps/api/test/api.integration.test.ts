@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { openDatabase, seedDatabase } from '../src/database.js';
+import { hashPassword } from '../src/security.js';
 
 const tempRoot = 'D:/Temp/guild-api-';
 
@@ -57,6 +58,25 @@ describe('production seed safety', () => {
       await seedDatabase(sqlite, options);
       await expect(seedDatabase(sqlite, options)).resolves.toBeUndefined();
       expect((sqlite.prepare("SELECT email FROM users WHERE username='admin'").get() as { email: string }).email).not.toBe('admin@guild.example');
+    } finally {
+      sqlite.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('allows explicitly provisioned lead and member login names to survive a production restart', async () => {
+    const root = await mkdtemp('D:/Temp/guild-production-managed-accounts-');
+    const { sqlite } = await openDatabase(`${root}/guild.sqlite`);
+    try {
+      const options = { production: true, adminPassword: 'ProductionAdmin!2026' };
+      await seedDatabase(sqlite, options);
+      const timestamp = new Date().toISOString();
+      sqlite.prepare('UPDATE users SET username=?,password_hash=?,updated_at=? WHERE id=?')
+        .run('cos.lead', await hashPassword('ConfiguredLead!2026'), timestamp, 'user-lead');
+      sqlite.prepare('UPDATE users SET username=?,password_hash=?,updated_at=? WHERE id=?')
+        .run('cos.member', await hashPassword('ConfiguredMember!2026'), timestamp, 'user-member');
+
+      await expect(seedDatabase(sqlite, options)).resolves.toBeUndefined();
     } finally {
       sqlite.close();
       await rm(root, { recursive: true, force: true });

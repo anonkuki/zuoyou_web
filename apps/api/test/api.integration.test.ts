@@ -339,6 +339,7 @@ describe.sequential('Adventurer Guild API', () => {
     expect(dashboard.json().data).toMatchObject({
       members: 112,
       pendingApplications: expect.any(Number),
+      pendingRegistrations: expect.any(Number),
       activeActivities: expect.any(Number),
       publishedWorks: expect.any(Number),
     });
@@ -613,6 +614,7 @@ describe.sequential('Adventurer Guild API', () => {
 
   it('lets guests request accounts and limits approval data and actions to the president layer', async () => {
     const password = 'Ab12!x';
+    const pendingBefore = (await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: adminCookie } })).json().data.pendingRegistrations as number;
     const tooShort = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
       username: '短密码访客', password: 'Ab1!x', contact: '13800000000', note: '',
     } });
@@ -622,6 +624,8 @@ describe.sequential('Adventurer Guild API', () => {
     } });
     expect(submitted.statusCode).toBe(201);
     const requestId = submitted.json().data.id as string;
+    const pendingAfterSubmit = (await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: adminCookie } })).json().data.pendingRegistrations as number;
+    expect(pendingAfterSubmit).toBe(pendingBefore + 1);
 
     const database = await openDatabase(`${root}/guild.sqlite`);
     const stored = database.sqlite.prepare('SELECT username,password_hash,contact,note,status FROM registration_requests WHERE id=?').get(requestId) as Record<string, string>;
@@ -640,6 +644,8 @@ describe.sequential('Adventurer Guild API', () => {
     const registrationViceCookie = await login(app, 'vice.president2', 'DemoVice2!2026');
     expect((await app.inject({ method: 'GET', url: '/api/admin/registration-requests', headers: { cookie: registrationViceCookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${requestId}/approve`, headers: { cookie: registrationViceCookie } })).statusCode).toBe(200);
+    const pendingAfterApproval = (await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: adminCookie } })).json().data.pendingRegistrations as number;
+    expect(pendingAfterApproval).toBe(pendingBefore);
     expect(await login(app, '星砂访客', password)).toContain('guild_session=');
 
     const rejected = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {

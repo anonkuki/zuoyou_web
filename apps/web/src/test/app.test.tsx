@@ -123,6 +123,42 @@ describe('Adventurer Guild app', () => {
     expect(screen.getByRole('button', { name: '搜索' })).toBeInTheDocument();
   });
 
+  it('shows executives an obvious homepage registration review alert with the live pending total', async () => {
+    const executive = { id: 'admin', uid: '10001', username: 'admin', displayName: '管理员', email: 'admin@example.com', role: 'PRESIDENT', departmentId: null, bio: '' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: executive } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/dashboard') return new Response(JSON.stringify({ ok: true, data: { pendingApplications: 2, pendingRegistrations: 3 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/conversations') return new Response(JSON.stringify({ ok: true, data: { items: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: payloads[path] ?? {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/');
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/dashboard', expect.anything()));
+    const alert = await screen.findByRole('link', { name: '注册审核，5 项待处理' });
+    expect(alert).toHaveAttribute('href', '/admin/recruitment');
+    expect(within(alert).getByText('5')).toBeInTheDocument();
+  });
+
+  it('does not expose the registration review alert to ordinary members', async () => {
+    const member = { id: 'member', uid: '10005', username: 'member', displayName: '普通社员', email: 'member@example.com', role: 'MEMBER', departmentId: 'dept-cos', bio: '' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: member } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/conversations') return new Response(JSON.stringify({ ok: true, data: { items: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: payloads[path] ?? {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/');
+    await screen.findByText('普通社员');
+
+    expect(screen.queryByRole('link', { name: /注册审核/ })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/admin/dashboard', expect.anything());
+  });
+
   it('hides the onsite raffle from guests and ordinary members', async () => {
     renderAt('/');
     await screen.findByRole('heading', { name: '创作型社团' });

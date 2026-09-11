@@ -1,4 +1,4 @@
-import { ChevronDown, LayoutDashboard, LogIn, LogOut, Menu, MessageCircle, Palette, Search, Send, UserPlus, UserRound, Users, X } from 'lucide-react';
+import { ChevronDown, ClipboardCheck, LayoutDashboard, LogIn, LogOut, Menu, MessageCircle, Palette, Search, Send, UserPlus, UserRound, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, useLogout } from '../../auth';
 import { api, json } from '../../api';
 import { PixelAvatar } from '../avatar/PixelAvatar';
-import { roleLabels } from '@guild/contracts';
+import { isExecutiveRole, roleLabels } from '@guild/contracts';
 import './quick-chat.css';
 
 const navigation = [
@@ -32,6 +32,31 @@ interface QuickMessage {
   sender: { displayName: string };
   content: string;
   deletedAt: string | null;
+}
+
+interface ReviewSummary {
+  pendingApplications: number;
+  pendingRegistrations: number;
+}
+
+function RegistrationReviewAlert() {
+  const { user } = useAuth();
+  const canReview = Boolean(user && isExecutiveRole(user.role));
+  const dashboard = useQuery({
+    queryKey: ['admin-dashboard'],
+    queryFn: () => api<ReviewSummary>('/api/admin/dashboard'),
+    enabled: canReview,
+    refetchInterval: 15_000,
+  });
+
+  if (!canReview) return null;
+  const pending = (dashboard.data?.pendingRegistrations ?? 0) + (dashboard.data?.pendingApplications ?? 0);
+  const label = pending > 0 ? `注册审核，${pending} 项待处理` : '注册审核，暂无待处理';
+
+  return <Link className="registration-review-alert" aria-label={label} title={label} to="/admin/recruitment">
+    <ClipboardCheck aria-hidden="true" />
+    {pending > 0 && <b aria-hidden="true">{pending > 99 ? '99+' : pending}</b>}
+  </Link>;
 }
 
 function QuickChat() {
@@ -220,6 +245,7 @@ export function PixelNavbar() {
       </nav>
       <div className="pixel-nav-tools">
         <button aria-label="搜索" onClick={() => setSearchOpen(true)}><Search/></button>
+        <RegistrationReviewAlert />
         <QuickChat />
         <UserMenu />
         <button className="pixel-menu-button" aria-label={menuOpen ? '关闭菜单' : '打开菜单'} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X/> : <Menu/>}</button>

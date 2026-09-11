@@ -1429,6 +1429,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const counts = {
       members: (sqlite.prepare('SELECT COUNT(*) count FROM users').get() as { count: number }).count,
       pendingApplications: (sqlite.prepare("SELECT COUNT(*) count FROM applications WHERE status='PENDING'").get() as { count: number }).count,
+      pendingRegistrations: (sqlite.prepare("SELECT COUNT(*) count FROM registration_requests WHERE status='PENDING'").get() as { count: number }).count,
       activeActivities: (sqlite.prepare("SELECT COUNT(*) count FROM activities WHERE status IN ('REGISTRATION','IN_PROGRESS')").get() as { count: number }).count,
       publishedWorks: (sqlite.prepare("SELECT COUNT(*) count FROM works WHERE status='PUBLISHED'").get() as { count: number }).count,
     };

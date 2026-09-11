@@ -1,6 +1,22 @@
 .quick-chat-toggle,
-.quick-chat-mobile-link {
+.quick-chat-mobile-link,
+.registration-review-alert {
   position: relative;
+}
+
+.pixel-nav-tools > .registration-review-alert {
+  color: #ffe39a;
+  border-color: #e4ad4f;
+  background: linear-gradient(180deg, rgba(70, 105, 79, .92), rgba(13, 55, 52, .96));
+  box-shadow: inset 0 0 0 2px rgba(255, 236, 168, .12), 0 0 0 2px rgba(228, 173, 79, .12);
+}
+
+.pixel-nav-tools > .registration-review-alert:hover,
+.pixel-nav-tools > .registration-review-alert:focus-visible {
+  color: #fff8d8;
+  border-color: #ffd878;
+  background: linear-gradient(180deg, rgba(86, 128, 91, .96), rgba(18, 69, 63, .98));
+  box-shadow: inset 0 0 0 2px rgba(255, 240, 186, .18), 0 0 13px rgba(255, 203, 91, .34);
 }
 
 .quick-chat-mobile-link {
@@ -8,7 +24,8 @@
 }
 
 .quick-chat-toggle > b,
-.quick-chat-mobile-link > b {
+.quick-chat-mobile-link > b,
+.registration-review-alert > b {
   position: absolute;
   top: -7px;
   right: -7px;
@@ -25,6 +42,23 @@
   font-size: 11px;
   line-height: 1;
   box-shadow: 0 2px 0 #0c0706;
+}
+
+.registration-review-alert > b {
+  top: -8px;
+  right: -9px;
+  border-color: #fff0bd;
+  background: #e43c35;
+  box-shadow: 0 2px 0 #681b18, 0 0 0 2px rgba(228, 60, 53, .22), 0 0 12px rgba(228, 60, 53, .72);
+  animation: review-alert-pulse 1.8s steps(2, end) infinite;
+}
+
+@keyframes review-alert-pulse {
+  50% { transform: scale(1.12); filter: brightness(1.14); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .registration-review-alert > b { animation: none; }
 }
 
 .quick-chat-layer {

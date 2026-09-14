@@ -28,6 +28,9 @@ export interface AppOptions {
   sessionSecret: string;
   seed?: boolean;
   adminPassword?: string;
+  developerUsername?: string;
+  developerPassword?: string;
+  developerDisplayName?: string;
   production?: boolean;
   secureCookies?: boolean;
   webRoot?: string;
@@ -230,7 +233,13 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   await mkdir(options.uploadRoot, { recursive: true });
   const { sqlite } = await openDatabase(options.databasePath);
   if (options.seed) {
-    await seedDatabase(sqlite, { adminPassword: options.adminPassword, production: options.production });
+    await seedDatabase(sqlite, {
+      adminPassword: options.adminPassword,
+      production: options.production,
+      developerUsername: options.developerUsername,
+      developerPassword: options.developerPassword,
+      developerDisplayName: options.developerDisplayName,
+    });
     const photoRoot = resolve(options.uploadRoot, 'members/photos');
     await mkdir(photoRoot, { recursive: true });
     for (const name of ['club-anniversary.jpg', 'club-memory-01.jpg', 'club-memory-02.jpg']) {

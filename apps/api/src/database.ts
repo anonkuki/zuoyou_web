@@ -11,6 +11,14 @@ export interface DatabaseContext {
   orm: ReturnType<typeof drizzle<typeof schema>>;
 }
 
+interface SeedOptions {
+  adminPassword?: string;
+  production?: boolean;
+  developerUsername?: string;
+  developerPassword?: string;
+  developerDisplayName?: string;
+}
+
 export function allocateUserUid(sqlite: Database.Database): string {
   const row = sqlite.prepare("SELECT MAX(CAST(uid AS INTEGER)) max_uid FROM users WHERE length(uid)=5 AND uid NOT GLOB '*[^0-9]*'").get() as { max_uid: number | null };
   const next = Math.max(10001, (row.max_uid ?? 10000) + 1);
@@ -248,6 +256,43 @@ async function ensureDevelopmentTestAccounts(sqlite: Database.Database, timestam
   }
 }
 
+function configuredProductionDeveloper(options: SeedOptions): { username: string; password: string } | null {
+  const username = options.developerUsername?.trim();
+  const password = options.developerPassword;
+  if (!username && !password) return null;
+  if (!username || !password) throw new Error('DEVELOPER_USERNAME and DEVELOPER_PASSWORD must be configured together');
+  if (!/^[\p{L}\p{N}._-]{2,40}$/u.test(username)) throw new Error('DEVELOPER_USERNAME must be a valid 2-40 character login name');
+  if (password.length < 12) throw new Error('DEVELOPER_PASSWORD must contain at least 12 characters');
+  return { username, password };
+}
+
+async function ensureProductionDeveloperAccount(sqlite: Database.Database, options: SeedOptions, timestamp: string): Promise<void> {
+  const configured = configuredProductionDeveloper(options);
+  if (!configured) return;
+  const { username, password } = configured;
+
+  const existing = sqlite.prepare("SELECT username FROM users WHERE id='user-developer'").get() as { username: string | null } | undefined;
+  if (existing) {
+    sqlite.prepare("UPDATE users SET role='PRESIDENT',department_id=NULL,is_active=1,updated_at=? WHERE id='user-developer'").run(timestamp);
+    return;
+  }
+  const usernameOwner = sqlite.prepare('SELECT id FROM users WHERE username=?').get(username) as { id: string } | undefined;
+  if (usernameOwner) throw new Error(`DEVELOPER_USERNAME is already used by ${usernameOwner.id}`);
+
+  sqlite.prepare(`INSERT INTO users(id,uid,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at)
+    VALUES ('user-developer',?,?,?,?,?,'PRESIDENT',NULL,?,1,?,?)`)
+    .run(
+      allocateUserUid(sqlite),
+      username,
+      await hashPassword(password),
+      options.developerDisplayName?.trim() || '系统开发者',
+      'developer@local.invalid',
+      '系统维护与开发账号',
+      timestamp,
+      timestamp,
+    );
+}
+
 export async function openDatabase(databasePath: string): Promise<DatabaseContext> {
   await mkdir(dirname(databasePath), { recursive: true });
   const sqlite = new Database(databasePath);
@@ -282,7 +327,7 @@ export async function openDatabase(databasePath: string): Promise<DatabaseContex
   return { sqlite, orm: drizzle(sqlite, { schema }) };
 }
 
-export async function seedDatabase(sqlite: Database.Database, options: { adminPassword?: string; production?: boolean } = {}): Promise<void> {
+export async function seedDatabase(sqlite: Database.Database, options: SeedOptions = {}): Promise<void> {
   if (options.production) {
     const password = options.adminPassword?.trim();
     if (!password) throw new Error('ADMIN_PASSWORD is required in production');
@@ -290,6 +335,7 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
     if (password.length < 12 || ['required', 'replace', 'change-me', 'placeholder', 'demoadmin!2026'].some((marker) => normalized.includes(marker))) {
       throw new Error('Production ADMIN_PASSWORD must be a non-placeholder secret of at least 12 characters');
     }
+    configuredProductionDeveloper(options);
   }
   const existing = sqlite.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number };
   if (existing.count > 0) {
@@ -304,7 +350,9 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
       ensureHomeShowcaseData(sqlite, timestamp);
       ensureSocialShowcaseData(sqlite, timestamp);
     } else {
-      ensureDepartmentConversations(sqlite, new Date().toISOString());
+      const timestamp = new Date().toISOString();
+      await ensureProductionDeveloperAccount(sqlite, options, timestamp);
+      ensureDepartmentConversations(sqlite, timestamp);
     }
     return;
   }
@@ -347,6 +395,7 @@ export async function seedDatabase(sqlite: Database.Database, options: { adminPa
     insertRoleAssignment.run(`role-seed-${departmentId}`, userId, 'DEPARTMENT_HEAD', departmentId, 'user-admin', now);
   }
   if (!options.production) insertRoleAssignment.run('role-seed-deputy', 'user-deputy', 'DEPARTMENT_ADMIN', 'dept-cos', 'user-lead', now);
+  if (options.production) await ensureProductionDeveloperAccount(sqlite, options, now);
   if (!options.production) await ensureDevelopmentTestAccounts(sqlite, now);
 
   const insertActivity = sqlite.prepare('INSERT INTO activities(id,department_id,title,description,status,capacity,check_in_code,result_summary,starts_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)');

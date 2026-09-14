@@ -44,6 +44,23 @@ describe('production seed safety', () => {
     });
   });
 
+  it('rejects incomplete developer credentials before writing a production database', async () => {
+    const root = await mkdtemp('D:/Temp/guild-production-developer-guard-');
+    const { sqlite } = await openDatabase(`${root}/guild.sqlite`);
+    try {
+      const options = {
+        production: true,
+        adminPassword: 'ProductionAdmin!2026',
+        developerUsername: 'developer',
+      };
+      await expect(seedDatabase(sqlite, options)).rejects.toThrow(/DEVELOPER_USERNAME and DEVELOPER_PASSWORD/);
+      expect((sqlite.prepare('SELECT COUNT(*) count FROM users').get() as { count: number }).count).toBe(0);
+    } finally {
+      sqlite.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('refuses to reuse a development-seeded database in production', async () => {
     await withDevelopmentSeed(async (sqlite) => {
       await expect(seedDatabase(sqlite, { production: true, adminPassword: 'ProductionAdmin!2026' })).rejects.toThrow(/development demo/i);
@@ -60,6 +77,47 @@ describe('production seed safety', () => {
       expect((sqlite.prepare("SELECT email FROM users WHERE username='admin'").get() as { email: string }).email).not.toBe('admin@guild.example');
     } finally {
       sqlite.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('provisions a configured developer account with president-level access and keeps it across restarts', async () => {
+    const root = await mkdtemp('D:/Temp/guild-production-developer-');
+    const options = {
+      databasePath: `${root}/guild.sqlite`,
+      uploadRoot: `${root}/uploads`,
+      sessionSecret: 'production-test-session-secret-2026',
+      seed: true,
+      production: true,
+      secureCookies: false,
+      adminPassword: 'ProductionAdmin!2026',
+      developerUsername: 'developer',
+      developerPassword: 'ProductionDeveloper!2026',
+      developerDisplayName: '系统开发者',
+    };
+
+    let productionApp = await createApp(options);
+    try {
+      const developerCookie = await login(productionApp, 'developer', 'ProductionDeveloper!2026');
+      const session = await productionApp.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: developerCookie } });
+      expect(session.json().data.user).toMatchObject({ username: 'developer', displayName: '系统开发者', role: 'PRESIDENT' });
+      expect((await productionApp.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: developerCookie } })).statusCode).toBe(200);
+    } finally {
+      await productionApp.close();
+    }
+
+    productionApp = await createApp(options);
+    try {
+      const developerCookie = await login(productionApp, 'developer', 'ProductionDeveloper!2026');
+      expect((await productionApp.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: developerCookie } })).statusCode).toBe(200);
+      const database = await openDatabase(`${root}/guild.sqlite`);
+      try {
+        expect((database.sqlite.prepare("SELECT COUNT(*) count FROM users WHERE id='user-developer' AND role='PRESIDENT' AND is_active=1").get() as { count: number }).count).toBe(1);
+      } finally {
+        database.sqlite.close();
+      }
+    } finally {
+      await productionApp.close();
       await rm(root, { recursive: true, force: true });
     }
   });

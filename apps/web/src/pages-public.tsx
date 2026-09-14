@@ -233,8 +233,9 @@ export function JoinPage() {
 }
 
 export function ApplicationStatusPage() {
-  const {token=''}=useParams(); const query=useQuery({queryKey:['application',token],queryFn:()=>api<{id:string;status:string;rejectionReason?:string}>(`/api/public/applications/status/${token}`),enabled:Boolean(token)});
-  return <main><PageHero eyebrow="APPLICATION STATUS" title="社员申请进度" description="通过提交申请后生成的私密链接查看审核结果。"/><section className="shell narrow">{query.isLoading?<LoadingPanel/>:query.error?<ErrorPanel error={query.error}/>:<article className="parchment-panel status-card"><StatusBadge status={query.data!.status}/><h2>申请编号 {query.data!.id}</h2>{query.data!.status==='PENDING'&&<p>申请已经提交，请等待社团管理员审核。</p>}{query.data!.status==='APPROVED'&&<p>申请已通过，你的账号已经直接加入所选部门，无需再输入激活码。</p>}{query.data!.rejectionReason&&<p>审核意见：{query.data!.rejectionReason}</p>}</article>}</section></main>;
+  const {token=''}=useParams(); const query=useQuery({queryKey:['application',token],queryFn:()=>api<{id:string;status:string;rejectionReason?:string;activationCode?:string}>(`/api/public/applications/status/${token}`),enabled:Boolean(token)});
+  const activationCode=query.data?.activationCode;
+  return <main><PageHero eyebrow="APPLICATION STATUS" title="社员申请进度" description="通过提交申请后生成的私密链接查看审核结果。"/><section className="shell narrow">{query.isLoading?<LoadingPanel/>:query.error?<ErrorPanel error={query.error}/>:<article className="parchment-panel status-card"><StatusBadge status={query.data!.status}/><h2>申请编号 {query.data!.id}</h2>{query.data!.status==='PENDING'&&<p>申请已经提交，请等待社团管理员审核。</p>}{query.data!.status==='APPROVED'&&!activationCode&&<p>申请已通过，你的账号已经直接加入所选部门，无需再输入激活码。</p>}{query.data!.status==='APPROVED'&&activationCode&&<div className="review-result" role="status"><strong>申请已通过，请建立成员账号</strong><span>一次性激活码（7 天内有效）：</span><code>{activationCode}</code><Link className="guild-button primary" to={`/activate?token=${encodeURIComponent(activationCode)}`}>设置账号密码</Link></div>}{query.data!.rejectionReason&&<p>审核意见：{query.data!.rejectionReason}</p>}</article>}</section></main>;
 }
 
 export function NotFoundPage(){return <main><section className="not-found"><FileQuestion/><span className="eyebrow">404 · LOST SCROLL</span><h1>这份卷宗不在公会档案里</h1><p>可能是路径错误，或档案已经被移入其他区域。</p><Link className="guild-button" to="/">返回公会大厅</Link></section></main>}

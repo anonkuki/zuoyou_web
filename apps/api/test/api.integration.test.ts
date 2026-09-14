@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
@@ -668,6 +669,72 @@ describe.sequential('Adventurer Guild API', () => {
     expect(status.json().data).not.toHaveProperty('activationCode');
     const refreshedSession = await app.inject({ method: 'GET', url: '/api/auth/session', headers: { cookie: applicantCookie } });
     expect(refreshedSession.json().data.user.departmentIds).toEqual(expect.arrayContaining(['dept-tech', 'dept-original']));
+  });
+
+  it('approves legacy applications without linked accounts through a one-time activation code', async () => {
+    const id = 'application-legacy-review';
+    const database = await openDatabase(`${root}/guild.sqlite`);
+    database.sqlite.prepare(`INSERT INTO applications(id,status_token_hash,display_name,email,college,department_id,reason,status,user_id,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,'PENDING',NULL,?,?)`).run(
+      id, createHash('sha256').update('legacy-review-plain-token').digest('hex'), '历史申请同学', 'legacy-review@example.test', '动画学院 2026级', 'dept-tech', '旧版申请未绑定登录账号',
+      '2026-08-01T08:00:00.000Z', '2026-08-01T08:00:00.000Z',
+    );
+    database.sqlite.prepare('INSERT INTO application_departments(application_id,department_id,preference_order) VALUES (?,?,?)').run(id, 'dept-tech', 0);
+    database.sqlite.prepare('INSERT INTO application_departments(application_id,department_id,preference_order) VALUES (?,?,?)').run(id, 'dept-original', 1);
+    database.sqlite.close();
+
+    const approved = await app.inject({ method: 'POST', url: `/api/admin/applications/${id}/approve`, headers: { cookie: adminCookie } });
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(approved.json().data.activationCode).toHaveLength(32);
+
+    const verified = await openDatabase(`${root}/guild.sqlite`);
+    const application = verified.sqlite.prepare('SELECT status,user_id,activation_code_encrypted FROM applications WHERE id=?').get(id) as { status: string; user_id: string; activation_code_encrypted: string | null };
+    const account = verified.sqlite.prepare('SELECT uid,is_active,password_hash,department_id FROM users WHERE id=?').get(application.user_id) as { uid: string; is_active: number; password_hash: string | null; department_id: string };
+    const memberships = verified.sqlite.prepare('SELECT department_id,is_primary FROM user_departments WHERE user_id=? ORDER BY is_primary DESC,department_id').all(application.user_id);
+    verified.sqlite.close();
+
+    expect(application.status).toBe('APPROVED');
+    expect(application.activation_code_encrypted).toBeTruthy();
+    expect(account).toMatchObject({ is_active: 0, password_hash: null, department_id: 'dept-tech' });
+    expect(account.uid).toMatch(/^\d{5}$/);
+    expect(memberships).toEqual([
+      { department_id: 'dept-tech', is_primary: 1 },
+      { department_id: 'dept-original', is_primary: 0 },
+    ]);
+    const status = await app.inject({ method: 'GET', url: '/api/public/applications/status/legacy-review-plain-token' });
+    expect(status.statusCode).toBe(200);
+    expect(status.json().data).toMatchObject({ status: 'APPROVED', activationCode: approved.json().data.activationCode });
+    const regenerated = await app.inject({ method: 'POST', url: `/api/admin/applications/${id}/regenerate-activation`, headers: { cookie: adminCookie } });
+    expect(regenerated.statusCode).toBe(200);
+    expect(regenerated.json().data.activationCode).toHaveLength(32);
+    expect(regenerated.json().data.activationCode).not.toBe(approved.json().data.activationCode);
+    const refreshedStatus = await app.inject({ method: 'GET', url: '/api/public/applications/status/legacy-review-plain-token' });
+    expect(refreshedStatus.json().data.activationCode).toBe(regenerated.json().data.activationCode);
+    const auditDatabase = await openDatabase(`${root}/guild.sqlite`);
+    const regenerationAudit = auditDatabase.sqlite.prepare("SELECT actor_id,entity_id,details FROM audit_logs WHERE action='APPLICATION_ACTIVATION_REGENERATED' AND entity_id=? ORDER BY created_at DESC LIMIT 1").get(id) as { actor_id: string; entity_id: string; details: string | null } | undefined;
+    auditDatabase.sqlite.close();
+    expect(regenerationAudit).toMatchObject({ actor_id: 'user-admin', entity_id: id });
+    expect(regenerationAudit?.details ?? '').not.toContain(regenerated.json().data.activationCode);
+  });
+
+  it('filters application review queues before pagination and sorts pending requests oldest first', async () => {
+    const database = await openDatabase(`${root}/guild.sqlite`);
+    const insert = database.sqlite.prepare(`INSERT INTO applications(id,status_token_hash,display_name,email,college,department_id,reason,status,user_id,created_at,updated_at)
+      VALUES (?,?,?,?,?,'dept-tech','审核分页测试',?,NULL,?,?)`);
+    try {
+      for (let index = 0; index < 101; index += 1) {
+        const stamp = `2026-09-${String(13 - (index % 10)).padStart(2, '0')}T08:00:00.000Z`;
+        insert.run(`reviewed-pagination-${index}`, `reviewed-token-${index}`, `已审核${index}`, `reviewed-${index}@example.test`, '测试学院', 'APPROVED', stamp, stamp);
+      }
+      insert.run('pending-pagination-oldest', 'pending-pagination-token', '最早待审核', 'pending-oldest@example.test', '测试学院', 'PENDING', '2026-07-01T08:00:00.000Z', '2026-07-01T08:00:00.000Z');
+    } finally {
+      database.sqlite.close();
+    }
+
+    const pending = await app.inject({ method: 'GET', url: '/api/admin/applications?page=1&pageSize=100&status=PENDING', headers: { cookie: adminCookie } });
+    expect(pending.statusCode).toBe(200);
+    expect(pending.json().data.items[0]).toMatchObject({ id: 'pending-pagination-oldest', status: 'PENDING' });
+    expect(pending.json().data.items.every((item: { status: string }) => item.status === 'PENDING')).toBe(true);
   });
 
   it('lets guests request accounts and limits approval data and actions to the president layer', async () => {

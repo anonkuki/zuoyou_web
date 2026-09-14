@@ -16,7 +16,7 @@ import {
 } from '@guild/contracts';
 import { createActivationToken } from './activation.js';
 import { canTransitionActivity } from './activity.js';
-import { openDatabase, seedDatabase } from './database.js';
+import { allocateUserUid, openDatabase, seedDatabase } from './database.js';
 import { canAccessDepartment, canAccessFile } from './policies.js';
 import { decryptSecret, encryptSecret, hashPassword, sha256, verifyPassword } from './security.js';
 import { GuildSocialRepository, SocialError, safeTags } from './social.js';
@@ -1841,12 +1841,23 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const principal = requireManager(request, reply); if (!principal) return;
     const paging = getPaging(request.query);
     const scoped = !isExecutiveRole(principal.role);
-    const where = scoped ? `WHERE (a.department_id=? OR EXISTS(
-      SELECT 1 FROM application_departments scope_ad WHERE scope_ad.application_id=a.id AND scope_ad.department_id=?
-    ))` : '';
-    const parameters = scoped ? [principal.departmentId, principal.departmentId] : [];
-    const rows = sqlite.prepare(`SELECT a.id,a.display_name,a.email,a.college,a.department_id,a.reason,a.status,a.rejection_reason,a.created_at
-      FROM applications a ${where} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`).all(...parameters, paging.pageSize, paging.offset) as Array<Record<string, unknown> & { id: string; department_id: string }>;
+    const rawStatus = (request.query as { status?: unknown }).status;
+    const status = rawStatus === undefined ? undefined : parse(z.enum(['PENDING', 'REVIEWED']), rawStatus);
+    const conditions: string[] = [];
+    const parameters: Array<string | number> = [];
+    if (scoped) {
+      conditions.push(`(a.department_id=? OR EXISTS(
+        SELECT 1 FROM application_departments scope_ad WHERE scope_ad.application_id=a.id AND scope_ad.department_id=?
+      ))`);
+      parameters.push(principal.departmentId ?? '', principal.departmentId ?? '');
+    }
+    if (status === 'PENDING') conditions.push("a.status='PENDING'");
+    if (status === 'REVIEWED') conditions.push("a.status<>'PENDING'");
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const order = status === 'PENDING' ? 'a.created_at ASC' : status === 'REVIEWED' ? 'a.updated_at DESC' : "CASE a.status WHEN 'PENDING' THEN 0 ELSE 1 END,a.created_at DESC";
+    const rows = sqlite.prepare(`SELECT a.id,a.display_name,a.email,a.college,a.department_id,a.reason,a.status,a.rejection_reason,a.created_at,a.updated_at,
+        CASE WHEN a.status='APPROVED' AND u.is_active=0 AND u.password_hash IS NULL THEN 1 ELSE 0 END AS requires_activation
+      FROM applications a LEFT JOIN users u ON u.id=a.user_id ${where} ORDER BY ${order} LIMIT ? OFFSET ?`).all(...parameters, paging.pageSize, paging.offset) as Array<Record<string, unknown> & { id: string; department_id: string }>;
     const selectedDepartments = sqlite.prepare(`SELECT ad.department_id,d.name FROM application_departments ad JOIN departments d ON d.id=ad.department_id
       WHERE ad.application_id=? ORDER BY ad.preference_order,ad.rowid`);
     const items = rows.map((row) => {
@@ -1920,16 +1931,34 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return successResponse({ rejected: true });
   });
 
-  function approveApplication(id: string, actor: Principal): { userId: string; departmentIds: string[] } {
+  function approveApplication(id: string, actor: Principal): { userId: string; departmentIds: string[]; activationCode?: string } {
     const application = sqlite.prepare('SELECT * FROM applications WHERE id=?').get(id) as { display_name: string; email: string; department_id: string; status: string; user_id: string | null } | undefined;
     if (!application) throw new HttpError(404, 'NOT_FOUND', '申请不存在'); if (application.status !== 'PENDING') throw new HttpError(409, 'INVALID_STATE', '申请已处理');
     const account = (application.user_id
       ? sqlite.prepare('SELECT id,department_id FROM users WHERE id=? AND is_active=1').get(application.user_id)
       : sqlite.prepare('SELECT id,department_id FROM users WHERE email=? COLLATE NOCASE AND is_active=1').get(application.email)) as { id: string; department_id: string | null } | undefined;
-    if (!account) throw new HttpError(409, 'ACCOUNT_REQUIRED', '申请人需要先注册并登录账号，然后重新提交社员申请');
-    const userId = account.id;
     const selected = sqlite.prepare('SELECT department_id FROM application_departments WHERE application_id=? ORDER BY preference_order,rowid').all(id) as Array<{ department_id: string }>;
     const departmentIds = selected.length ? selected.map((department) => department.department_id) : [application.department_id];
+    if (!account) {
+      if (sqlite.prepare('SELECT 1 FROM users WHERE email=? COLLATE NOCASE').get(application.email)) throw new HttpError(409, 'ACCOUNT_INACTIVE', '该邮箱已有停用账号，请先恢复账号后再审核');
+      const userId = newId('user');
+      const { rawToken, record } = createActivationToken(userId);
+      sqlite.transaction(() => {
+        const createdAt = now();
+        sqlite.prepare(`INSERT INTO users(id,uid,display_name,email,role,department_id,bio,is_active,created_at,updated_at)
+          VALUES (?,?,?,?,?,?,?,0,?,?)`).run(userId, allocateUserUid(sqlite), application.display_name, application.email, 'MEMBER', departmentIds[0], '', createdAt, createdAt);
+        const insertMembership = sqlite.prepare('INSERT INTO user_departments(user_id,department_id,is_primary,joined_at) VALUES (?,?,?,?)');
+        departmentIds.forEach((departmentId, index) => insertMembership.run(userId, departmentId, index === 0 ? 1 : 0, createdAt));
+        sqlite.prepare('INSERT INTO activation_tokens(id,user_id,token_hash,expires_at,used_at,created_at) VALUES (?,?,?,?,NULL,?)')
+          .run(newId('activation'), userId, record.tokenHash, record.expiresAt, createdAt);
+        const claimed = sqlite.prepare("UPDATE applications SET status='APPROVED',user_id=?,activation_code_encrypted=?,updated_at=? WHERE id=? AND status='PENDING'")
+          .run(userId, encryptSecret(rawToken, options.sessionSecret), createdAt, id);
+        if (claimed.changes !== 1) throw new HttpError(409, 'INVALID_STATE', '申请已处理');
+        audit(sqlite, actor.id, 'APPLICATION_APPROVED', 'application', id, userId, { departmentIds, legacyActivation: true });
+      })();
+      return { userId, departmentIds, activationCode: rawToken };
+    }
+    const userId = account.id;
     sqlite.transaction(() => {
       const createdAt = now();
       const hasPrimaryMembership = Boolean(sqlite.prepare('SELECT 1 FROM user_departments WHERE user_id=? AND is_primary=1').get(userId));
@@ -1948,7 +1977,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const principal = requireAdmin(request, reply); if (!principal) return; const id = (request.params as { id: string }).id;
     const application = sqlite.prepare("SELECT a.user_id,u.is_active,u.password_hash FROM applications a JOIN users u ON u.id=a.user_id WHERE a.id=? AND a.status='APPROVED'").get(id) as { user_id: string | null; is_active: number; password_hash: string | null } | undefined; if (!application?.user_id) throw new HttpError(409, 'INVALID_STATE', '申请尚未批准');
     if (application.is_active || application.password_hash) throw new HttpError(409, 'ALREADY_ACTIVATED', '账户已激活，不可重新生成激活码');
-    const { rawToken, record } = createActivationToken(application.user_id); sqlite.transaction(() => { sqlite.prepare('DELETE FROM activation_tokens WHERE user_id=? AND used_at IS NULL').run(application.user_id); sqlite.prepare('INSERT INTO activation_tokens(id,user_id,token_hash,expires_at,created_at) VALUES (?,?,?,?,?)').run(newId('activation'), application.user_id, record.tokenHash, record.expiresAt, now()); sqlite.prepare('UPDATE applications SET activation_code_encrypted=?,updated_at=? WHERE id=?').run(encryptSecret(rawToken, options.sessionSecret), now(), id); })();
+    const { rawToken, record } = createActivationToken(application.user_id); sqlite.transaction(() => { sqlite.prepare('DELETE FROM activation_tokens WHERE user_id=? AND used_at IS NULL').run(application.user_id); sqlite.prepare('INSERT INTO activation_tokens(id,user_id,token_hash,expires_at,created_at) VALUES (?,?,?,?,?)').run(newId('activation'), application.user_id, record.tokenHash, record.expiresAt, now()); sqlite.prepare('UPDATE applications SET activation_code_encrypted=?,updated_at=? WHERE id=?').run(encryptSecret(rawToken, options.sessionSecret), now(), id); audit(sqlite, principal.id, 'APPLICATION_ACTIVATION_REGENERATED', 'application', id, application.user_id); })();
     return successResponse({ activationCode: rawToken });
   });
 

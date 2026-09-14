@@ -12,7 +12,7 @@ interface Dashboard { members:number; pendingApplications:number; activeActiviti
 interface Analytics { departmentActivity:Array<{departmentId:string;departmentName:string;score:number}>; memberGrowth:Array<{month:string;count:number}> }
 interface Member { id:string; uid:string; display_name:string; email:string; role:Role; department_id:string|null; is_active:number; created_at:string }
 interface HierarchyAssignment { id:string; uid:string; userId:string; role:Role; departmentId:string|null; displayName:string; departmentName:string|null; grantedByName:string|null; grantedAt:string }
-interface Application { id:string; display_name:string; email:string; college:string; department_id:string; departmentIds:string[]; departmentNames:string[]; reason:string; status:string; rejection_reason?:string; created_at:string }
+interface Application { id:string; display_name:string; email:string; college:string; department_id:string; departmentIds:string[]; departmentNames:string[]; reason:string; status:string; rejection_reason?:string; created_at:string; updated_at?:string; requires_activation?:number }
 interface RegistrationRequest { id:string; username:string; contact:string; note:string; status:string; created_at:string; reviewed_at?:string|null }
 interface Work { id:string; title:string; description:string; status:string; department_id:string; display_name?:string; created_at:string }
 interface GuildFile { id:string; name:string; mime_type:string; size:number; visibility:string; category:string; department_id:string|null; deleted_at:string|null }
@@ -101,12 +101,60 @@ export function AnnouncementsAdminPage(){
 export function RecruitmentAdminPage(){
   const {user}=useAuth();
   const executive=Boolean(user&&isExecutiveRole(user.role));
+  const [applicationFilter,setApplicationFilter]=useState<'PENDING'|'REVIEWED'>('PENDING');
+  const [applicationFeedback,setApplicationFeedback]=useState<Record<string,{kind:'success'|'error';message:string}>>({});
+  const [latestActivation,setLatestActivation]=useState<{name:string;code:string}|null>(null);
+  const [processingIds,setProcessingIds]=useState<Set<string>>(()=>new Set());
   const refresh=useInvalidate('admin-applications','admin-registration-requests','admin-dashboard');
-  const applicationQuery=useQuery({queryKey:['admin-applications'],queryFn:()=>api<PageData<Application>>('/api/admin/applications?page=1&pageSize=100')});
+  const pendingApplicationQuery=useQuery({queryKey:['admin-applications','PENDING'],queryFn:()=>api<PageData<Application>>('/api/admin/applications?page=1&pageSize=100&status=PENDING')});
+  const reviewedApplicationQuery=useQuery({queryKey:['admin-applications','REVIEWED'],queryFn:()=>api<PageData<Application>>('/api/admin/applications?page=1&pageSize=100&status=REVIEWED')});
+  const applicationQuery=applicationFilter==='PENDING'?pendingApplicationQuery:reviewedApplicationQuery;
   const registrationQuery=useQuery({queryKey:['admin-registration-requests'],queryFn:()=>api<PageData<RegistrationRequest>>('/api/admin/registration-requests?page=1&pageSize=100'),enabled:executive});
-  const applicationAction=useMutation({mutationFn:({id,verb,body}:{id:string;verb:string;body?:unknown})=>api(`/api/admin/applications/${id}/${verb}`,json('POST',body)),onSuccess:refresh});
+  const applicationAction=useMutation({
+    mutationFn:({id,verb,body}:{id:string;verb:'approve'|'reject';body?:unknown})=>api<{activationCode?:string}>(`/api/admin/applications/${id}/${verb}`,json('POST',body)),
+    onMutate:({id})=>{setProcessingIds(current=>new Set(current).add(id));setApplicationFeedback(current=>{const next={...current};delete next[id];return next;});},
+    onSuccess:(data,{id,verb})=>{
+      const application=pendingApplicationQuery.data?.items.find(item=>item.id===id)??reviewedApplicationQuery.data?.items.find(item=>item.id===id);
+      setApplicationFeedback(current=>({...current,[id]:{kind:'success',message:verb==='approve'?'审核已通过，成员已加入所选部门。':'申请已拒绝。'}}));
+      if(data.activationCode&&application)setLatestActivation({name:application.display_name,code:data.activationCode});
+      refresh();
+    },
+    onError:(error:Error,{id})=>setApplicationFeedback(current=>({...current,[id]:{kind:'error',message:error.message}})),
+    onSettled:(_data,_error,{id})=>setProcessingIds(current=>{const next=new Set(current);next.delete(id);return next;}),
+  });
+  const regenerateAction=useMutation({
+    mutationFn:(application:Application)=>api<{activationCode:string}>(`/api/admin/applications/${application.id}/regenerate-activation`,json('POST')),
+    onSuccess:(data,application)=>{setLatestActivation({name:application.display_name,code:data.activationCode});setApplicationFeedback(current=>({...current,[application.id]:{kind:'success',message:'已重新生成 7 天有效的激活码。'}}));refresh();},
+    onError:(error:Error,application)=>setApplicationFeedback(current=>({...current,[application.id]:{kind:'error',message:error.message}})),
+  });
   const registrationAction=useMutation({mutationFn:({id,verb}:{id:string;verb:'approve'|'reject'})=>api(`/api/admin/registration-requests/${id}/${verb}`,json('POST')),onSuccess:refresh});
-  return <main><PageHero eyebrow="MEMBERSHIP REVIEW" title="招新与注册管理" description={executive?'社长和副社长审核账号注册与社员申请；社员申请通过后账号直接加入所选部门。':'这里会显示选择本部门的加入申请，最终账号审批仍由社长层完成。'}/><section className="shell registration-review">{executive&&<article className="parchment-panel"><h2>用户注册请求</h2><p className="panel-note">这里只显示注册用户名、联系方式和备注。批准后账号可直接登录。</p>{registrationQuery.isLoading?<LoadingPanel/>:registrationQuery.error?<ErrorPanel error={registrationQuery.error}/>:!registrationQuery.data?.items.length?<EmptyPanel label="暂无用户注册请求"/>:<div className="manage-list">{registrationQuery.data.items.map(item=><article key={item.id}><div><StatusBadge status={item.status}/><h2>{item.username}</h2><p><strong>联系方式：</strong>{item.contact}</p><p><strong>备注：</strong>{item.note||'无'}</p><small>{formatDate(item.created_at)}</small></div>{item.status==='PENDING'&&<div className="row-actions"><button onClick={()=>registrationAction.mutate({id:item.id,verb:'approve'})}><Check/>同意注册</button><button className="danger" onClick={()=>registrationAction.mutate({id:item.id,verb:'reject'})}><X/>拒绝注册</button></div>}</article>)}</div>}{registrationAction.error&&<p className="form-error">{registrationAction.error.message}</p>}</article>}<article className="parchment-panel"><h2>{executive?'社员申请':'本部门加入申请'}</h2><p className="panel-note">{executive?'申请已绑定注册账号；通过后账号直接加入所选部门，不再生成激活码。':'只显示选择了本部门的申请，供部长和副部长及时了解并联系申请人。'}</p>{applicationQuery.isLoading?<LoadingPanel/>:applicationQuery.error?<ErrorPanel error={applicationQuery.error}/>:!applicationQuery.data?.items.length?<EmptyPanel label="暂无本部门加入申请"/>:<div className="manage-list">{applicationQuery.data.items.map(a=><article key={a.id}><div><StatusBadge status={a.status}/><h2>{a.display_name}</h2><p>{a.college} · {a.email}</p><p className="application-departments"><strong>意向部门</strong>{(a.departmentNames?.length?a.departmentNames:[a.department_id]).map(name=><span key={name}>{name}</span>)}</p><p>{a.reason}</p><small>{formatDate(a.created_at)}</small></div>{executive&&a.status==='PENDING'&&<div className="row-actions"><button onClick={()=>applicationAction.mutate({id:a.id,verb:'approve'})}><Check/>通过并加入部门</button><button className="danger" onClick={()=>{const reason=prompt('填写拒绝原因');if(reason)applicationAction.mutate({id:a.id,verb:'reject',body:{reason}})}}><X/>拒绝</button></div>}</article>)}</div>}{applicationAction.error&&<p className="form-error">{applicationAction.error.message}</p>}</article></section></main>;
+  const pendingApplications=[...(pendingApplicationQuery.data?.items??[])].sort((a,b)=>Date.parse(a.created_at)-Date.parse(b.created_at));
+  const reviewedApplications=[...(reviewedApplicationQuery.data?.items??[])].sort((a,b)=>Date.parse(b.updated_at??b.created_at)-Date.parse(a.updated_at??a.created_at));
+  const visibleApplications=applicationFilter==='PENDING'?pendingApplications:reviewedApplications;
+  return <main>
+    <PageHero eyebrow="MEMBERSHIP REVIEW" title="招新与注册管理" description={executive?'社长和副社长审核账号注册与社员申请；社员申请通过后账号直接加入所选部门。':'这里会显示选择本部门的加入申请，最终账号审批仍由社长层完成。'}/>
+    <section className="shell registration-review">
+      {executive&&<article className="parchment-panel">
+        <h2>用户注册请求</h2><p className="panel-note">这里只显示注册用户名、联系方式和备注。批准后账号可直接登录。</p>
+        {registrationQuery.isLoading?<LoadingPanel/>:registrationQuery.error?<ErrorPanel error={registrationQuery.error}/>:!registrationQuery.data?.items.length?<EmptyPanel label="暂无用户注册请求"/>:<div className="manage-list">{registrationQuery.data.items.map(item=><article key={item.id}><div><StatusBadge status={item.status}/><h2>{item.username}</h2><p><strong>联系方式：</strong>{item.contact}</p><p><strong>备注：</strong>{item.note||'无'}</p><small>{formatDate(item.created_at)}</small></div>{item.status==='PENDING'&&<div className="row-actions"><button onClick={()=>registrationAction.mutate({id:item.id,verb:'approve'})}><Check/>同意注册</button><button className="danger" onClick={()=>registrationAction.mutate({id:item.id,verb:'reject'})}><X/>拒绝注册</button></div>}</article>)}</div>}
+        {registrationAction.error&&<p className="form-error">{registrationAction.error.message}</p>}
+      </article>}
+      <article className="parchment-panel">
+        <h2>{executive?'社员申请':'本部门加入申请'}</h2>
+        <p className="panel-note">{executive?'新申请通过后直接加入部门；旧版未绑定账号的申请会生成一次性激活码。':'只显示选择了本部门的申请，供部长和副部长及时了解并联系申请人。'}</p>
+        {latestActivation&&<div className="review-result" role="status"><strong>{latestActivation.name} 已通过</strong><span>请将一次性激活码发给申请人（7 天内有效）：</span><code>{latestActivation.code}</code><button onClick={()=>navigator.clipboard?.writeText(latestActivation.code)}>复制激活码</button></div>}
+        {!applicationQuery.isLoading&&!applicationQuery.error&&<div className="filter-bar review-filter" aria-label="社员申请审核分类">
+          <button type="button" aria-pressed={applicationFilter==='PENDING'} className={applicationFilter==='PENDING'?'active':''} onClick={()=>setApplicationFilter('PENDING')}>未审核 {pendingApplicationQuery.data?.total??pendingApplications.length}</button>
+          <button type="button" aria-pressed={applicationFilter==='REVIEWED'} className={applicationFilter==='REVIEWED'?'active':''} onClick={()=>setApplicationFilter('REVIEWED')}>已审核 {reviewedApplicationQuery.data?.total??reviewedApplications.length}</button>
+        </div>}
+        {applicationQuery.isLoading?<LoadingPanel/>:applicationQuery.error?<ErrorPanel error={applicationQuery.error}/>:!visibleApplications.length?<EmptyPanel label={applicationFilter==='PENDING'?'暂无待审核成员':'暂无已审核成员'}/>:<section className="manage-list" role="region" aria-label={applicationFilter==='PENDING'?'未审核成员':'已审核成员'}>{visibleApplications.map(a=>{
+          const processing=processingIds.has(a.id);
+          const feedback=applicationFeedback[a.id];
+          return <article key={a.id} aria-label={`${a.display_name}的申请`}><div><StatusBadge status={a.status}/><h2>{a.display_name}</h2><p>{a.college} · {a.email}</p><p className="application-departments"><strong>意向部门</strong>{(a.departmentNames?.length?a.departmentNames:[a.department_id]).map(name=><span key={name}>{name}</span>)}</p><p>{a.reason}</p>{a.rejection_reason&&<p><strong>拒绝原因：</strong>{a.rejection_reason}</p>}<small>{formatDate(a.created_at)}</small>{feedback&&<p role={feedback.kind==='error'?'alert':'status'} className={feedback.kind==='error'?'form-error':'form-success'}>{feedback.message}</p>}</div>{executive&&a.status==='PENDING'&&<div className="row-actions"><button disabled={processing} onClick={()=>applicationAction.mutate({id:a.id,verb:'approve'})}><Check/>{processing?'处理中…':'通过并加入部门'}</button><button className="danger" disabled={processing} onClick={()=>{const reason=prompt('填写拒绝原因');if(reason)applicationAction.mutate({id:a.id,verb:'reject',body:{reason}})}}><X/>拒绝</button></div>}{executive&&Boolean(a.requires_activation)&&<div className="row-actions"><button disabled={regenerateAction.isPending&&regenerateAction.variables?.id===a.id} onClick={()=>regenerateAction.mutate(a)}><RotateCcw/>重新生成激活码</button></div>}</article>;
+        })}</section>}
+      </article>
+    </section>
+  </main>;
 }
 
 export function WorksAdminPage(){

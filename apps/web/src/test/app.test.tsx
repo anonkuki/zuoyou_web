@@ -159,6 +159,113 @@ describe('Adventurer Guild app', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/api/admin/dashboard', expect.anything());
   });
 
+  it('separates pending and reviewed member applications and puts the longest-waiting pending request first', async () => {
+    const executive = { id: 'admin', uid: '10001', username: 'admin', displayName: '管理员', email: 'admin@example.com', role: 'PRESIDENT', departmentId: null, bio: '' };
+    const applications = [
+      { id: 'approved-newest', display_name: '已审核同学', email: 'approved@example.test', college: '动画学院', department_id: 'dept-tech', departmentIds: ['dept-tech'], departmentNames: ['技术部'], reason: '已经完成审核', status: 'APPROVED', created_at: '2026-09-10T09:00:00.000Z' },
+      { id: 'pending-newer', display_name: '较新待审核', email: 'newer@example.test', college: '动画学院', department_id: 'dept-original', departmentIds: ['dept-original'], departmentNames: ['原创部'], reason: '希望加入社团', status: 'PENDING', created_at: '2026-08-29T09:00:00.000Z' },
+      { id: 'pending-oldest', display_name: '最早待审核', email: 'oldest@example.test', college: '动画学院', department_id: 'dept-tech', departmentIds: ['dept-tech'], departmentNames: ['技术部'], reason: '希望加入社团', status: 'PENDING', created_at: '2026-08-15T09:00:00.000Z' },
+    ];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: executive } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/applications?page=1&pageSize=100&status=PENDING') return new Response(JSON.stringify({ ok: true, data: { items: applications.filter(item => item.status === 'PENDING'), page: 1, pageSize: 100, total: 2 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/applications?page=1&pageSize=100&status=REVIEWED') return new Response(JSON.stringify({ ok: true, data: { items: applications.filter(item => item.status !== 'PENDING'), page: 1, pageSize: 100, total: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/registration-requests?page=1&pageSize=100') return new Response(JSON.stringify({ ok: true, data: { items: [], page: 1, pageSize: 100, total: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: { items: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+
+    const user = userEvent.setup();
+    renderAt('/admin/recruitment');
+
+    const pendingTab = await screen.findByRole('button', { name: '未审核 2' });
+    expect(pendingTab).toHaveAttribute('aria-pressed', 'true');
+    const pendingRegion = screen.getByRole('region', { name: '未审核成员' });
+    const pendingNames = within(pendingRegion).getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
+    expect(pendingNames).toEqual(['最早待审核', '较新待审核']);
+    expect(screen.queryByText('已审核同学')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '已审核 1' }));
+    expect(screen.getByRole('region', { name: '已审核成员' })).toHaveTextContent('已审核同学');
+    expect(screen.queryByText('最早待审核')).not.toBeInTheDocument();
+  });
+
+  it('shows an application approval error inside the affected member card', async () => {
+    const executive = { id: 'admin', uid: '10001', username: 'admin', displayName: '管理员', email: 'admin@example.com', role: 'PRESIDENT', departmentId: null, bio: '' };
+    const pending = { id: 'legacy-pending', display_name: '历史申请同学', email: 'legacy@example.test', college: '动画学院', department_id: 'dept-tech', departmentIds: ['dept-tech'], departmentNames: ['技术部'], reason: '希望加入社团', status: 'PENDING', created_at: '2026-08-15T09:00:00.000Z' };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: executive } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/applications?page=1&pageSize=100&status=PENDING') return new Response(JSON.stringify({ ok: true, data: { items: [pending], page: 1, pageSize: 100, total: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/applications?page=1&pageSize=100&status=REVIEWED') return new Response(JSON.stringify({ ok: true, data: { items: [], page: 1, pageSize: 100, total: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/registration-requests?page=1&pageSize=100') return new Response(JSON.stringify({ ok: true, data: { items: [], page: 1, pageSize: 100, total: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/applications/legacy-pending/approve' && init?.method === 'POST') return new Response(JSON.stringify({ ok: false, error: { code: 'ACCOUNT_REQUIRED', message: '申请人账号处理失败' } }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: { items: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+
+    const user = userEvent.setup();
+    renderAt('/admin/recruitment');
+    const card = await screen.findByRole('article', { name: '历史申请同学的申请' });
+    await user.click(within(card).getByRole('button', { name: '通过并加入部门' }));
+    expect(await within(card).findByRole('alert')).toHaveTextContent('申请人账号处理失败');
+  });
+
+  it('keeps a legacy applicant activation code visible after approval', async () => {
+    const executive = { id: 'admin', uid: '10001', username: 'admin', displayName: '管理员', email: 'admin@example.com', role: 'PRESIDENT', departmentId: null, bio: '' };
+    const pending = { id: 'legacy-success', display_name: '旧版申请同学', email: 'legacy-success@example.test', college: '动画学院', department_id: 'dept-tech', departmentIds: ['dept-tech'], departmentNames: ['技术部'], reason: '希望加入社团', status: 'PENDING', created_at: '2026-08-15T09:00:00.000Z' };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: executive } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/applications?page=1&pageSize=100&status=PENDING') return new Response(JSON.stringify({ ok: true, data: { items: [pending], page: 1, pageSize: 100, total: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/applications?page=1&pageSize=100&status=REVIEWED') return new Response(JSON.stringify({ ok: true, data: { items: [], page: 1, pageSize: 100, total: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/registration-requests?page=1&pageSize=100') return new Response(JSON.stringify({ ok: true, data: { items: [], page: 1, pageSize: 100, total: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/applications/legacy-success/approve' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { approved: true, activationCode: 'legacy-activation-code-12345678' } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: { items: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+
+    const user = userEvent.setup();
+    renderAt('/admin/recruitment');
+    const card = await screen.findByRole('article', { name: '旧版申请同学的申请' });
+    await user.click(within(card).getByRole('button', { name: '通过并加入部门' }));
+    expect(await screen.findByText('legacy-activation-code-12345678')).toBeVisible();
+    expect(screen.getByText('请将一次性激活码发给申请人（7 天内有效）：')).toBeVisible();
+  });
+
+  it('shows the activation action on a legacy approved application status page', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/public/applications/status/legacy-status-token') return new Response(JSON.stringify({ ok: true, data: { id: 'legacy-approved', status: 'APPROVED', activationCode: 'legacy-activation-code-12345678' } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: payloads[path] ?? {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+
+    renderAt('/application/legacy-status-token');
+
+    expect(await screen.findByText('legacy-activation-code-12345678')).toBeVisible();
+    expect(screen.getByRole('link', { name: '设置账号密码' })).toHaveAttribute('href', '/activate?token=legacy-activation-code-12345678');
+    expect(screen.queryByText('无需再输入激活码。')).not.toBeInTheDocument();
+  });
+
+  it('lets reviewers recover a legacy activation code from the reviewed list', async () => {
+    const executive = { id: 'admin', uid: '10001', username: 'admin', displayName: '管理员', email: 'admin@example.com', role: 'PRESIDENT', departmentId: null, bio: '' };
+    const reviewed = { id: 'legacy-reviewed', display_name: '已通过旧申请', email: 'legacy-reviewed@example.test', college: '动画学院', department_id: 'dept-tech', departmentIds: ['dept-tech'], departmentNames: ['技术部'], reason: '旧版申请', status: 'APPROVED', requires_activation: 1, created_at: '2026-08-15T09:00:00.000Z', updated_at: '2026-09-14T09:00:00.000Z' };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: executive } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/applications?page=1&pageSize=100&status=PENDING') return new Response(JSON.stringify({ ok: true, data: { items: [], page: 1, pageSize: 100, total: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/applications?page=1&pageSize=100&status=REVIEWED') return new Response(JSON.stringify({ ok: true, data: { items: [reviewed], page: 1, pageSize: 100, total: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/registration-requests?page=1&pageSize=100') return new Response(JSON.stringify({ ok: true, data: { items: [], page: 1, pageSize: 100, total: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/applications/legacy-reviewed/regenerate-activation' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { activationCode: 'regenerated-activation-code-1234' } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+
+    const user = userEvent.setup();
+    renderAt('/admin/recruitment');
+    await user.click(await screen.findByRole('button', { name: '已审核 1' }));
+    const card = screen.getByRole('article', { name: '已通过旧申请的申请' });
+    await user.click(within(card).getByRole('button', { name: '重新生成激活码' }));
+    expect(await screen.findByText('regenerated-activation-code-1234')).toBeVisible();
+  });
+
   it('hides the onsite raffle from guests and ordinary members', async () => {
     renderAt('/');
     await screen.findByRole('heading', { name: '创作型社团' });

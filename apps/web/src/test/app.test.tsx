@@ -281,36 +281,21 @@ describe('Adventurer Guild app', () => {
     expect(screen.queryByRole('button', { name: '现场抽奖' })).not.toBeInTheDocument();
   });
 
-  it('opens the manager pixel raffle and reveals the server-drawn prize', async () => {
+  it('hides the archived onsite raffle from managers without loading its API', async () => {
     const manager = { id: 'user-lead', uid: '10002', username: 'cos.lead', displayName: '绯月幻装师', email: 'lead@example.com', role: 'DEPARTMENT_HEAD', departmentId: 'dept-cos', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], avatarColor: '#c75f88', profileVisibility: 'MEMBERS' };
-    const prizes = [
-      { id: 'raffle-third', tier: 3, name: '三等奖', contents: '挂件', initialStock: 250, remainingStock: 250, accent: '#59a875' },
-      { id: 'raffle-second', tier: 2, name: '二等奖', contents: '透卡', initialStock: 40, remainingStock: 40, accent: '#6aa7d8' },
-      { id: 'raffle-first', tier: 1, name: '一等奖', contents: '挂件 + 透卡 + 卡套', initialStock: 10, remainingStock: 10, accent: '#efb74f' },
-    ];
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const path = typeof input === 'string' ? input : input.toString();
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: manager } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      if (path === '/api/admin/raffle' && !init?.method) return new Response(JSON.stringify({ ok: true, data: { prizes, totalInitial: 300, totalRemaining: 300, recentDraws: [], canReset: false } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      if (path === '/api/admin/raffle/draw' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { prizes, totalInitial: 300, totalRemaining: 300, canReset: false, recentDraws: [], draw: { id: 'draw-test-1', prizeId: 'raffle-first', prizeName: '一等奖', prizeContents: '挂件 + 透卡 + 卡套', operatorId: 'user-lead', operatorDisplayName: '绯月幻装师', drawnAt: '2026-09-08T15:00:00.000Z', testMode: true } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: payloads[path] ?? {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     vi.stubGlobal('fetch', fetchMock);
-    const user = userEvent.setup();
     renderAt('/');
-    const launcher = await screen.findByRole('button', { name: '现场抽奖' });
-    expect(launcher).toHaveAttribute('data-machine', 'pixel-garapon');
-    await user.click(launcher);
-    expect(await screen.findByRole('dialog', { name: '福引抽奖所' })).toBeInTheDocument();
-    expect(screen.getByText('剩余 300 / 300 抽')).toBeInTheDocument();
-    await user.click(screen.getByRole('switch', { name: '测试模式' }));
-    await user.click(screen.getByRole('button', { name: '摇动手柄' }));
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/raffle/draw', expect.objectContaining({ method: 'POST', body: JSON.stringify({ testMode: true }) }));
-    expect(await screen.findByRole('status', undefined, { timeout: 3_000 })).toHaveTextContent('一等奖');
-    expect(screen.getByRole('status')).toHaveTextContent('测试抽奖');
-    expect(screen.getByRole('status')).toHaveTextContent('挂件 + 透卡 + 卡套');
-    expect(screen.getByText('剩余 300 / 300 抽')).toBeInTheDocument();
-  }, 10_000);
+    await screen.findByRole('heading', { name: '创作型社团' });
+    await screen.findByText('绯月幻装师');
+    expect(screen.queryByRole('button', { name: '现场抽奖' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '福引抽奖所' })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/admin/raffle', expect.anything());
+  });
 
   it('composes the hero from independently licensed parallax and architecture layers', async () => {
     renderAt('/');

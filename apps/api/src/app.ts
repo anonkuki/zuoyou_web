@@ -1514,6 +1514,29 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const total = (sqlite.prepare(`SELECT COUNT(*) count FROM users ${where}`).get(...scopeParams, ...searchParams) as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
+
+  app.get('/api/admin/department-role-members', async (request, reply) => {
+    const principal = requireAdmin(request, reply); if (!principal) return;
+    const rows = sqlite.prepare(`WITH memberships AS (
+      SELECT id user_id,department_id FROM users WHERE department_id IS NOT NULL
+      UNION
+      SELECT user_id,department_id FROM user_departments
+    )
+    SELECT u.id,u.uid,u.username,u.display_name,u.email,u.role,u.department_id,u.is_active,u.created_at,
+      GROUP_CONCAT(m.department_id) department_ids
+    FROM users u
+    JOIN memberships m ON m.user_id=u.id
+    WHERE u.is_active=1 AND u.role IN ('MEMBER','DEPARTMENT_HEAD','DEPARTMENT_ADMIN')
+    GROUP BY u.id
+    ORDER BY u.created_at DESC,u.display_name,u.id`).all() as Array<Record<string, unknown> & { department_ids: string | null }>;
+    const items = rows.map(({ department_ids, ...row }) => ({
+      ...row,
+      departmentId: row.department_id,
+      departmentIds: department_ids?.split(',').filter(Boolean) ?? [],
+    }));
+    return successResponse({ items });
+  });
+
   app.patch('/api/admin/members/:id', async (request, reply) => {
     const principal = requireManager(request, reply); if (!principal) return;
     const id = (request.params as { id: string }).id;

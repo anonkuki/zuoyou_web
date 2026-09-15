@@ -828,6 +828,28 @@ describe.sequential('Adventurer Guild API', () => {
     expect((await app.inject({ method: 'PATCH', url: '/api/admin/members/user-lead', headers: { cookie: adminCookie }, payload: { departmentId: 'dept-tech' } })).statusCode).toBe(403);
   });
 
+  it('lists every active department role candidate without member-page truncation', async () => {
+    const database = await openDatabase(`${root}/guild.sqlite`);
+    let insertedSecondaryMembership = false;
+    try {
+      insertedSecondaryMembership = database.sqlite.prepare("INSERT OR IGNORE INTO user_departments(user_id,department_id,is_primary,joined_at) VALUES ('user-fiction-008','dept-cos',0,?)").run(new Date().toISOString()).changes > 0;
+
+      expect((await app.inject({ method: 'GET', url: '/api/admin/department-role-members' })).statusCode).toBe(401);
+      expect((await app.inject({ method: 'GET', url: '/api/admin/department-role-members', headers: { cookie: memberCookie } })).statusCode).toBe(403);
+
+      const response = await app.inject({ method: 'GET', url: '/api/admin/department-role-members', headers: { cookie: adminCookie } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().data.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'user-fiction-008', role: 'MEMBER', departmentIds: expect.arrayContaining(['dept-tech', 'dept-cos']) }),
+        expect.objectContaining({ id: 'user-lead', role: 'DEPARTMENT_HEAD', departmentIds: expect.arrayContaining(['dept-cos']) }),
+        expect.objectContaining({ id: 'user-deputy', role: 'DEPARTMENT_ADMIN', departmentIds: expect.arrayContaining(['dept-cos']) }),
+      ]));
+    } finally {
+      if (insertedSecondaryMembership) database.sqlite.prepare("DELETE FROM user_departments WHERE user_id='user-fiction-008' AND department_id='dept-cos'").run();
+      database.sqlite.close();
+    }
+  });
+
   it('lets the president appoint and revoke a department deputy', async () => {
     const appointed = await app.inject({ method: 'POST', url: '/api/admin/roles/user-member/assign', headers: { cookie: adminCookie }, payload: { role: 'DEPARTMENT_ADMIN', departmentId: 'dept-cos' } });
     expect(appointed.statusCode).toBe(201);

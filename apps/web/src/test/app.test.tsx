@@ -501,25 +501,38 @@ describe('Adventurer Guild app', () => {
     expect(screen.getByRole('button', { name: '提交社员申请' })).toBeEnabled();
   });
 
-  it('shows each department deputy in department management', async () => {
+  it('shows all department candidates and lets the president revoke appointed leaders', async () => {
     const admin = { id: 'admin', uid: '10001', username: 'admin', displayName: '管理员', email: 'admin@example.com', role: 'PRESIDENT', departmentId: null, bio: '' };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === 'string' ? input : input.toString();
       if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: admin } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      if (path === '/api/admin/members?page=1&pageSize=100') return new Response(JSON.stringify({ ok: true, data: { items: [
-        { id: 'leader', uid: '10003', display_name: '绯月部长', email: 'lead@example.com', role: 'DEPARTMENT_HEAD', department_id: 'dept-cos', is_active: 1 },
-        { id: 'deputy', uid: '10004', display_name: '绯羽副部长', email: 'deputy@example.com', role: 'DEPARTMENT_ADMIN', department_id: 'dept-cos', is_active: 1 },
-        { id: 'member', uid: '10005', display_name: '白羽成员', email: 'member@example.com', role: 'MEMBER', department_id: 'dept-cos', is_active: 1 },
-      ], page: 1, pageSize: 100, total: 3 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      if (path === '/api/admin/roles/member/assign' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { assignmentId: 'role-new' } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/public/departments') return new Response(JSON.stringify({ ok: true, data: { items: [
+        { id: 'dept-cos', slug: 'cos', name: 'COS部', title: '幻术师', description: '角色造型与舞台呈现', memberCount: 15, leader_id: 'leader' },
+      ] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/department-role-members') return new Response(JSON.stringify({ ok: true, data: { items: [
+        { id: 'leader', uid: '10003', display_name: '绯月部长', email: 'lead@example.com', role: 'DEPARTMENT_HEAD', department_id: 'dept-cos', departmentIds: ['dept-cos'], is_active: 1 },
+        { id: 'deputy', uid: '10004', display_name: '绯羽副部长', email: 'deputy@example.com', role: 'DEPARTMENT_ADMIN', department_id: 'dept-cos', departmentIds: ['dept-cos'], is_active: 1 },
+        { id: 'new-member', uid: '10199', display_name: '新审核社员', email: 'new@example.com', role: 'MEMBER', department_id: null, departmentIds: ['dept-cos'], is_active: 1 },
+      ] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/roles/new-member/assign' && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { assignmentId: 'role-new' } }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+      if ((path === '/api/admin/roles/leader/revoke' || path === '/api/admin/roles/deputy/revoke') && init?.method === 'POST') return new Response(JSON.stringify({ ok: true, data: { revoked: true } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ ok: true, data: payloads[path] ?? {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
     renderAt('/admin/departments');
     expect(await screen.findByText('绯羽副部长（UID 10004）')).toBeInTheDocument();
-    await user.selectOptions(screen.getByRole('combobox', { name: 'COS部新增副部长' }), 'member');
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/roles/member/assign', expect.objectContaining({ method: 'POST', body: JSON.stringify({ role: 'DEPARTMENT_ADMIN', departmentId: 'dept-cos' }) })));
+    const deputySelect = screen.getByRole('combobox', { name: 'COS部新增副部长' });
+    expect(within(deputySelect).getByRole('option', { name: '新审核社员（UID 10199）' })).toBeInTheDocument();
+    await user.selectOptions(deputySelect, 'new-member');
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/roles/new-member/assign', expect.objectContaining({ method: 'POST', body: JSON.stringify({ role: 'DEPARTMENT_ADMIN', departmentId: 'dept-cos' }) })));
+
+    await user.click(screen.getByRole('button', { name: '撤销 COS部 部长绯月部长' }));
+    await user.click(screen.getByRole('button', { name: '撤销 COS部 副部长绯羽副部长' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/roles/leader/revoke', expect.objectContaining({ method: 'POST' }));
+      expect(fetchMock).toHaveBeenCalledWith('/api/admin/roles/deputy/revoke', expect.objectContaining({ method: 'POST' }));
+    });
   });
 
   it('frames every secondary public route with the authored guild visual system', async () => {

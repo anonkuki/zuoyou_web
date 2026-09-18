@@ -65,6 +65,7 @@ export function ProfileEditorPage() {
   const query = useQuery({ queryKey: ['social', 'self-profile'], queryFn: () => api<MemberHomepage>('/api/member/profile') });
   const [form, setForm] = useState({ uid: '', displayName: '', bio: '', signature: '', guildTitle: '', college: '', grade: '', skills: '', interests: '', attributes: [] as string[], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' as 'MEMBERS' | 'PRIVATE' });
   const [account, setAccount] = useState({ username: '', usernamePassword: '', currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -77,7 +78,8 @@ export function ProfileEditorPage() {
   }, [query.data]);
   useEffect(() => {
     if (user?.username) setAccount((current) => ({ ...current, username: user.username ?? '' }));
-  }, [user?.username]);
+    setEmailNotificationsEnabled(Boolean(user?.emailNotificationsEnabled));
+  }, [user?.username, user?.emailNotificationsEnabled]);
   const mutation = useMutation({ mutationFn: () => api('/api/member/profile', json('PATCH', { ...form, skills: splitTags(form.skills), interests: splitTags(form.interests), attributes: form.attributes })), onSuccess: async () => { setSaved(true); await Promise.all([client.invalidateQueries({ queryKey: ['auth', 'me'] }), client.invalidateQueries({ queryKey: ['social'] })]); } });
   const usernameMutation = useMutation({
     mutationFn: () => api<{ updated: boolean; user: User }>('/api/member/account/username', json('PATCH', { username: account.username, currentPassword: account.usernamePassword })),
@@ -95,6 +97,14 @@ export function ProfileEditorPage() {
     onSuccess: () => {
       setAccount((current) => ({ ...current, currentPassword: '', newPassword: '', confirmPassword: '' }));
       setAccountMessage('密码已更新，其他设备已退出登录');
+    },
+  });
+  const privacyMutation = useMutation({
+    mutationFn: () => api<{ updated: boolean; emailNotificationsEnabled: boolean }>('/api/member/privacy-preferences', json('PATCH', { emailNotificationsEnabled })),
+    onSuccess: async (data) => {
+      setEmailNotificationsEnabled(data.emailNotificationsEnabled);
+      setAccountMessage('邮件通知设置已更新');
+      await client.invalidateQueries({ queryKey: ['auth', 'me'] });
     },
   });
   const avatarUpload = useMutation({
@@ -178,6 +188,18 @@ export function ProfileEditorPage() {
             {passwordMutation.error && <p className="form-error">{passwordMutation.error.message}</p>}
           </div>
           <button className="guild-button primary" disabled={passwordMutation.isPending}>修改密码</button>
+        </form>
+      </article>
+      <article className="parchment-panel">
+        <span className="eyebrow">PRIVACY PREFERENCE</span>
+        <h2>活动邮件通知</h2>
+        <p>你的邮箱不会出现在成员主页或普通成员名录中。此项默认关闭，开启后也可以随时撤回。</p>
+        <form className="profile-editor" onSubmit={(event) => { event.preventDefault(); setAccountMessage(''); privacyMutation.mutate(); }}>
+          <div className="editor-section">
+            <label className="privacy-consent"><input type="checkbox" checked={emailNotificationsEnabled} onChange={(event) => setEmailNotificationsEnabled(event.target.checked)} /><span><strong>接收活动邮件通知</strong><small>用于社团活动开始、变更或取消提醒。</small></span></label>
+            {privacyMutation.error && <p className="form-error">{privacyMutation.error.message}</p>}
+          </div>
+          <button className="guild-button primary" disabled={privacyMutation.isPending}>保存邮件通知设置</button>
         </form>
       </article>
       {accountMessage && <p className="form-success account-security-message"><Check />{accountMessage}</p>}

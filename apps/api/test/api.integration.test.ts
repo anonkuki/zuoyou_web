@@ -439,6 +439,44 @@ describe.sequential('Adventurer Guild API', () => {
     memberCookie = await login(app, 'cos.member', 'DemoMember!2026');
   });
 
+  it('lets department heads and deputies edit only their own public card', async () => {
+    const deputyCookie = await login(app, 'cos.deputy', 'DemoDeputy!2026');
+    const techLeadCookie = await login(app, 'tech.lead', 'DemoLead!2026');
+
+    const headUpdate = await app.inject({
+      method: 'PATCH', url: '/api/admin/departments/dept-cos', headers: { cookie: leadCookie },
+      payload: { title: '幻装统筹', description: '统筹角色造型、服装道具与舞台呈现' },
+    });
+    expect(headUpdate.statusCode).toBe(200);
+    expect(headUpdate.json().data).toMatchObject({ updated: true, department: { id: 'dept-cos', title: '幻装统筹' } });
+
+    const deputyUpdate = await app.inject({
+      method: 'PATCH', url: '/api/admin/departments/dept-cos', headers: { cookie: deputyCookie },
+      payload: { title: '幻术师', description: '角色造型、服装道具与舞台呈现' },
+    });
+    expect(deputyUpdate.statusCode).toBe(200);
+
+    expect((await app.inject({
+      method: 'PATCH', url: '/api/admin/departments/dept-tech', headers: { cookie: leadCookie },
+      payload: { title: '越权修改', description: '不应被保存' },
+    })).statusCode).toBe(403);
+    expect((await app.inject({
+      method: 'PATCH', url: '/api/admin/departments/dept-cos', headers: { cookie: techLeadCookie },
+      payload: { title: '越权修改', description: '不应被保存' },
+    })).statusCode).toBe(403);
+    expect((await app.inject({
+      method: 'PATCH', url: '/api/admin/departments/dept-cos', headers: { cookie: memberCookie },
+      payload: { title: '越权修改', description: '不应被保存' },
+    })).statusCode).toBe(403);
+
+    const publicCard = await app.inject({ method: 'GET', url: '/api/public/departments/cos' });
+    expect(publicCard.json().data.department).toMatchObject({ title: '幻术师', description: '角色造型、服装道具与舞台呈现' });
+    const audit = await app.inject({ method: 'GET', url: '/api/admin/audit-log?page=1&pageSize=100', headers: { cookie: adminCookie } });
+    expect(audit.json().data.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'DEPARTMENT_UPDATED', entity_id: 'dept-cos' }),
+    ]));
+  });
+
   it('runs a manager-only atomic raffle and protects the reset control', async () => {
     const viceCookie = await login(app, 'vice.president', 'DemoVice!2026');
     const deputyCookie = await login(app, 'cos.deputy', 'DemoDeputy!2026');
@@ -745,7 +783,7 @@ describe.sequential('Adventurer Guild API', () => {
     } });
     expect(tooShort.statusCode).toBe(400);
     const submitted = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
-      username: '星砂访客', password, contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。',
+      username: '星砂访客', password, contact: 'starsand.registration@example.test', note: '校内动漫爱好者，希望加入线上交流。', emailNotificationsEnabled: true,
     } });
     expect(submitted.statusCode).toBe(201);
     const requestId = submitted.json().data.id as string;
@@ -755,14 +793,14 @@ describe.sequential('Adventurer Guild API', () => {
     const database = await openDatabase(`${root}/guild.sqlite`);
     const stored = database.sqlite.prepare('SELECT username,password_hash,contact,note,status FROM registration_requests WHERE id=?').get(requestId) as Record<string, string>;
     database.sqlite.close();
-    expect(stored).toMatchObject({ username: '星砂访客', contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。', status: 'PENDING' });
+    expect(stored).toMatchObject({ username: '星砂访客', contact: 'starsand.registration@example.test', note: '校内动漫爱好者，希望加入线上交流。', status: 'PENDING' });
     expect(stored.password_hash).not.toBe(password);
     expect(stored.password_hash).toMatch(/^scrypt\$/);
 
     expect((await app.inject({ method: 'GET', url: '/api/admin/registration-requests', headers: { cookie: memberCookie } })).statusCode).toBe(403);
     const presidentList = await app.inject({ method: 'GET', url: '/api/admin/registration-requests?page=1&pageSize=100', headers: { cookie: adminCookie } });
     const visible = presidentList.json().data.items.find((item: { id: string }) => item.id === requestId);
-    expect(visible).toMatchObject({ username: '星砂访客', contact: '13800000001', note: '校内动漫爱好者，希望加入线上交流。', status: 'PENDING' });
+    expect(visible).toMatchObject({ username: '星砂访客', contact: 'starsand.registration@example.test', note: '校内动漫爱好者，希望加入线上交流。', status: 'PENDING' });
     expect(visible).not.toHaveProperty('password_hash');
     expect(visible).not.toHaveProperty('passwordHash');
 
@@ -778,6 +816,66 @@ describe.sequential('Adventurer Guild API', () => {
     } });
     expect(rejected.statusCode).toBe(201);
     expect((await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${rejected.json().data.id}/reject`, headers: { cookie: registrationViceCookie } })).statusCode).toBe(200);
+  });
+
+  it('protects registered user contact data and keeps activity email consent reversible', async () => {
+    const invalidConsent = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
+      username: '隐私手机号用户', password: 'PrivacyPass!2026', contact: '13800009999', note: '', emailNotificationsEnabled: true,
+    } });
+    expect(invalidConsent.statusCode).toBe(400);
+
+    let database = await openDatabase(`${root}/guild.sqlite`);
+    database.sqlite.prepare(`INSERT INTO registration_requests(id,username,password_hash,contact,note,status,created_at,updated_at)
+      VALUES ('registration-default-privacy','默认隐私用户','not-used','default@example.test','','PENDING','2026-09-18T00:00:00.000Z','2026-09-18T00:00:00.000Z')`).run();
+    const defaultStored = database.sqlite.prepare("SELECT email_notifications_enabled FROM registration_requests WHERE id='registration-default-privacy'").get() as { email_notifications_enabled: number };
+    database.sqlite.prepare("UPDATE users SET email_notifications_enabled=1 WHERE id='user-member'").run();
+    database.sqlite.close();
+    expect(defaultStored.email_notifications_enabled).toBe(0);
+
+    const ownSession = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: memberCookie } });
+    expect(ownSession.json().data.user).toMatchObject({ email: 'cos.member@guild.example', emailNotificationsEnabled: true });
+
+    const optedOut = await app.inject({ method: 'PATCH', url: '/api/member/privacy-preferences', headers: { cookie: memberCookie }, payload: { emailNotificationsEnabled: false } });
+    expect(optedOut.statusCode).toBe(200);
+    expect(optedOut.json().data).toMatchObject({ updated: true, emailNotificationsEnabled: false });
+
+    database = await openDatabase(`${root}/guild.sqlite`);
+    database.sqlite.prepare("UPDATE users SET email='user-member@registration.invalid',email_notifications_enabled=0 WHERE id='user-member'").run();
+    database.sqlite.close();
+    const placeholderOptIn = await app.inject({ method: 'PATCH', url: '/api/member/privacy-preferences', headers: { cookie: memberCookie }, payload: { emailNotificationsEnabled: true } });
+    expect(placeholderOptIn.statusCode).toBe(400);
+    database = await openDatabase(`${root}/guild.sqlite`);
+    database.sqlite.prepare("UPDATE users SET email='cos.member@guild.example' WHERE id='user-member'").run();
+    const duplicateRequestId = 'registration-duplicate-email-privacy';
+    database.sqlite.prepare(`INSERT INTO registration_requests(id,username,password_hash,contact,note,email_notifications_enabled,status,created_at,updated_at)
+      VALUES (?,?,?,?,?,1,'PENDING',?,?)`).run(duplicateRequestId, '重复邮箱隐私用户', 'not-used', 'cos.member@guild.example', '', '2026-09-18T00:00:00.000Z', '2026-09-18T00:00:00.000Z');
+    database.sqlite.close();
+    const duplicateApproval = await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${duplicateRequestId}/approve`, headers: { cookie: adminCookie } });
+    expect(duplicateApproval.statusCode).toBe(200);
+    database = await openDatabase(`${root}/guild.sqlite`);
+    const duplicateUser = database.sqlite.prepare('SELECT email,email_notifications_enabled FROM users WHERE id=?').get(duplicateApproval.json().data.userId) as { email: string; email_notifications_enabled: number };
+    database.sqlite.close();
+    expect(duplicateUser.email).toMatch(/@registration\.invalid$/);
+    expect(duplicateUser.email_notifications_enabled).toBe(0);
+
+    const managerList = await app.inject({ method: 'GET', url: '/api/admin/members?page=1&pageSize=100', headers: { cookie: leadCookie } });
+    const managedMember = managerList.json().data.items.find((item: { id: string }) => item.id === 'user-member');
+    expect(managedMember).not.toHaveProperty('email');
+    expect(managedMember).toMatchObject({ emailMasked: 'c***@guild.example' });
+    const managerEmailSearch = await app.inject({ method: 'GET', url: '/api/admin/members?page=1&pageSize=100&q=cos.member%40guild.example', headers: { cookie: leadCookie } });
+    expect(managerEmailSearch.json().data.total).toBe(0);
+
+    const executiveList = await app.inject({ method: 'GET', url: '/api/admin/members?page=1&pageSize=100&q=cos.member%40guild.example', headers: { cookie: adminCookie } });
+    expect(executiveList.json().data.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'user-member', email: 'cos.member@guild.example' }),
+    ]));
+
+    database = await openDatabase(`${root}/guild.sqlite`);
+    const userPreference = database.sqlite.prepare("SELECT email_notifications_enabled FROM users WHERE id='user-member'").get() as { email_notifications_enabled: number };
+    const privacyAudit = database.sqlite.prepare("SELECT details FROM audit_logs WHERE action='EMAIL_NOTIFICATIONS_UPDATED' AND actor_id='user-member' ORDER BY created_at DESC LIMIT 1").get() as { details: string | null };
+    database.sqlite.close();
+    expect(userPreference.email_notifications_enabled).toBe(0);
+    expect(privacyAudit.details).not.toContain('cos.member@guild.example');
   });
 
   it('makes registration capacity-safe and non-duplicate', async () => {

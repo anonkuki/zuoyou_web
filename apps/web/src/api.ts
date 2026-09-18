@@ -59,6 +59,7 @@ export interface User {
   username: string | null;
   displayName: string;
   email: string;
+  emailNotificationsEnabled?: boolean;
   role: 'MEMBER' | 'DEPARTMENT_ADMIN' | 'DEPARTMENT_HEAD' | 'VICE_PRESIDENT' | 'PRESIDENT';
   departmentId: string | null;
   departmentIds?: string[];

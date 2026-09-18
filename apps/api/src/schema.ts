@@ -13,6 +13,7 @@ export const users = sqliteTable('users', {
   bio: text('bio').notNull().default(''), signature: text('signature').notNull().default(''), guildTitle: text('guild_title').notNull().default(''), college: text('college').notNull().default(''), grade: text('grade').notNull().default(''),
   skills: text('skills').notNull().default('[]'), interests: text('interests').notNull().default('[]'), attributes: text('attributes').notNull().default('[]'), avatarColor: text('avatar_color').notNull().default('#2f6f64'),
   profileVisibility: text('profile_visibility').notNull().default('MEMBERS'), lastSeenAt: text('last_seen_at'), avatarConfig: text('avatar_config'), avatarStorageKey: text('avatar_storage_key'), profileCoverStorageKey: text('profile_cover_storage_key'),
+  emailNotificationsEnabled: integer('email_notifications_enabled', { mode: 'boolean' }).notNull().default(false),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true), createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 });
 
@@ -85,6 +86,7 @@ export const applications = sqliteTable('applications', {
 
 export const registrationRequests = sqliteTable('registration_requests', {
   id: text('id').primaryKey(), username: text('username').notNull(), passwordHash: text('password_hash').notNull(), contact: text('contact').notNull(), note: text('note').notNull().default(''),
+  emailNotificationsEnabled: integer('email_notifications_enabled', { mode: 'boolean' }).notNull().default(false),
   status: text('status').notNull().default('PENDING'), reviewedBy: text('reviewed_by').references(() => users.id), reviewedAt: text('reviewed_at'), userId: text('user_id').references(() => users.id),
   createdAt: utcText('created_at'), updatedAt: utcText('updated_at'),
 }, (table) => [index('registration_request_status_time_idx').on(table.status, table.createdAt)]);

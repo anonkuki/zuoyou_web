@@ -11,7 +11,7 @@ export function LoginPage() {
   const client = useQueryClient();
   const [mode, setMode] = useState<'login' | 'register'>(search.get('mode') === 'register' ? 'register' : 'login');
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
-  const [registrationForm, setRegistrationForm] = useState({ username: '', password: '', contact: '', note: '' });
+  const [registrationForm, setRegistrationForm] = useState({ username: '', password: '', contact: '', note: '', emailNotificationsEnabled: false });
   const login = useMutation({
     mutationFn: () => api<{ user: User }>('/api/auth/login', json('POST', loginForm)),
     onSuccess: data => {
@@ -46,7 +46,8 @@ export function LoginPage() {
       <label>密码<input autoComplete="new-password" type="password" required minLength={6} maxLength={200} value={registrationForm.password} onChange={event => setRegistrationForm({ ...registrationForm, password: event.target.value })} /></label>
       <label>联系方式<input autoComplete="email" required minLength={3} maxLength={160} placeholder="邮箱、手机号或其他可核验方式" value={registrationForm.contact} onChange={event => setRegistrationForm({ ...registrationForm, contact: event.target.value })} /></label>
       <label>备注<textarea rows={4} maxLength={1000} placeholder="可填写身份说明或希望管理员了解的信息" value={registrationForm.note} onChange={event => setRegistrationForm({ ...registrationForm, note: event.target.value })} /></label>
-      <p className="auth-privacy-note">用户名支持中文；密码仅保存安全哈希，审核人员无法查看。</p>
+      <label className="privacy-consent"><input type="checkbox" checked={registrationForm.emailNotificationsEnabled} onChange={event => setRegistrationForm({ ...registrationForm, emailNotificationsEnabled: event.target.checked })} /><span><strong>接收活动邮件通知（可选）</strong><small>仅当联系方式为邮箱时生效，可在个人资料中随时关闭。</small></span></label>
+      <p className="auth-privacy-note">联系方式仅用于账号审核和你主动选择的通知；密码仅保存安全哈希，审核人员无法查看。</p>
       {registration.error && <p className="form-error">{registration.error.message}</p>}
       <button className="guild-button primary" disabled={registration.isPending}><UserPlus />{registration.isPending ? '提交中…' : '提交注册请求'}</button>
     </form>}

@@ -18,6 +18,7 @@ import { createActivationToken } from './activation.js';
 import { canTransitionActivity } from './activity.js';
 import { allocateUserUid, openDatabase, seedDatabase } from './database.js';
 import { canAccessDepartment, canAccessFile } from './policies.js';
+import { isNotificationEmail, maskEmail, sanitizeAuditDetails } from './privacy.js';
 import { decryptSecret, encryptSecret, hashPassword, sha256, verifyPassword } from './security.js';
 import { GuildSocialRepository, SocialError, safeTags } from './social.js';
 import { GuildWorldService } from './world.js';
@@ -56,6 +57,7 @@ interface UserRow {
   avatar_config: string | null;
   avatar_storage_key: string | null;
   profile_visibility: 'MEMBERS' | 'PRIVATE';
+  email_notifications_enabled: number;
   last_seen_at: string | null;
   is_active: number;
   updated_at: string;
@@ -80,6 +82,7 @@ interface Principal {
   avatarConfig: AvatarConfig;
   avatarUrl: string | null;
   profileVisibility: 'MEMBERS' | 'PRIVATE';
+  emailNotificationsEnabled: boolean;
   lastSeenAt: string | null;
 }
 
@@ -208,6 +211,7 @@ const cleanUser = (user: UserRow, departmentIds: string[] = user.department_id ?
   id: user.id, uid: user.uid, username: user.username, displayName: user.display_name, email: user.email,
   role: user.role, departmentId: user.department_id, departmentIds, bio: user.bio, guildTitle: user.guild_title, college: user.college, grade: user.grade,
   skills: safeTags(user.skills), interests: safeTags(user.interests), avatarColor: user.avatar_color, avatarConfig: resolveAvatarConfig(user.id, user.avatar_config), avatarUrl: user.avatar_storage_key ? `/api/public/avatars/${user.id}?v=${encodeURIComponent(user.updated_at)}` : null, profileVisibility: user.profile_visibility, lastSeenAt: user.last_seen_at,
+  emailNotificationsEnabled: Boolean(user.email_notifications_enabled),
 });
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -225,7 +229,7 @@ function pageData(items: unknown[], total: number, page: number, pageSize: numbe
 
 function audit(sqlite: Database.Database, actorId: string | null, action: string, entityType: string, entityId: string, targetUserId: string | null = null, details?: unknown): void {
   sqlite.prepare('INSERT OR IGNORE INTO audit_logs(id,actor_id,target_user_id,action,entity_type,entity_id,details,created_at) VALUES (?,?,?,?,?,?,?,?)')
-    .run(newId('audit'), actorId, targetUserId, action, entityType, entityId, details ? JSON.stringify(details) : null, now());
+    .run(newId('audit'), actorId, targetUserId, action, entityType, entityId, details === undefined ? null : JSON.stringify(sanitizeAuditDetails(details)), now());
 }
 
 export async function createApp(options: AppOptions): Promise<FastifyInstance> {
@@ -780,6 +784,9 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     password: passwordSchema,
     contact: z.string().trim().min(3).max(160),
     note: z.string().trim().max(1000).default(''),
+    emailNotificationsEnabled: z.boolean().default(false),
+  }).refine((value) => !value.emailNotificationsEnabled || isNotificationEmail(value.contact), {
+    path: ['emailNotificationsEnabled'], message: '订阅活动邮件时必须填写有效邮箱',
   });
   app.post('/api/public/registration-requests', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = parse(registrationRequestSchema, request.body);
@@ -789,8 +796,8 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const id = newId('registration');
     const passwordHash = await hashPassword(body.password);
     const timestamp = now();
-    sqlite.prepare(`INSERT INTO registration_requests(id,username,password_hash,contact,note,status,created_at,updated_at)
-      VALUES (?,?,?,?,?,'PENDING',?,?)`).run(id, body.username, passwordHash, body.contact, body.note, timestamp, timestamp);
+    sqlite.prepare(`INSERT INTO registration_requests(id,username,password_hash,contact,note,email_notifications_enabled,status,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,'PENDING',?,?)`).run(id, body.username, passwordHash, body.contact, body.note, body.emailNotificationsEnabled ? 1 : 0, timestamp, timestamp);
     audit(sqlite, null, 'REGISTRATION_REQUEST_SUBMITTED', 'registration_request', id);
     return reply.status(201).send(successResponse({ id, status: 'PENDING' }));
   });
@@ -869,6 +876,18 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       audit(sqlite, principal.id, 'PASSWORD_CHANGED', 'user', principal.id, principal.id, { revokedSessions });
     })();
     return successResponse({ updated: true, revokedSessions });
+  });
+
+  app.patch('/api/member/privacy-preferences', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const principal = requireMember(request, reply); if (!principal) return;
+    const body = parse(z.object({ emailNotificationsEnabled: z.boolean() }), request.body);
+    if (body.emailNotificationsEnabled && !isNotificationEmail(principal.email)) {
+      throw new HttpError(400, 'EMAIL_REQUIRED', '开启活动邮件前需要有效邮箱');
+    }
+    sqlite.prepare('UPDATE users SET email_notifications_enabled=?,updated_at=? WHERE id=?')
+      .run(body.emailNotificationsEnabled ? 1 : 0, now(), principal.id);
+    audit(sqlite, principal.id, 'EMAIL_NOTIFICATIONS_UPDATED', 'user', principal.id, principal.id, { emailNotificationsEnabled: body.emailNotificationsEnabled });
+    return successResponse({ updated: true, emailNotificationsEnabled: body.emailNotificationsEnabled });
   });
 
   app.get('/api/admin/raffle', async (request, reply) => {
@@ -1503,14 +1522,21 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const paging = getPaging(request.query);
     const { q = '' } = parse(z.object({ q: z.string().trim().max(60).default('') }), request.query);
     const search = `%${q}%`;
-    const clauses = ["(?='' OR uid LIKE ? OR display_name LIKE ? OR email LIKE ? OR COALESCE(username,'') LIKE ?)"];
+    const executive = isExecutiveRole(principal.role);
+    const clauses = [executive
+      ? "(?='' OR uid LIKE ? OR display_name LIKE ? OR email LIKE ? OR COALESCE(username,'') LIKE ?)"
+      : "(?='' OR uid LIKE ? OR display_name LIKE ? OR COALESCE(username,'') LIKE ?)"];
     const scopeParams: unknown[] = [];
-    if (!isExecutiveRole(principal.role)) { clauses.unshift('department_id=?'); scopeParams.push(principal.departmentId); }
+    if (!executive) { clauses.unshift('department_id=?'); scopeParams.push(principal.departmentId); }
     const where = `WHERE ${clauses.join(' AND ')}`;
-    const searchParams = [q, search, search, search, search];
+    const searchParams = executive ? [q, search, search, search, search] : [q, search, search, search];
     const params = [...scopeParams, ...searchParams, paging.pageSize, paging.offset];
     const rows = sqlite.prepare(`SELECT id,uid,username,display_name,email,role,department_id,is_active,created_at FROM users ${where} ORDER BY created_at LIMIT ? OFFSET ?`).all(...params) as Array<Record<string, unknown>>;
-    const items = rows.map((row) => ({ ...row, departmentId: row.department_id }));
+    const items = rows.map((row) => {
+      if (executive) return { ...row, departmentId: row.department_id };
+      const { email, ...safeRow } = row;
+      return { ...safeRow, emailMasked: maskEmail(String(email)), departmentId: row.department_id };
+    });
     const total = (sqlite.prepare(`SELECT COUNT(*) count FROM users ${where}`).get(...scopeParams, ...searchParams) as { count: number }).count;
     return successResponse(pageData(items, total, paging.page, paging.pageSize));
   });
@@ -1716,10 +1742,22 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return reply.status(201).send(successResponse({ id }));
   });
   app.patch('/api/admin/departments/:id', async (request, reply) => {
-    const principal = requireAdmin(request, reply); if (!principal) return;
-    const body = parse(z.object({ name: z.string().min(2).optional(), title: z.string().min(2).optional(), description: z.string().optional() }), request.body);
-    sqlite.prepare('UPDATE departments SET name=COALESCE(?,name),title=COALESCE(?,title),description=COALESCE(?,description),updated_at=? WHERE id=?').run(body.name ?? null, body.title ?? null, body.description ?? null, now(), (request.params as { id: string }).id);
-    return successResponse({ updated: true });
+    const principal = requireManager(request, reply); if (!principal) return;
+    const id = (request.params as { id: string }).id;
+    const department = sqlite.prepare('SELECT id,slug,name,title,description FROM departments WHERE id=?').get(id) as { id: string; slug: string; name: string; title: string; description: string } | undefined;
+    if (!department) throw new HttpError(404, 'NOT_FOUND', '部门不存在');
+    scopeDepartment(principal, department.id);
+    const body = parse(z.object({
+      name: z.string().trim().min(2).max(40).optional(),
+      title: z.string().trim().min(2).max(40).optional(),
+      description: z.string().trim().min(2).max(200).optional(),
+    }).refine((value) => Object.keys(value).length > 0, '请至少提交一项修改'), request.body);
+    const timestamp = now();
+    sqlite.prepare('UPDATE departments SET name=COALESCE(?,name),title=COALESCE(?,title),description=COALESCE(?,description),updated_at=? WHERE id=?')
+      .run(body.name ?? null, body.title ?? null, body.description ?? null, timestamp, id);
+    audit(sqlite, principal.id, 'DEPARTMENT_UPDATED', 'department', id, null, { fields: Object.keys(body) });
+    const updated = sqlite.prepare('SELECT id,slug,name,title,description,leader_id,created_at,updated_at FROM departments WHERE id=?').get(id);
+    return successResponse({ updated: true, department: updated });
   });
   app.post('/api/admin/departments/:id/leader', async (request, reply) => {
     const principal = requireAdmin(request, reply); if (!principal) return;
@@ -1916,13 +1954,13 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.post('/api/admin/registration-requests/:id/approve', async (request, reply) => {
     const principal = requireAdmin(request, reply); if (!principal) return;
     const id = (request.params as { id: string }).id;
-    const registration = sqlite.prepare('SELECT id,username,password_hash,contact,status FROM registration_requests WHERE id=?').get(id) as { id: string; username: string; password_hash: string; contact: string; status: string } | undefined;
+    const registration = sqlite.prepare('SELECT id,username,password_hash,contact,email_notifications_enabled,status FROM registration_requests WHERE id=?').get(id) as { id: string; username: string; password_hash: string; contact: string; email_notifications_enabled: number; status: string } | undefined;
     if (!registration) throw new HttpError(404, 'NOT_FOUND', '注册请求不存在');
     if (registration.status !== 'PENDING') throw new HttpError(409, 'INVALID_STATE', '注册请求已处理');
     if (sqlite.prepare('SELECT 1 FROM users WHERE username=? COLLATE NOCASE').get(registration.username)) throw new HttpError(409, 'USERNAME_TAKEN', '该用户名已被使用');
     const userId = newId('user');
     const uid = allocateRegistrationUid();
-    const contactIsEmail = z.email().safeParse(registration.contact).success;
+    const contactIsEmail = isNotificationEmail(registration.contact);
     const emailInUse = contactIsEmail && sqlite.prepare('SELECT 1 FROM users WHERE email=? COLLATE NOCASE').get(registration.contact);
     const accountEmail = contactIsEmail && !emailInUse ? registration.contact : `${userId}@registration.invalid`;
     const timestamp = now();
@@ -1931,11 +1969,11 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
         .run(principal.id, timestamp, timestamp, id);
       if (claimed.changes !== 1) throw new HttpError(409, 'INVALID_STATE', '注册请求已处理');
       if (uid) {
-        sqlite.prepare(`INSERT INTO users(id,uid,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at)
-          VALUES (?,?,?,?,?,?,'MEMBER',NULL,'',1,?,?)`).run(userId, uid, registration.username, registration.password_hash, registration.username, accountEmail, timestamp, timestamp);
+        sqlite.prepare(`INSERT INTO users(id,uid,username,password_hash,display_name,email,role,department_id,bio,email_notifications_enabled,is_active,created_at,updated_at)
+          VALUES (?,?,?,?,?,?,'MEMBER',NULL,'',?,1,?,?)`).run(userId, uid, registration.username, registration.password_hash, registration.username, accountEmail, contactIsEmail && !emailInUse && registration.email_notifications_enabled ? 1 : 0, timestamp, timestamp);
       } else {
-        sqlite.prepare(`INSERT INTO users(id,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at)
-          VALUES (?,?,?,?,?,'MEMBER',NULL,'',1,?,?)`).run(userId, registration.username, registration.password_hash, registration.username, accountEmail, timestamp, timestamp);
+        sqlite.prepare(`INSERT INTO users(id,username,password_hash,display_name,email,role,department_id,bio,email_notifications_enabled,is_active,created_at,updated_at)
+          VALUES (?,?,?,?,?,'MEMBER',NULL,'',?,1,?,?)`).run(userId, registration.username, registration.password_hash, registration.username, accountEmail, contactIsEmail && !emailInUse && registration.email_notifications_enabled ? 1 : 0, timestamp, timestamp);
       }
       sqlite.prepare('UPDATE registration_requests SET user_id=? WHERE id=?').run(userId, id);
       audit(sqlite, principal.id, 'REGISTRATION_REQUEST_APPROVED', 'registration_request', id, userId);

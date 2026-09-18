@@ -85,7 +85,7 @@ describe('Adventurer Guild app', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({ method: 'POST' }));
   });
 
-  it('submits a guest account registration from the login page', async () => {
+  it('keeps email notification consent optional and submits the explicit registration choice', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.mocked(fetch);
     renderAt('/login?mode=register');
@@ -95,11 +95,14 @@ describe('Adventurer Guild app', () => {
     await user.type(screen.getByLabelText('密码'), 'NewMember!2026');
     await user.type(screen.getByLabelText('联系方式'), 'new.member@example.test');
     await user.type(screen.getByLabelText('备注'), '希望加入社团线上社区');
+    const consent = screen.getByRole('checkbox', { name: /接收活动邮件通知/ });
+    expect(consent).not.toBeChecked();
+    await user.click(consent);
     await user.click(screen.getByRole('button', { name: '提交注册请求' }));
     expect(await screen.findByRole('status')).toHaveTextContent('注册请求已提交');
     expect(fetchMock).toHaveBeenCalledWith('/api/public/registration-requests', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ username: '星砂成员', password: 'NewMember!2026', contact: 'new.member@example.test', note: '希望加入社团线上社区' }),
+      body: JSON.stringify({ username: '星砂成员', password: 'NewMember!2026', contact: 'new.member@example.test', note: '希望加入社团线上社区', emailNotificationsEnabled: true }),
     }));
   });
 
@@ -529,6 +532,46 @@ describe('Adventurer Guild app', () => {
     expect(hero?.querySelector('[data-ornament="chapter-mark"]')).toBeInTheDocument();
   });
 
+  it("edits only the signed-in manager's department card", async () => {
+    const manager = { id: 'user-lead', uid: '10002', username: 'cos.lead', displayName: 'COS部部长', email: 'lead@example.com', role: 'DEPARTMENT_HEAD', departmentId: 'dept-cos', bio: '' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: manager } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/departments/dept-cos' && init?.method === 'PATCH') return new Response(JSON.stringify({ ok: true, data: { updated: true } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: payloads[path] ?? {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/departments');
+
+    const editButton = await screen.findByRole('button', { name: '编辑 COS部部门卡片' });
+    expect(screen.queryByRole('button', { name: '编辑 技术部部门卡片' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '编辑 原创部部门卡片' })).not.toBeInTheDocument();
+    await user.click(editButton);
+    expect(screen.getByRole('dialog', { name: '编辑 COS部部门卡片' })).toBeInTheDocument();
+    await user.clear(screen.getByLabelText('职业称号'));
+    await user.type(screen.getByLabelText('职业称号'), '幻装统筹');
+    await user.clear(screen.getByLabelText('部门简介'));
+    await user.type(screen.getByLabelText('部门简介'), '统筹角色造型、服装道具与舞台呈现');
+    await user.click(screen.getByRole('button', { name: '保存部门卡片' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/departments/dept-cos', expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ title: '幻装统筹', description: '统筹角色造型、服装道具与舞台呈现' }),
+    })));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '编辑 COS部部门卡片' })).not.toBeInTheDocument());
+
+    cleanup();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: { ...manager, id: 'user-member', username: 'cos.member', role: 'MEMBER' } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: payloads[path] ?? {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+    renderAt('/departments');
+    await screen.findByRole('heading', { name: '职业大厅' });
+    expect(screen.queryByRole('button', { name: /编辑 .*部门卡片/ })).not.toBeInTheDocument();
+  });
+
   it('protects the management area for unauthenticated visitors', async () => {
     renderAt('/admin');
     expect(await screen.findByText('需要公会身份验证')).toBeInTheDocument();
@@ -683,6 +726,45 @@ describe('Adventurer Guild app', () => {
     await user.click(screen.getByRole('button', { name: '修改密码' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/account/password', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ currentPassword: 'DemoMember!2026', newPassword: 'NewDemoMember!2026' }) })));
     expect(await screen.findByText('密码已更新，其他设备已退出登录')).toBeInTheDocument();
+  });
+
+  it('lets a member withdraw the email notification privacy preference', async () => {
+    const profile = { id: 'user-member', uid: '10005', username: 'cos.member', displayName: '白羽见习者', email: 'member@example.com', emailNotificationsEnabled: true, role: 'MEMBER', departmentId: 'dept-cos', departmentName: 'COS部', bio: '', guildTitle: '', college: '', grade: '', skills: [], interests: [], attributes: [], avatarColor: '#5279a8', profileVisibility: 'MEMBERS' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/profile') return new Response(JSON.stringify({ ok: true, data: { profile } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/member/privacy-preferences' && init?.method === 'PATCH') return new Response(JSON.stringify({ ok: true, data: { updated: true, emailNotificationsEnabled: false } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderAt('/portal/profile');
+    const preference = await screen.findByRole('checkbox', { name: /接收活动邮件通知/ });
+    expect(preference).toBeChecked();
+    await user.click(preference);
+    await user.click(screen.getByRole('button', { name: '保存邮件通知设置' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/member/privacy-preferences', expect.objectContaining({
+      method: 'PATCH', body: JSON.stringify({ emailNotificationsEnabled: false }),
+    })));
+    expect(await screen.findByText('邮件通知设置已更新')).toBeInTheDocument();
+  });
+
+  it('shows a masked member email to department managers', async () => {
+    const manager = { id: 'user-lead', uid: '10002', username: 'cos.lead', displayName: 'COS部部长', email: 'lead@example.com', role: 'DEPARTMENT_HEAD', departmentId: 'dept-cos', bio: '' };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: manager } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path.startsWith('/api/admin/members')) return new Response(JSON.stringify({ ok: true, data: { items: [
+        { id: 'user-member', uid: '10005', display_name: '白羽见习者', emailMasked: 'm***@example.com', role: 'MEMBER', department_id: 'dept-cos', is_active: 1, created_at: '2026-08-01T00:00:00.000Z' },
+      ], page: 1, pageSize: 100, total: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/role-hierarchy') return new Response(JSON.stringify({ ok: true, data: { items: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderAt('/admin/members');
+    expect(await screen.findByText(/m\*\*\*@example\.com/)).toBeInTheDocument();
+    expect(screen.queryByText(/member@example\.com/)).not.toBeInTheDocument();
   });
 
   it('operates an unread-aware chat workspace with reply and send feedback', async () => {

@@ -604,6 +604,25 @@ describe('Adventurer Guild app', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/files/upload', expect.objectContaining({ method: 'POST' })));
   });
 
+  it('highlights pending registrations in the executive console', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = typeof input === 'string' ? input : input.toString();
+      if (path === '/api/auth/session') return new Response(JSON.stringify({ ok: true, data: { user: { id: 'admin', username: 'admin', displayName: '管理员', email: 'admin@example.com', role: 'PRESIDENT', departmentId: null, bio: '' } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/dashboard') return new Response(JSON.stringify({ ok: true, data: { members: 112, pendingApplications: 1, pendingRegistrations: 2, activeActivities: 3, publishedWorks: 8, contributions: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (path === '/api/admin/analytics') return new Response(JSON.stringify({ ok: true, data: { departmentActivity: [], memberGrowth: [] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/admin');
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/admin/dashboard', expect.anything()));
+    expect(await screen.findByRole('link', { name: '2 个待审核注册' })).toHaveAttribute('href', '/admin/recruitment');
+    const card = screen.getByText('待审注册').closest('article');
+    expect(card).toHaveTextContent('2');
+    expect(screen.getByRole('link', { name: '查看待审核注册' })).toHaveAttribute('href', '/admin/recruitment');
+  });
+
   it('lets an administrator publish and unpublish homepage announcements', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === 'string' ? input : input.toString();

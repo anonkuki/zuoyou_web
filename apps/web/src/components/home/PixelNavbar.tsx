@@ -15,6 +15,7 @@ const navigation = [
   ['/activities', '冒险档案'],
   ['/works', '作品图鉴'],
   ['/tavern', '冒险者酒馆'],
+  ['/stargate', '异界巡游'],
   ['/join', '加入我们'],
 ] as const;
 
@@ -241,7 +242,7 @@ export function PixelNavbar() {
         <span><strong>佐佑动漫社</strong><small>Sayuu Anime Guild</small></span>
       </Link>
       <nav className={menuOpen ? 'open' : ''} aria-label="主导航">
-        {navigation.map(([to, label]) => <NavLink end={to === '/'} key={to} to={to} onClick={() => setMenuOpen(false)}>{label}</NavLink>)}
+        {navigation.map(([to, label]) => <NavLink end={to === '/'} key={to} to={to} className={to === '/stargate' ? 'nav-event-link' : undefined} onClick={() => setMenuOpen(false)}>{label}</NavLink>)}
       </nav>
       <div className="pixel-nav-tools">
         <button aria-label="搜索" onClick={() => setSearchOpen(true)}><Search/></button>

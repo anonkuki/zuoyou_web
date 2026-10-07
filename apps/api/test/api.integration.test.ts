@@ -804,12 +804,32 @@ describe.sequential('Adventurer Guild API', () => {
     expect(visible).not.toHaveProperty('password_hash');
     expect(visible).not.toHaveProperty('passwordHash');
 
+    const pendingDashboard = await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: adminCookie } });
+    expect(pendingDashboard.json().data.pendingRegistrations).toBe(1);
+    const presidentConversations = await app.inject({ method: 'GET', url: '/api/member/conversations', headers: { cookie: adminCookie } });
+    const registrationNotice = presidentConversations.json().data.items.find((item: { title: string }) => item.title === '注册审核助手');
+    expect(registrationNotice).toMatchObject({ type: 'DIRECT', unreadCount: expect.any(Number) });
+    expect(registrationNotice.unreadCount).toBeGreaterThan(0);
+    const noticeMessages = await app.inject({ method: 'GET', url: `/api/member/conversations/${registrationNotice.id}/messages`, headers: { cookie: adminCookie } });
+    expect(noticeMessages.json().data.items.at(-1)).toMatchObject({
+      sender: { displayName: '注册审核助手' },
+      content: '新用户“星砂访客”提交了注册请求，请前往管理台 → 招新管理审核。',
+    });
+    const memberConversations = await app.inject({ method: 'GET', url: '/api/member/conversations', headers: { cookie: memberCookie } });
+    expect(memberConversations.json().data.items.some((item: { title: string }) => item.title === '注册审核助手')).toBe(false);
+
     const registrationViceCookie = await login(app, 'vice.president2', 'DemoVice2!2026');
+    const viceConversations = await app.inject({ method: 'GET', url: '/api/member/conversations', headers: { cookie: registrationViceCookie } });
+    const viceRegistrationNotice = viceConversations.json().data.items.find((item: { title: string }) => item.title === '注册审核助手');
+    expect(viceRegistrationNotice).toMatchObject({ type: 'DIRECT', unreadCount: expect.any(Number) });
+    expect(viceRegistrationNotice.unreadCount).toBeGreaterThan(0);
     expect((await app.inject({ method: 'GET', url: '/api/admin/registration-requests', headers: { cookie: registrationViceCookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: `/api/admin/registration-requests/${requestId}/approve`, headers: { cookie: registrationViceCookie } })).statusCode).toBe(200);
     const pendingAfterApproval = (await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: adminCookie } })).json().data.pendingRegistrations as number;
     expect(pendingAfterApproval).toBe(pendingBefore);
     expect(await login(app, '星砂访客', password)).toContain('guild_session=');
+    const clearedDashboard = await app.inject({ method: 'GET', url: '/api/admin/dashboard', headers: { cookie: adminCookie } });
+    expect(clearedDashboard.json().data.pendingRegistrations).toBe(0);
 
     const rejected = await app.inject({ method: 'POST', url: '/api/public/registration-requests', payload: {
       username: 'guest.beta', password: 'OtherStrong!2026', contact: '13800000002', note: '',

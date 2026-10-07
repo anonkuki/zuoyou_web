@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Activity as ActivityIcon, ArchiveRestore, Ban, Check, CircleGauge, ClipboardCheck, FileArchive, History, ListChecks, Megaphone, Pencil, Pin, RotateCcw, Search, Settings, ShieldCheck, Trash2, UserCog, Users, X } from 'lucide-react';
 import { isExecutiveRole, roleLabels, type Role } from '@guild/contracts';
@@ -8,7 +9,7 @@ import { useAuth } from './auth';
 import { EmptyPanel, ErrorPanel, formatDate, LoadingPanel, PageHero, StatusBadge } from './components';
 import type { Activity, Department } from './pages-public';
 
-interface Dashboard { members:number; pendingApplications:number; activeActivities:number; publishedWorks:number }
+interface Dashboard { members:number; pendingApplications:number; pendingRegistrations:number; activeActivities:number; publishedWorks:number }
 interface Analytics { departmentActivity:Array<{departmentId:string;departmentName:string;score:number}>; memberGrowth:Array<{month:string;count:number}> }
 interface Member { id:string; uid:string; display_name:string; email?:string; emailMasked?:string; role:Role; department_id:string|null; is_active:number; created_at:string }
 interface DepartmentRoleMember extends Member { departmentIds:string[] }
@@ -27,8 +28,8 @@ function useInvalidate(...keys:string[]){const client=useQueryClient();return ()
 export function AdminDashboardPage(){
   const dashboard=useQuery({queryKey:['admin-dashboard'],queryFn:()=>api<Dashboard>('/api/admin/dashboard')});
   const analytics=useQuery({queryKey:['admin-analytics'],queryFn:()=>api<Analytics>('/api/admin/analytics')});
-  const stats=[['正式成员',dashboard.data?.members??0,Users],['待审申请',dashboard.data?.pendingApplications??0,ListChecks],['活跃活动',dashboard.data?.activeActivities??0,ActivityIcon],['已发作品',dashboard.data?.publishedWorks??0,ShieldCheck]] as const;
-  return <main><PageHero eyebrow="COMMAND TABLE" title="公会数据总览" description="所有数值由成员、活动、作品与任务记录实时聚合。"/><section className="shell dashboard-cards">{stats.map(([label,value,Icon])=><article key={label}><Icon/><span>{label}</span><strong>{value}</strong></article>)}</section><section className="shell chart-grid"><article className="chart-panel"><h2>部门贡献排行</h2>{analytics.isLoading?<LoadingPanel/>:<ResponsiveContainer width="100%" height={300}><BarChart data={analytics.data?.departmentActivity??[]}><CartesianGrid strokeDasharray="3 3" stroke="#6c523b44"/><XAxis dataKey="departmentName"/><YAxis/><Tooltip/><Bar dataKey="score" fill="#c89b3c" radius={[6,6,0,0]}/></BarChart></ResponsiveContainer>}</article><article className="parchment-panel"><h2>管理提醒</h2><div className="quest-row"><ListChecks/><span>待审核招新</span><strong>{dashboard.data?.pendingApplications??0}</strong></div><div className="quest-row"><ActivityIcon/><span>正在运行活动</span><strong>{dashboard.data?.activeActivities??0}</strong></div><p className="panel-note">处理操作会写入审计日志，成员与文件删除均可恢复。</p></article></section></main>;
+  const stats=[['正式成员',dashboard.data?.members??0,Users],['待审注册',dashboard.data?.pendingRegistrations??0,ListChecks],['待审申请',dashboard.data?.pendingApplications??0,ListChecks],['活跃活动',dashboard.data?.activeActivities??0,ActivityIcon],['已发作品',dashboard.data?.publishedWorks??0,ShieldCheck]] as const;
+  return <main><PageHero eyebrow="COMMAND TABLE" title="公会数据总览" description="所有数值由成员、活动、作品与任务记录实时聚合。"/><section className="shell dashboard-cards">{stats.map(([label,value,Icon])=><article key={label}><Icon/><span>{label}</span><strong>{value}</strong></article>)}</section><section className="shell chart-grid"><article className="chart-panel"><h2>部门贡献排行</h2>{analytics.isLoading?<LoadingPanel/>:<ResponsiveContainer width="100%" height={300}><BarChart data={analytics.data?.departmentActivity??[]}><CartesianGrid strokeDasharray="3 3" stroke="#6c523b44"/><XAxis dataKey="departmentName"/><YAxis/><Tooltip/><Bar dataKey="score" fill="#c89b3c" radius={[6,6,0,0]}/></BarChart></ResponsiveContainer>}</article><article className="parchment-panel"><h2>管理提醒</h2><Link className="quest-row dashboard-alert-row" aria-label="查看待审核注册" to="/admin/recruitment"><ListChecks/><span>待审核注册</span><strong>{dashboard.data?.pendingRegistrations??0}</strong></Link><div className="quest-row"><ListChecks/><span>待审核招新</span><strong>{dashboard.data?.pendingApplications??0}</strong></div><div className="quest-row"><ActivityIcon/><span>正在运行活动</span><strong>{dashboard.data?.activeActivities??0}</strong></div><p className="panel-note">处理操作会写入审计日志，成员与文件删除均可恢复。</p></article></section></main>;
 }
 
 export function MembersAdminPage(){

@@ -788,6 +788,31 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   }).refine((value) => !value.emailNotificationsEnabled || isNotificationEmail(value.contact), {
     path: ['emailNotificationsEnabled'], message: '订阅活动邮件时必须填写有效邮箱',
   });
+
+  function notifyExecutiveRegistrationReview(registrationId: string, username: string, timestamp: string): void {
+    const systemUserId = 'user-registration-system';
+    sqlite.prepare(`INSERT OR IGNORE INTO users(id,uid,username,password_hash,display_name,email,role,department_id,bio,is_active,created_at,updated_at)
+      VALUES (?,'00000',NULL,NULL,'注册审核助手','registration-review-system@guild.invalid','MEMBER',NULL,'',0,?,?)`)
+      .run(systemUserId, timestamp, timestamp);
+    const executives = sqlite.prepare("SELECT id FROM users WHERE is_active=1 AND role IN ('PRESIDENT','VICE_PRESIDENT')").all() as Array<{ id: string }>;
+    const insertConversation = sqlite.prepare(`INSERT OR IGNORE INTO conversations(id,type,direct_key,department_id,title,created_at,updated_at)
+      VALUES (?,'DIRECT',?,NULL,'',?,?)`);
+    const insertParticipant = sqlite.prepare(`INSERT OR IGNORE INTO conversation_participants(conversation_id,user_id,last_read_at,muted,joined_at)
+      VALUES (?,?,?,0,?)`);
+    const insertMessage = sqlite.prepare(`INSERT INTO messages(id,conversation_id,sender_id,content,reply_to_id,created_at)
+      VALUES (?,?,?,?,NULL,?)`);
+    for (const executive of executives) {
+      const directKey = [systemUserId, executive.id].sort().join(':');
+      const conversationId = `conversation-registration-review-${executive.id}`;
+      insertConversation.run(conversationId, directKey, timestamp, timestamp);
+      insertParticipant.run(conversationId, systemUserId, timestamp, timestamp);
+      insertParticipant.run(conversationId, executive.id, null, timestamp);
+      insertMessage.run(newId('message'), conversationId, systemUserId, `新用户“${username}”提交了注册请求，请前往管理台 → 招新管理审核。`, timestamp);
+      sqlite.prepare('UPDATE conversations SET updated_at=? WHERE id=?').run(timestamp, conversationId);
+    }
+    audit(sqlite, null, 'REGISTRATION_REVIEW_NOTIFIED', 'registration_request', registrationId);
+  }
+
   app.post('/api/public/registration-requests', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = parse(registrationRequestSchema, request.body);
     if (sqlite.prepare('SELECT 1 FROM users WHERE username=? COLLATE NOCASE').get(body.username)) throw new HttpError(409, 'USERNAME_TAKEN', '该用户名已被使用');
@@ -796,10 +821,35 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const id = newId('registration');
     const passwordHash = await hashPassword(body.password);
     const timestamp = now();
-    sqlite.prepare(`INSERT INTO registration_requests(id,username,password_hash,contact,note,email_notifications_enabled,status,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,'PENDING',?,?)`).run(id, body.username, passwordHash, body.contact, body.note, body.emailNotificationsEnabled ? 1 : 0, timestamp, timestamp);
-    audit(sqlite, null, 'REGISTRATION_REQUEST_SUBMITTED', 'registration_request', id);
+    sqlite.transaction(() => {
+      sqlite.prepare(`INSERT INTO registration_requests(id,username,password_hash,contact,note,email_notifications_enabled,status,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,'PENDING',?,?)`).run(id, body.username, passwordHash, body.contact, body.note, body.emailNotificationsEnabled ? 1 : 0, timestamp, timestamp);
+      notifyExecutiveRegistrationReview(id, body.username, timestamp);
+      audit(sqlite, null, 'REGISTRATION_REQUEST_SUBMITTED', 'registration_request', id);
+    })();
     return reply.status(201).send(successResponse({ id, status: 'PENDING' }));
+  });
+
+  const stargateRecordNameSchema = z.string()
+    .transform((value) => value.replace(/[\p{Cc}\p{Cf}]/gu, '').replace(/\s+/g, ' ').trim())
+    .pipe(z.string().min(1, '解密者代号不能为空').max(16, '解密者代号最长 16 个字符'));
+  app.get('/api/public/stargate/records', async (request) => {
+    const limit = Math.min(Math.max(Number((request.query as { limit?: string }).limit) || 24, 1), 60);
+    const items = sqlite.prepare('SELECT name,seq,created_at FROM stargate_records ORDER BY seq DESC LIMIT ?').all(limit) as Array<{ name: string; seq: number; created_at: string }>;
+    const total = (sqlite.prepare('SELECT COUNT(*) count FROM stargate_records').get() as { count: number }).count;
+    return successResponse({ items, total });
+  });
+  app.post('/api/public/stargate/records', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const name = parse(stargateRecordNameSchema, (request.body as { name?: unknown } | null)?.name);
+    const timestamp = now();
+    const record = sqlite.transaction(() => {
+      const seq = (sqlite.prepare('SELECT COALESCE(MAX(seq),0)+1 AS next FROM stargate_records').get() as { next: number }).next;
+      const id = newId('stargate');
+      sqlite.prepare('INSERT INTO stargate_records(id,name,seq,created_at) VALUES (?,?,?,?)').run(id, name, seq, timestamp);
+      audit(sqlite, null, 'STARGATE_RECORDED', 'stargate_record', id, null, { seq });
+      return { id, name, seq, createdAt: timestamp };
+    })();
+    return reply.status(201).send(successResponse({ record }));
   });
 
   const loginSchema = z.object({ username: z.string().trim().min(1), password: passwordSchema });
@@ -1455,7 +1505,7 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       SUM(CASE action WHEN 'TASK_CONFIRMED' THEN 5 WHEN 'ACTIVITY_CHECK_IN' THEN 3 WHEN 'WORK_PUBLISHED' THEN 10 ELSE 0 END) points,
       COUNT(*) eventCount FROM audit_logs WHERE action IN ('TASK_CONFIRMED','ACTIVITY_CHECK_IN','WORK_PUBLISHED') GROUP BY target_user_id`).all();
     const counts = {
-      members: (sqlite.prepare('SELECT COUNT(*) count FROM users').get() as { count: number }).count,
+      members: (sqlite.prepare('SELECT COUNT(*) count FROM users WHERE is_active=1').get() as { count: number }).count,
       pendingApplications: (sqlite.prepare("SELECT COUNT(*) count FROM applications WHERE status='PENDING'").get() as { count: number }).count,
       pendingRegistrations: (sqlite.prepare("SELECT COUNT(*) count FROM registration_requests WHERE status='PENDING'").get() as { count: number }).count,
       activeActivities: (sqlite.prepare("SELECT COUNT(*) count FROM activities WHERE status IN ('REGISTRATION','IN_PROGRESS')").get() as { count: number }).count,

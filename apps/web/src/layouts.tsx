@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, NavLink, Outlet } from 'react-router-dom';
-import { Activity, BarChart3, BookOpen, BriefcaseBusiness, Castle, ChevronLeft, ClipboardCheck, FileArchive, Gamepad2, History, LayoutDashboard, LogOut, Megaphone, MessageCircle, ScrollText, Settings, Shield, Sparkles, UserRound, Users } from 'lucide-react';
+import { Activity, BarChart3, BellRing, BookOpen, BriefcaseBusiness, Castle, ChevronLeft, ClipboardCheck, FileArchive, Gamepad2, History, LayoutDashboard, LogOut, Megaphone, MessageCircle, ScrollText, Settings, Shield, Sparkles, UserRound, Users } from 'lucide-react';
 import { isExecutiveRole, roleLabels, type HomeData } from '@guild/contracts';
 import { api } from './api';
 import { useAuth, useLogout } from './auth';
@@ -22,17 +22,19 @@ const adminLinks=[
 ] as const;
 
 export function ConsoleLayout({admin=false}:{admin?:boolean}){
-  const [collapsed,setCollapsed]=useState(false); const {user}=useAuth(); const logout=useLogout(); const links=admin?(user&&isExecutiveRole(user.role)?adminLinks:adminLinks.filter(([to])=>['/admin/members','/admin/activities','/admin/recruitment','/admin/works','/admin/files','/admin/tasks'].includes(to))):portalLinks;
+  const [collapsed,setCollapsed]=useState(false); const {user}=useAuth(); const logout=useLogout(); const executive=Boolean(admin&&user&&isExecutiveRole(user.role)); const links=admin?(executive?adminLinks:adminLinks.filter(([to])=>['/admin/members','/admin/activities','/admin/recruitment','/admin/works','/admin/files','/admin/tasks'].includes(to))):portalLinks;
+  const dashboard=useQuery({queryKey:['admin-dashboard'],queryFn:()=>api<{pendingRegistrations:number}>('/api/admin/dashboard'),enabled:executive,refetchInterval:15_000});
+  const pendingRegistrations=dashboard.data?.pendingRegistrations??0;
   return <div className={`console ${collapsed?'collapsed':''}`} data-workspace={admin?'admin':'member'}>
     <aside data-surface="guild-navigation">
       <span className="console-rail-ornament ornament-top" aria-hidden="true"/><span className="console-rail-ornament ornament-bottom" aria-hidden="true"/>
       <div className="console-brand"><Castle/><div><span>佐佑动漫社</span><strong>{admin?'公会管理台':'成员驻地'}</strong></div></div>
       <button className="collapse-button" onClick={()=>setCollapsed(!collapsed)} aria-label="折叠侧栏"><ChevronLeft/></button>
       <small className="console-nav-caption">{admin?'GUILD OPERATIONS':'MEMBER LODGE'}</small>
-      <nav aria-label={admin?'后台管理':'成员中心'}>{links.map(([to,Icon,label],index)=><NavLink end={to==='/admin'||to==='/portal'} key={to} to={to} data-index={String(index+1).padStart(2,'0')}><Icon/><span>{label}</span></NavLink>)}</nav>
+      <nav aria-label={admin?'后台管理':'成员中心'}>{links.map(([to,Icon,label],index)=><NavLink end={to==='/admin'||to==='/portal'} key={to} to={to} data-index={String(index+1).padStart(2,'0')}><Icon/><span>{label}</span>{to==='/admin/recruitment'&&pendingRegistrations>0&&<b className="console-nav-badge" aria-hidden="true">{pendingRegistrations>99?'99+':pendingRegistrations}</b>}</NavLink>)}</nav>
       <div className="console-user">{user&&(user.avatarUrl?<img className="uploaded-account-avatar" src={user.avatarUrl} alt=""/>:<PixelAvatar config={user.avatarConfig} seed={user.id} size={30} label=""/>)}<span><strong>{user?.displayName}</strong><small>{logout.error?'退出失败，请重试':user?roleLabels[user.role]:''}</small></span><button onClick={()=>logout.mutate()} disabled={logout.isPending} title={logout.isPending?'正在退出…':'退出登录'} aria-label={logout.isPending?'正在退出登录':'退出登录'}><LogOut/></button></div>
     </aside>
-    <section className="console-main"><header data-surface="console-utility"><div className="console-context"><span className="signal-dot"/><span><small>{admin?'OPERATION STATUS':'LODGE STATUS'}</small>系统在线</span></div><div className="console-utility-links"><Link to="/"><Castle/>游客首页</Link>{admin&&<Link to="/portal"><BriefcaseBusiness/>成员中心</Link>}</div></header><Outlet/></section>
+    <section className="console-main"><header data-surface="console-utility"><div className="console-context"><span className="signal-dot"/><span><small>{admin?'OPERATION STATUS':'LODGE STATUS'}</small>系统在线</span></div><div className="console-utility-links">{pendingRegistrations>0&&<Link className="registration-alert-link" aria-label={`${pendingRegistrations} 个待审核注册`} to="/admin/recruitment"><BellRing/><b>{pendingRegistrations}</b><span>待审核注册</span></Link>}<Link to="/"><Castle/>游客首页</Link>{admin&&<Link to="/portal"><BriefcaseBusiness/>成员中心</Link>}</div></header><Outlet/></section>
   </div>;
 }
 

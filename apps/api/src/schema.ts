@@ -194,4 +194,8 @@ export const raffleDraws = sqliteTable('raffle_draws', {
   prizeName: text('prize_name').notNull(), prizeContents: text('prize_contents').notNull(), drawnAt: utcText('drawn_at'),
 }, (table) => [index('raffle_draws_time_idx').on(table.drawnAt, table.id), index('raffle_draws_operator_idx').on(table.operatorId, table.drawnAt)]);
 
-export const schema = { departments, users, profilePhotos, pageUploads, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, registrationRequests, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postPlacements, postVotes, postAssets, postComments, postRevisions, areaMessages, auditLogs, rafflePrizes, raffleDraws };
+export const stargateRecords = sqliteTable('stargate_records', {
+  id: text('id').primaryKey(), name: text('name').notNull(), seq: integer('seq').notNull().unique(), createdAt: utcText('created_at'),
+});
+
+export const schema = { departments, users, profilePhotos, pageUploads, userDepartments, roleAssignments, conversations, conversationParticipants, messages, chronicles, activities, activityRegistrations, activityResults, applications, registrationRequests, applicationDepartments, activationTokens, works, files, departmentTasks, sessions, siteSettings, announcements, posts, postPlacements, postVotes, postAssets, postComments, postRevisions, areaMessages, auditLogs, rafflePrizes, raffleDraws, stargateRecords };
